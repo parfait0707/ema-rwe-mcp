@@ -3,8 +3,10 @@ import hashlib
 import json
 import re
 from datetime import UTC, datetime
+from pathlib import Path
 
 from .archive import ProtocolArchive
+from .comparison import Comparisons
 from .config import Settings
 from .domain import CodeCandidate, Extraction, ProtocolAnswer, RWEError, now
 from .drugs import refresh_dictionary
@@ -13,7 +15,8 @@ from .exploration import Explorer
 from .http import EMAClient
 from .llm import EXTRACTION_PROMPT, complete_json, configured, extract_with_provider
 from .pdf import extract_pages, sections, validate_evidence
-from .storage import Repository
+from .selection import SearchFilters, selection
+from .storage import Repository, import_csv
 from .terminology import proposed_codes
 from .vocabulary import expand
 
@@ -27,12 +30,63 @@ class Service:
             self.settings.protocol_dir or self.settings.db_path.parent / "protocols"
         )
         self.explorer = Explorer(self.settings, self.archive, self.repo)
+        self.comparisons = Comparisons(self)
+
+    @property
+    def import_dir(self):
+        return self.settings.import_dir or self.settings.db_path.parent / "imports"
 
     async def close(self):
         await self.client.close()
 
     async def refresh_drug_dictionary(self, force: bool = False):
         return await refresh_dictionary(force)
+
+    def catalogue_status(self):
+        snapshots = self.repo.imports()
+        latest = snapshots[0] if snapshots else None
+        if latest:
+            age = (datetime.now(UTC) - datetime.fromisoformat(latest["imported_at"])).total_seconds()
+            state = "current" if age <= self.settings.catalogue_ttl else "stale"
+        else:
+            age, state = None, "not_imported"
+        return {
+            "status": state,
+            "latest_import": latest,
+            "snapshot_count": len(snapshots),
+            "age_seconds": age,
+            "refresh_after_seconds": self.settings.catalogue_ttl,
+            "import_directory": str(self.import_dir.resolve()),
+            "browser_refresh_recommended": state != "current",
+            "discovery_scope": "Only imported studies and individually retrieved Study IDs are searchable.",
+            "browser_instruction": (
+                "When refresh is needed, use a visible user-initiated browser session to open the EMA Search "
+                "page, select Studies/Non-interventional as appropriate, click Export Results once, save the "
+                "CSV in import_directory, then call import_catalogue_csv. Wait on the same batch page; do not "
+                "crawl result pages, start background synchronization, or create duplicate exports."
+            ),
+        }
+
+    def import_catalogue_csv(self, filename: str, column_map: dict[str, str] | None = None):
+        if (
+            not filename
+            or len(filename) > 255
+            or filename != Path(filename).name
+            or Path(filename).suffix.casefold() != ".csv"
+        ):
+            raise RWEError("INVALID_INPUT", "filename must be a CSV basename inside import_directory.")
+        folder = self.import_dir.resolve()
+        path = (folder / filename).resolve()
+        if path.parent != folder or not path.is_file():
+            raise RWEError("CSV_NOT_FOUND", "CSV was not found in the configured import directory.")
+        try:
+            size = path.stat().st_size
+        except OSError as exc:
+            raise RWEError("CACHE_ERROR", "Could not inspect the CSV download.") from exc
+        if not 0 < size <= 50 * 1024 * 1024:
+            raise RWEError("CSV_SCHEMA_ERROR", "CSV must be non-empty and at most 50 MiB.")
+        result = import_csv(self.repo, path, column_map)
+        return {**result, "source_path": str(path), "catalogue": self.catalogue_status()}
 
     def search_studies(
         self,
@@ -43,24 +97,88 @@ class Service:
         analyzed_only: bool = False,
         synonyms: list[str] | None = None,
         codes: list[CodeCandidate] | None = None,
+        filters: SearchFilters | None = None,
     ):
-        results = self.repo.search(query, limit, darwin_only, status, analyzed_only, synonyms, codes)
+        if not 1 <= limit <= 20:
+            raise RWEError("INVALID_INPUT", "limit must be 1..20 (display capped at 5).")
+        candidates = self.repo.search(
+            query, None, darwin_only, status, analyzed_only, synonyms, codes, filters
+        )
+        results = candidates[: min(limit, 5)]
         for result in results:
             result["protocol_id"] = (result.get("protocol_source") or {}).get("protocol_id")
             result["local_protocols"] = [
                 {k: r.get(k) for k in ("protocol_id", "local_filename", "version", "document_url")}
                 for r in self.archive.list(result["study_id"])
             ]
+        catalogue = self.catalogue_status()
         return {
             "query": query,
+            **selection(candidates),
+            "returned_count": len(results),
+            "results_are_preview": len(results) < len(candidates),
+            "filters": (filters or SearchFilters()).model_dump(),
             "results": results,
             "query_expansion": expand(query, synonyms, codes),
             "search_mode": "local_fts_bm25",
             "network_requests": 0,
+            "catalogue": catalogue,
+            "catalogue_action": (
+                "none"
+                if candidates
+                else "browser_export_then_import"
+                if catalogue["browser_refresh_recommended"]
+                else "refine_queries_or_request_fresh_export"
+            ),
             "note": "Protocol fields are not_analyzed until analyze_protocol and extraction are completed. "
             "Use analyzed_only=true for previously extracted protocols. Latest is as-of protocol_source; "
             "call analyze_protocol to check for updates. Inspect query_expansion and add synonyms or call plan_study_search.",
         }
+
+    async def compare_protocols(
+        self,
+        question: str,
+        queries: list[str],
+        filters: SearchFilters | None = None,
+        darwin_only: bool = False,
+        synonyms=None,
+        codes=None,
+    ):
+        if (
+            not question.strip()
+            or len(question) > 2000
+            or not 1 <= len(queries) <= 20
+            or any(not q.strip() for q in queries)
+        ):
+            raise RWEError("INVALID_INPUT", "A question and 1..20 nonempty search queries are required.")
+        unique = {}
+        for query in queries:
+            for row in self.repo.search(query, None, darwin_only, None, False, synonyms, codes, filters):
+                unique.setdefault(row["study_id"], row)
+        candidates = list(unique.values())
+        catalogue = self.catalogue_status()
+        search = {
+            **selection(candidates),
+            "queries": queries,
+            "filters": (filters or SearchFilters()).model_dump(),
+            "query_expansions": [expand(q, synonyms, codes) for q in queries],
+            "darwin_only": darwin_only,
+            "search_scope": "local catalogue metadata and saved analysis only",
+            "catalogue": catalogue,
+            "catalogue_action": (
+                "none"
+                if candidates
+                else "browser_export_then_import"
+                if catalogue["browser_refresh_recommended"]
+                else "refine_queries_or_request_fresh_export"
+            ),
+        }
+        if not 1 <= len(candidates) <= 5:
+            return {**search, "network_requests": 0, "rows": [], "pdf_downloads": 0}
+        return await self.comparisons.prepare(question, candidates, search)
+
+    async def get_protocol_comparison(self, comparison_id: str):
+        return await asyncio.to_thread(self.comparisons.collect, comparison_id)
 
     async def get_study(self, study_id: str, refresh: bool = False):
         if not re.fullmatch(r"\d{1,20}", study_id):

@@ -1,12 +1,26 @@
+import csv
+import io
 import json
+import shutil
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
 
+from ema_rwe.config import Settings
 from ema_rwe.domain import Document, Extraction, RWEError
 from ema_rwe.ema import BASE, is_non_interventional, parse_date, parse_documents, select_protocol
 from ema_rwe.pdf import Page, extract_pages, sections, validate_evidence
+from ema_rwe.service import Service
 from ema_rwe.storage import Repository, import_csv
+
+
+def test_default_cache_ttls_are_30_days(monkeypatch, tmp_path):
+    monkeypatch.delenv("EMA_CACHE_TTL_SECONDS", raising=False)
+    monkeypatch.delenv("EMA_CATALOGUE_TTL_SECONDS", raising=False)
+    configured = Settings(db_path=tmp_path / "db.sqlite3", cache_dir=tmp_path / "http")
+    assert configured.ttl == 2_592_000
+    assert configured.catalogue_ttl == 2_592_000
 
 
 @pytest.mark.parametrize(
@@ -43,6 +57,90 @@ def test_import_search_scope_and_privacy(settings, csv_file):
     ).read_bytes() == csv_file.read_bytes()
     import_csv(repo, csv_file)
     assert len(repo.search("opioid", 20, False, None)) == 1
+
+
+def test_import_actual_export_columns_and_safe_clinical_search(settings, tmp_path):
+    stream = io.StringIO(newline="")
+    writer = csv.writer(stream)
+    writer.writerow(
+        [
+            "Title",
+            "Study ID",
+            "Study type",
+            "Study countries",
+            "Study description",
+            "Non-interventional study design",
+            "Non-interventional study design, other",
+            "Data source(s) ",
+            "Other linked data sources ",
+            "Anatomical Therapeutic Chemical (ATC) code",
+            "Outcomes",
+            "Main contact: First name",
+        ]
+    )
+    writer.writerow(
+        [
+            'A "quoted" safety study',
+            "2468",
+            "Non-interventional study",
+            "Sweden",
+            "Routinely collected data",
+            "Cohort",
+            "New-user design",
+            "National Patient Register; Prescribed Drug Register",
+            "Regional claims data\nDeath register",
+            "B01AF02",
+            "Major bleeding",
+            "Private Name",
+        ]
+    )
+    path = tmp_path / "actual-shape.csv"
+    path.write_text(stream.getvalue(), encoding="utf-8-sig")
+
+    repo = Repository(settings.db_path)
+    result = import_csv(repo, path)
+
+    assert result["imported"] == 1
+    assert result["schema_warnings"] == [
+        "CSV has no Data source type column; detail-page enrichment is required."
+    ]
+    study = repo.get("2468")
+    assert study.title == 'A "quoted" safety study'
+    assert study.study_designs == ["Cohort", "New-user design"]
+    assert study.catalogue_data_sources == [
+        "National Patient Register",
+        "Prescribed Drug Register",
+        "Regional claims data",
+        "Death register",
+    ]
+    assert repo.search("B01AF02", 5, False, None)[0]["study_id"] == "2468"
+    assert repo.search("major bleeding", 5, False, None)[0]["study_id"] == "2468"
+    assert "Private Name" not in json.dumps(repo.search("bleeding", 5, False, None))
+
+
+def test_catalogue_download_inbox_status_and_import(settings, csv_file):
+    service = Service(settings)
+    initial = service.catalogue_status()
+    assert initial["status"] == "not_imported"
+    assert initial["browser_refresh_recommended"] is True
+    assert service.search_studies("opioid")["catalogue_action"] == "browser_export_then_import"
+    inbox = Path(initial["import_directory"])
+    inbox.mkdir(parents=True)
+    shutil.copyfile(csv_file, inbox / "export-data.csv")
+    result = service.import_catalogue_csv("export-data.csv")
+    assert result["imported"] == 2
+    assert result["catalogue"]["status"] == "current"
+    assert result["catalogue"]["browser_refresh_recommended"] is False
+    assert service.search_studies("opioid")["catalogue"]["status"] == "current"
+    assert service.search_studies("unmatched")["catalogue_action"] == "refine_queries_or_request_fresh_export"
+    with pytest.raises(RWEError, match="basename"):
+        service.import_catalogue_csv("../export-data.csv")
+    with pytest.raises(RWEError, match="not found"):
+        service.import_catalogue_csv("missing.csv")
+    with service.repo.connection() as db:
+        old = (datetime.now(UTC) - timedelta(seconds=settings.catalogue_ttl + 1)).isoformat()
+        db.execute("UPDATE imports SET imported_at=?", (old,))
+    assert service.catalogue_status()["status"] == "stale"
 
 
 @pytest.mark.parametrize(

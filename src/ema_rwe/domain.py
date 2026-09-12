@@ -28,6 +28,7 @@ class Study(Model):
     eupas_number: str | None = None
     description: str = ""
     study_type: str = ""
+    study_designs: list[str] = Field(default_factory=list)
     status: str = ""
     darwin_eu: bool | None = None
     countries: list[str] = Field(default_factory=list)

@@ -54,6 +54,7 @@ def parse_study(html: str, study_id: str, methods: str = "", data: str = "") -> 
         eupas_number=one("eu pas number") or None,
         description=one("study description"),
         study_type=one("study type"),
+        study_designs=f.get("non interventional study design", []),
         status=one("study status"),
         darwin_eu={"Yes": True, "No": False}.get(darwin),
         countries=f.get("study countries", []),

@@ -8,6 +8,7 @@ from pydantic import ValidationError
 
 from .config import Settings
 from .domain import CodeCandidate, Extraction, RWEError
+from .selection import SearchFilters
 from .service import Service
 from .storage import Repository, import_csv
 
@@ -28,6 +29,10 @@ def parser():
     imp = commands.add_parser("import-csv")
     imp.add_argument("input", type=Path)
     imp.add_argument("--column-map", type=Path, help="JSON mapping: internal field to exact CSV header")
+    inbox = commands.add_parser("import-download")
+    inbox.add_argument("filename")
+    inbox.add_argument("--column-map", type=Path)
+    commands.add_parser("catalogue-status")
     search = commands.add_parser("search")
     search.add_argument("query")
     search.add_argument("--limit", type=int, default=5)
@@ -36,6 +41,28 @@ def parser():
     search.add_argument("--analyzed-only", action="store_true")
     search.add_argument("--synonym", action="append")
     search.add_argument("--code", action="append", type=code_argument)
+    compare = commands.add_parser("compare")
+    compare.add_argument("question")
+    compare.add_argument("--query", action="append", required=True)
+    compare.add_argument("--darwin-only", action="store_true")
+    compare.add_argument("--synonym", action="append")
+    compare.add_argument("--code", action="append", type=code_argument)
+    for cmd in (search, compare):
+        cmd.add_argument("--country", action="append", default=[])
+        cmd.add_argument(
+            "--source-type",
+            action="append",
+            choices=["claims", "registry", "ehr", "drug_dispensing_prescription"],
+            default=[],
+        )
+        cmd.add_argument(
+            "--study-design",
+            action="append",
+            choices=["case-control", "cohort", "cross-sectional", "ecological", "self-controlled"],
+            default=[],
+        )
+    comparison = commands.add_parser("comparison")
+    comparison.add_argument("comparison_id")
     plan = commands.add_parser("plan-search")
     plan.add_argument("question")
     plan.add_argument("--llm", action="store_true")
@@ -86,9 +113,21 @@ async def run(args):
         return import_csv(Repository(settings.db_path), args.input, mapping)
     service = Service(settings)
     try:
+        filters = (
+            SearchFilters(
+                countries=args.country, data_source_types=args.source_type, study_designs=args.study_design
+            )
+            if args.command in {"search", "compare"}
+            else None
+        )
         match args.command:
             case "refresh-drugs":
                 return await service.refresh_drug_dictionary(args.force)
+            case "catalogue-status":
+                return service.catalogue_status()
+            case "import-download":
+                mapping = json.loads(args.column_map.read_text(encoding="utf-8")) if args.column_map else None
+                return service.import_catalogue_csv(args.filename, mapping)
             case "search":
                 return service.search_studies(
                     args.query,
@@ -98,7 +137,14 @@ async def run(args):
                     args.analyzed_only,
                     args.synonym,
                     args.code,
+                    filters,
                 )
+            case "compare":
+                return await service.compare_protocols(
+                    args.question, args.query, filters, args.darwin_only, args.synonym, args.code
+                )
+            case "comparison":
+                return await service.get_protocol_comparison(args.comparison_id)
             case "plan-search":
                 return await service.plan_study_search(args.question, args.llm)
             case "local-protocols":

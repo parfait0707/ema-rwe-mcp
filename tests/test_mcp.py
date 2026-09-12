@@ -1,16 +1,34 @@
 import json
 import os
+import shutil
 import sys
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 from ema_rwe.archive import ProtocolArchive
+from ema_rwe.domain import Study
 from ema_rwe.storage import Repository, import_csv
 
 
 async def test_stdio_discovery_validation_and_local_search(settings, csv_file, pdf_bytes):
     import_csv(Repository(settings.db_path), csv_file)
+    repo = Repository(settings.db_path)
+    inbox = settings.db_path.parent / "imports"
+    inbox.mkdir()
+    shutil.copyfile(csv_file, inbox / "export-data.csv")
+    for i in range(6):
+        repo.upsert(
+            Study(
+                study_id=str(9000 + i),
+                title="NarrowingExample",
+                study_type="Non-interventional study",
+                countries=["Japan" if i < 3 else "France"],
+                data_source_types=["Claims"],
+                study_designs=["Cohort"],
+                source_url=f"https://catalogues.ema.europa.eu/study/{9000 + i}",
+            )
+        )
     pid = ProtocolArchive(settings.db_path.parent / "protocols").save(
         "123",
         pdf_bytes,
@@ -41,12 +59,52 @@ async def test_stdio_discovery_validation_and_local_search(settings, csv_file, p
             "read_protocol_text",
             "research_protocol",
             "cache_protocol_answer",
+            "compare_protocols",
+            "get_protocol_comparison",
+            "catalogue_status",
+            "import_catalogue_csv",
         }
+        catalogue = await session.call_tool("catalogue_status", {})
+        assert json.loads(catalogue.content[0].text)["status"] == "current"
+        imported = await session.call_tool("import_catalogue_csv", {"filename": "export-data.csv"})
+        assert json.loads(imported.content[0].text)["imported"] == 2
+        outside = await session.call_tool("import_catalogue_csv", {"filename": "../export-data.csv"})
+        assert json.loads(outside.content[0].text)["error"]["code"] == "INVALID_INPUT"
         result = await session.call_tool("search_studies", {"query": "opioid"})
         assert not result.isError
         body = json.loads(result.content[0].text)
         assert body["network_requests"] == 0
         assert body["results"][0]["data_source_types"] == ["EHR", "Claims"]
+        narrow = await session.call_tool(
+            "compare_protocols", {"question": "What definition?", "queries": ["NarrowingExample"]}
+        )
+        body = json.loads(narrow.content[0].text)
+        assert body["status"] == "needs_narrowing"
+        assert body["total_matches"] == 6 and body["network_requests"] == 0
+        filtered = await session.call_tool(
+            "search_studies",
+            {
+                "query": "NarrowingExample",
+                "darwin_only": False,
+                "filters": {
+                    "countries": ["Japan"],
+                    "data_source_types": ["claims"],
+                    "study_designs": ["cohort"],
+                },
+            },
+        )
+        assert json.loads(filtered.content[0].text)["total_matches"] == 3
+        invalid_filter = await session.call_tool(
+            "compare_protocols",
+            {
+                "question": "What definition?",
+                "queries": ["NarrowingExample"],
+                "filters": {"data_source_types": ["made-up-type"]},
+            },
+        )
+        assert invalid_filter.isError
+        missing_comparison = await session.call_tool("get_protocol_comparison", {"comparison_id": "../oops"})
+        assert json.loads(missing_comparison.content[0].text)["error"]["code"] == "INVALID_INPUT"
         invalid = await session.call_tool("search_studies", {"query": "opioid", "limit": 21})
         assert invalid.isError
         error = await session.call_tool("get_study", {"study_id": "../oops"})

@@ -6,6 +6,7 @@ from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 
 from ..domain import CodeCandidate, Extraction, ProtocolAnswer, RWEError
+from ..selection import SearchFilters
 from ..service import Service
 
 
@@ -37,6 +38,15 @@ def create_server(service: Service | None = None):
             " For medicine questions, check clinical.drugs.needs_refresh and call refresh_drug_dictionary if needed. "
             "Search both product names and INN/common names plus ATC codes. Translate unknown Japanese drug names "
             "into English synonyms, then rerun search for dictionary expansion. Do not equate combination products with single ingredients."
+            " For each research question, use compare_protocols with ALL query variants to count the deduplicated candidate union. "
+            "If needs_narrowing, ask the user for countries, source types (claims/registry/ehr/drug_dispensing_prescription) "
+            "or study designs (case-control/cohort/cross-sectional/ecological/self-controlled). NEVER choose a top five from six or more. "
+            "For 1..5, process ALL pending_tools, cache all extractions and answers, and call get_protocol_comparison. "
+            "Present its comparison table and JSON paths, including failures. Use darwin_only=false unless specifically requested."
+            " Check catalogue_status before research. If no CSV has been imported, or it is stale and local "
+            "search has no candidates, use the caller's Playwright MCP in a visible user-initiated session to "
+            "download one official Studies CSV into import_directory, call import_catalogue_csv, and retry all "
+            "queries. Do not crawl /search pages, run background sync, or repeatedly download an unchanged export."
         ),
     )
 
@@ -59,6 +69,25 @@ def create_server(service: Service | None = None):
         return await call("refresh_drug_dictionary", force)
 
     @server.tool()
+    async def catalogue_status() -> dict:
+        """Report local CSV snapshot coverage/freshness and the browser download directory. No network request."""
+        try:
+            return service.catalogue_status()
+        except RWEError as exc:
+            return exc.as_dict()
+
+    @server.tool()
+    async def import_catalogue_csv(filename: str, column_map: dict[str, str] | None = None) -> dict:
+        """Validate/import one browser-downloaded CSV from the configured import directory.
+
+        Accepts a basename, never an arbitrary path. The official raw bytes and checksum are retained.
+        """
+        try:
+            return service.import_catalogue_csv(filename, column_map)
+        except RWEError as exc:
+            return exc.as_dict()
+
+    @server.tool()
     async def search_studies(
         query: Annotated[str, Field(max_length=2000)],
         limit: Annotated[int, Field(ge=1, le=20)] = 5,
@@ -67,6 +96,7 @@ def create_server(service: Service | None = None):
         analyzed_only: bool = False,
         synonyms: list[str] | None = None,
         codes: list[CodeCandidate] | None = None,
+        filters: SearchFilters | None = None,
     ) -> dict:
         """Local search. Always returns catalogue data_source_types and protocol_data_sources with status.
 
@@ -75,9 +105,36 @@ def create_server(service: Service | None = None):
         analyzed_only restricts results to cached analyses; source timestamps indicate freshness.
         """
         try:
-            return service.search_studies(query, limit, darwin_only, status, analyzed_only, synonyms, codes)
+            return service.search_studies(
+                query, limit, darwin_only, status, analyzed_only, synonyms, codes, filters
+            )
         except RWEError as exc:
             return exc.as_dict()
+
+    @server.tool()
+    async def compare_protocols(
+        question: str,
+        queries: list[str],
+        filters: SearchFilters | None = None,
+        darwin_only: bool = False,
+        synonyms: list[str] | None = None,
+        codes: list[CodeCandidate] | None = None,
+    ) -> dict:
+        """Count the union of ALL search variants. At >5 require user filters before downloading any PDF.
+
+        At 1..5 save every latest available PDF and per-study draft JSON. Execute all returned pending_tools,
+        then get_protocol_comparison to assemble completed JSON and comparison table. Never omit failures.
+        Source/design filters use labelled catalogue metadata (or saved design analysis); unknowns do not match.
+        """
+        return await call("compare_protocols", question, queries, filters, darwin_only, synonyms, codes)
+
+    @server.tool()
+    async def get_protocol_comparison(comparison_id: str) -> dict:
+        """Update all comparison JSON/Markdown files from validated saved analyses and question answers.
+
+        Status is complete only when EVERY row has its PDF, current-fingerprint extraction and saved answer.
+        """
+        return await call("get_protocol_comparison", comparison_id)
 
     @server.tool()
     async def get_study(study_id: str, refresh: bool = False) -> dict:

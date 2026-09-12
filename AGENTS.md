@@ -8,6 +8,9 @@ Build an evidence-backed MCP for finding and analysing EMA RWD protocols. Read `
 - Always return catalogue Data source types and protocol-derived data source names/status. Do not call planned sources actually used.
 - Select the latest protocol from Study documents; preserve version-selection reasoning, hashes and immutable local PDF IDs.
 - Search is local SQLite FTS plus cached analysis. Retrieve PDFs for selected studies, not through an unrestricted site crawl.
+- For every research question, count the deduplicated union of all search variants with `compare_protocols`. At 6 or more, ask for country, source-type or study-design filters; never silently choose a top five. At 1..5, process ALL pending extraction/exploration tools, cache all answers and call `get_protocol_comparison` to export every study's PDF/JSON and present the comparison table. Keep failures and missing information visible. See `docs/comparisons.md`.
+- Report candidate counts as local-index counts, not full EMA coverage or verified PDF eligibility. Use `darwin_only=false` unless the user specifically restricts to DARWIN EU.
+- Check `catalogue_status` before research. When no CSV has ever been imported, or a stale snapshot yields no candidates, a caller with Playwright may perform one visible, user-initiated official CSV export and pass its basename to `import_catalogue_csv`. Never use browser automation for result-page crawling, unattended periodic sync, or repeated downloads of the same snapshot.
 
 ## Clinical search and evidence
 

@@ -14,3 +14,15 @@ EMA_DB_PATH = "E:/codex/rwd-catalogue-mcp/data/ema.sqlite3"
 EMA_CACHE_DIR = "E:/codex/rwd-catalogue-mcp/cache/http"
 EMA_PROTOCOL_DIR = "E:/codex/rwd-catalogue-mcp/data/protocols"
 EMA_DRUG_DICTIONARY_PATH = "E:/codex/rwd-catalogue-mcp/data/ema-medicines.json"
+EMA_IMPORT_DIR = "E:/codex/rwd-catalogue-mcp/data/imports"
+EMA_CACHE_TTL_SECONDS = "2592000"
+EMA_CATALOGUE_TTL_SECONDS = "2592000"
+
+# Optional caller-side browser used only for a visible, user-initiated official CSV export.
+# It is a separate MCP; ema-rwe never calls it or crawls /search itself.
+[mcp_servers.playwright]
+command = "npx"
+args = ["-y", "@playwright/mcp@0.0.80", "--browser", "msedge", "--output-dir", "E:/codex/rwd-catalogue-mcp/data/imports"]
+enabled = true
+startup_timeout_sec = 60
+tool_timeout_sec = 180
