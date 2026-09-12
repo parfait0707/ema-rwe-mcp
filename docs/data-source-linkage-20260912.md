@@ -50,20 +50,54 @@ typeを得られなかった27件はいずれも`Other data source`だけに紐�
 
 ## source typeによる絞込
 
-claimsはData Sources CSVの公式type`Administrative healthcare records (e.g., claims)`をそのまま使える。該当Data Sourceは42件で、`Data source(s)`の主結合だけでclaims sourceに紐づくStudyは329件だった。自由記述欄の確実な一致も加えると331件になる。
+### 同名フィルターの意味はrecord typeごとに異なる
 
-registryはtype名に`registry`を含むData Sourceが146件、drug dispensing/prescriptionは`Pharmacy dispensing records`が49件あり、同じ方法で絞り込める。
+EMAの[公式metadata一覧](https://www.ema.europa.eu/en/documents/other/list-metadata-hma-ema-catalogues-real-world-data-sources-studies_en.pdf)と[User Guide](https://www.ema.europa.eu/en/documents/regulatory-procedural-guideline/user-guide-hma-ema-catalogues-real-world-data-sources-studies_en.pdf)では、Study側はF8.7 `Data sources (types)`、Data Source側はC5.1 `Data source type`という別フィールドである。
 
-一方、Data Sources CSVのtypeには`EHR`または`Electronic health records`という値が0件だった。Primary care medical records 51件、Hospital inpatient records 76件、Hospital outpatient visit records 64件などをEHRへ対応させるには、MCP側で明示的な分類規則を定義し、「公式type」ではなく「MCPによる上位分類」として由来を表示する必要がある。
+- F8.7は、そのStudyで使うデータソースを研究登録者が分類する。`Electronic healthcare records (EHR)`、`Drug prescriptions`、`Published literature`などを含む。
+- C5.1は、登録されたデータ資産自体をデータ保有者が分類する。Administrative、Primary care、Secondary care、Registries等の下に、claims、primary care medical records、hospital inpatient recordsなどがある。
 
-## 結論と制約
+したがって、Data Sourceでclaimsを選んだ42件は「claims型と登録されたデータ資産の数」、Studyでclaimsを選んだ831件は「claimsを使うとStudy側で申告された研究の数」であり、同じ母集団ではない。42 Data Sourcesが複数Studyから再利用されるため、Study数が42を超えること自体も自然である。
 
-`Data source(s)`はData Sources CSVの正式名と完全に結合でき、claims・registry・pharmacy dispensingについては公式typeを用いた絞込が可能である。ただし、Study全体の74.12%には`Data source(s)`がない。結合できないStudyを非claimsと扱うと偽陰性になるため、フィルタ結果は`matched`、`non-matching`、`unknown`を区別する必要がある。
+claimsはC5.1の公式type`Administrative healthcare records (e.g., claims)`をそのまま使える。該当Data Sourceは42件で、`Data source(s)`の主結合だけでこのような資産に紐づくStudyは329件だった。自由記述欄の確実な一致も加えると331件になる。
+
+ただし、この329件を「claimsを使用したStudy」と断定してはならない。1つのData Sourceはclaims、dispensing、hospital records等を同時に持ち得るが、個別Studyがその全構成要素を使うとは限らない。C5.1から分かるのはリンク先資産の能力・構成であり、Studyでの使用分類はF8.7、実際の解析対象はプロトコルで確認する。
+
+registryはtype名に`registry`を含むData Sourceが146件、drug dispensing/prescriptionは`Pharmacy dispensing records`が49件あり、同じ方法で「その構成を持つ資産へリンクしたStudy候補」を作れる。Studyでの使用を確定する絞込ではない。
+
+一方、C5.1には`EHR`または`Electronic health records`という選択肢がない。Primary care medical records 51件、Hospital inpatient records 76件、Hospital outpatient visit records 64件などをEHRへ対応させることは可能だが、EMAの公式対応関係ではない。MCPで行う場合は「MCPによる上位分類」として規則と由来を表示する。
+
+## 採用する判定規則
+
+Studyのsource-type検索ではF8.7を第一の判定根拠とし、C5.1による結合結果は補助候補に限定する。プロトコル抽出は別層に維持する。
+
+| 状態 | 判定 | 絞込での扱い |
+|---|---|---|
+| `study_reported_match` | Study F8.7が指定typeを含む | Study検索の確定候補 |
+| `study_reported_nonmatch` | F8.7を確認済みで指定typeを含まない | 指定typeから除外可能。ただしlinked sourceのtypeと違う場合は差異を表示 |
+| `linked_source_possible` | F8.7不明だが、結合先C5.1が指定typeを含む | 補助候補。使用を断定しない |
+| `linked_type_missing` | 登録sourceへ結合したがC5.1が空 | `unknown`として保持 |
+| `unresolved_free_text` | `Other linked data sources`だけで一意に結合不能 | `unknown`として保持 |
+| `no_source_metadata` | Studyのsource名・F8.7とも未取得 | `unknown`として保持 |
+| `protocol_verified` | プロトコルに使用対象と根拠がある | 最終比較でusageと引用を提示 |
+
+Study全体の内訳は、登録source名を持つ857件、自由記述sourceだけを持つ510件、どちらのsource名もない1,945件である。後二者を非claimsとして除外してはならない。
+
+現在のStudies CSVにはF8.7列がないため、このCSV単体ではサイト上の831件を再現できず、329件との包含関係も検証できない。完全なStudy-level絞込には、次のいずれかが必要である。
+
+1. EMAがF8.7をStudies exportへ含める。
+2. Study側でtypeを指定した公式filtered exportについて、filter条件とStudy ID集合をsnapshot metadataとして保存する。
+3. 対象StudyのData managementページからF8.7を取得してキャッシュする。
+
+2と3を組み合わせる場合も、候補数は`study_reported_match`と`unknown`を分けて示す。`unknown`を黙って除外した件数を「全EMA Studyを対象とした結果」と表現しない。
+
+## 保存するprovenance
 
 実装時はData source IDを内部キーにし、以下を検索結果へ出す。
 
-- Study detail pageに直接表示されたData source type
-- Data Sources CSVとの主結合から得た公式typeとData source ID
+- Study F8.7に直接表示されたtype、取得元URL、確認日時
+- Data Sources CSVとの主結合から得たC5.1 typeとData source ID
 - `Other linked data sources`から得た補助一致とmatch method
-- typeが得られない理由と`unknown`件数
+- F8.7とC5.1の一致・差異。どちらかで他方を上書きしない
+- typeが得られない理由、`unknown`件数、判定対象の分母
 - EHRなどMCPが上位分類した場合の規則とprovenance

@@ -59,7 +59,7 @@ flowchart TD
 - `Data sources (types)` / `Data source type` 列があれば取り込みます。2026-09-12のStudies exportにはData source type列がなかったため、そのsnapshotでは空欄として明示し、選択研究のdetail pageで補完します。
 - `Data source(s)`と`Other linked data sources`はカタログ上のデータソース候補として取り込みます。ATC、INN/common name、疾患、outcome、目的などの公開臨床metadataも候補検索だけに索引化します。連絡先は索引化しません。
 - 複数値の区切りは `|`・`;`・改行です。値内部のカンマは分割しません。実CSVの構造・欠損率は [CSV実データ調査](docs/csv-profile-20260912.md) に記録しています。
-- Human Data Sources CSVとの名称結合は、Studiesの主source参照2,004件すべてで一意に成功しました。claims等の絞込可否と未結合範囲は [Data Sources結合検証](docs/data-source-linkage-20260912.md) に記録しています。
+- Human Data Sources CSVとの名称結合は、Studiesの主source参照2,004件すべてで一意に成功しました。ただしStudy側F8.7は研究での使用分類、Data Source側C5.1は資産の構成分類です。C5.1をF8.7の代用にせず、補助候補として扱う判定規則は [Data Sources結合検証](docs/data-source-linkage-20260912.md) に記録しています。
 - 原本CSVに連絡先が含まれる場合があります。原本は検索対象から分離され、連絡先専用列をDB／FTS／検索結果には入れません。
 
 ### CSVを事前登録せず質問する場合
