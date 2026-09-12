@@ -62,7 +62,7 @@ MCPの取込必須項目はStudy ID、Title、Study typeである。3項目と�
 
 ## 今後の改善候補
 
-- Data Sources用CSVも別途取り込み、Studyの`Data source(s)`リンク先名称と突合して公式Data source typeをローカル補完する。これにより、PDF取得前のclaims/EHR/registry絞込の欠測を減らせる。
+- Data Sources用CSVとの結合可能性は[`data-source-linkage-20260912.md`](data-source-linkage-20260912.md)で検証した。Studyの`Data source(s)`主参照は全件一意に一致したため、次段階では公式Data source typeとData source IDをローカル補完する。EHRはCSVに同名typeがなく、別途上位分類規則が必要。
 - `Protocol file(s) - URI`を候補発見に使いつつ、Study documentsとの照合結果と版選択理由を記録する。CSVだけで最新版とは判定しない。
 - 完全exportと絞込exportを区別するimport modeを追加する。完全snapshotの場合だけ、CSVから消えた古いレコードを削除またはtombstone化できるようにする。
 - 重複ヘッダーを位置付きで保持する汎用profile toolを追加する。現状は検索に使わない重複欄を警告し、原本だけを保持する。

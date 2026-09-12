@@ -64,7 +64,7 @@ v0.1時点で`pytest`全46件、`ruff check src tests`、sdistとwheelのビル�
 
 ## v0.5 Playwrightによる公式CSV取得支援
 
-- Microsoft公式Playwright MCP 0.0.80をNode.js 24.1.0／npx 11.12.1からstdio起動し、24ブラウザツールを発見。Microsoft EdgeでEMA Supportページへ遷移できた。
+- Microsoft公式Playwright MCP 0.0.80をNode.js 24.1.0／npx 11.12.1からstdio起動し、24ブラウザツールを発見。Microsoft EdgeでEMA Supportページへ遷移できた。現在のStudies出力先は`data/imports/studies`。
 - 表示ブラウザでEMAのStudies検索ページを1回開き、アクセシビリティsnapshotから`Export results`リンクをrole/nameで特定した。固定CSS selectorには依存しない。
 - `Export results`を1回実行すると`/batch?id=...&op=start`へ移動し、27秒後に3%、残り約17分と表示された。長時間の実Export完了と実CSVの取込はこの検証では待たず、重複するExportも開始しなかった。
 - CSV未登録／current／staleの判定、専用inboxからの取込、50 MiB・basename・拡張子・必須列の制約、検索結果の次アクション、実stdioで17ツールの公開と安全なパス拒否をオフラインテストした。
@@ -78,6 +78,14 @@ v0.1時点で`pytest`全46件、`ruff check src tests`、sdistとwheelのビル�
 - 実CSVの`Title`、`Data source(s)`、`Other linked data sources`、自由記述designに対応。ATC、INN/common name、疾患、outcome、目的、population等を連絡先と分離した補助FTSへ取り込み、実データで`B01AF02`を検索できた。
 - Studies CSVにはData source type列がない。取込結果は警告を返し、選択研究のdetail pageで補完する。ローカルでsource-type絞込を完全に行うにはData Sources exportとのリンク解決が今後必要。
 - 集計値と欠損率は[`csv-profile-20260912.md`](csv-profile-20260912.md)を参照。原本CSVと連絡先値はGit管理・検証ログへ含めない。
+
+## Human Data Sources CSVとの結合検証
+
+- `20260912_rwd-catalogues-data-source-human-export-public.csv`は131列、286件。Data source ID・名称は全件欠損なし、一意で、Data source typeは285件に存在した。
+- Studies CSVの`Data source(s)`にある2,004参照を正規化名称で照合し、857 Studyの全参照がData Sources CSVへ一意に一致した。曖昧一致と未一致は0件。
+- 公式type`Administrative healthcare records (e.g., claims)`を持つ42 Data Sourceから、329 Studyをclaims使用候補として絞り込めることを確認した。
+- `Other linked data sources`は自由記述1,174断片のうち名称25件、acronym 47件だけが一意に一致した。主結合とは分けて扱う。
+- 詳細は[`data-source-linkage-20260912.md`](data-source-linkage-20260912.md)。原本は`data/imports/data-sources`、Studies原本は`data/imports/studies`へ分離し、どちらもGit管理しない。
 
 ## 未検証事項（継続）
 

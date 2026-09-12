@@ -14,8 +14,8 @@ from ema_rwe.storage import Repository, import_csv
 async def test_stdio_discovery_validation_and_local_search(settings, csv_file, pdf_bytes):
     import_csv(Repository(settings.db_path), csv_file)
     repo = Repository(settings.db_path)
-    inbox = settings.db_path.parent / "imports"
-    inbox.mkdir()
+    inbox = settings.db_path.parent / "imports" / "studies"
+    inbox.mkdir(parents=True)
     shutil.copyfile(csv_file, inbox / "export-data.csv")
     for i in range(6):
         repo.upsert(

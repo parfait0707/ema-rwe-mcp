@@ -124,7 +124,7 @@ def test_catalogue_download_inbox_status_and_import(settings, csv_file):
     assert initial["status"] == "not_imported"
     assert initial["browser_refresh_recommended"] is True
     assert service.search_studies("opioid")["catalogue_action"] == "browser_export_then_import"
-    inbox = Path(initial["import_directory"])
+    inbox = Path(initial["study_import_directory"])
     inbox.mkdir(parents=True)
     shutil.copyfile(csv_file, inbox / "export-data.csv")
     result = service.import_catalogue_csv("export-data.csv")

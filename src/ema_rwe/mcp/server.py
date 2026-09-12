@@ -45,7 +45,7 @@ def create_server(service: Service | None = None):
             "Present its comparison table and JSON paths, including failures. Use darwin_only=false unless specifically requested."
             " Check catalogue_status before research. If no CSV has been imported, or it is stale and local "
             "search has no candidates, use the caller's Playwright MCP in a visible user-initiated session to "
-            "download one official Studies CSV into import_directory, call import_catalogue_csv, and retry all "
+            "download one official Studies CSV into study_import_directory, call import_catalogue_csv, and retry all "
             "queries. Do not crawl /search pages, run background sync, or repeatedly download an unchanged export."
         ),
     )
@@ -70,7 +70,7 @@ def create_server(service: Service | None = None):
 
     @server.tool()
     async def catalogue_status() -> dict:
-        """Report local CSV snapshot coverage/freshness and the browser download directory. No network request."""
+        """Report local CSV snapshot coverage/freshness and the typed import directories. No network request."""
         try:
             return service.catalogue_status()
         except RWEError as exc:
@@ -78,9 +78,10 @@ def create_server(service: Service | None = None):
 
     @server.tool()
     async def import_catalogue_csv(filename: str, column_map: dict[str, str] | None = None) -> dict:
-        """Validate/import one browser-downloaded CSV from the configured import directory.
+        """Validate/import one browser-downloaded Studies CSV from the configured studies directory.
 
-        Accepts a basename, never an arbitrary path. The official raw bytes and checksum are retained.
+        Accepts a basename, never an arbitrary path. A legacy file in the import root is also accepted.
+        The official raw bytes and checksum are retained.
         """
         try:
             return service.import_catalogue_csv(filename, column_map)

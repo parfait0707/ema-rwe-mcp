@@ -59,6 +59,7 @@ flowchart TD
 - `Data sources (types)` / `Data source type` 列があれば取り込みます。2026-09-12のStudies exportにはData source type列がなかったため、そのsnapshotでは空欄として明示し、選択研究のdetail pageで補完します。
 - `Data source(s)`と`Other linked data sources`はカタログ上のデータソース候補として取り込みます。ATC、INN/common name、疾患、outcome、目的などの公開臨床metadataも候補検索だけに索引化します。連絡先は索引化しません。
 - 複数値の区切りは `|`・`;`・改行です。値内部のカンマは分割しません。実CSVの構造・欠損率は [CSV実データ調査](docs/csv-profile-20260912.md) に記録しています。
+- Human Data Sources CSVとの名称結合は、Studiesの主source参照2,004件すべてで一意に成功しました。claims等の絞込可否と未結合範囲は [Data Sources結合検証](docs/data-source-linkage-20260912.md) に記録しています。
 - 原本CSVに連絡先が含まれる場合があります。原本は検索対象から分離され、連絡先専用列をDB／FTS／検索結果には入れません。
 
 ### CSVを事前登録せず質問する場合
@@ -74,7 +75,7 @@ flowchart TD
     D -->|なし| F{CSV snapshot}
     F -->|未登録または期限切れ| G[Playwright MCPで表示ブラウザを開く]
     G --> H[EMA SearchでStudiesを選びExport Resultsを1回実行]
-    H --> I[CSVをEMA_IMPORT_DIRへ保存]
+    H --> I[Studies CSVをEMA_IMPORT_DIR/studiesへ保存]
     I --> J[import_catalogue_csvで検証・登録]
     J --> K[元の全検索語を再実行]
     K --> E
@@ -92,14 +93,20 @@ flowchart TD
 
 CSVが有効期間内なのに0件なら、先に英訳・同義語・ICD-10/ATC・絞込条件を見直します。同じsnapshotを再取得しても候補は増えないためです。既知のStudy IDはCSVなしでも `get_study` / `analyze_protocol` で直接登録できます。
 
-Playwright MCPからのダウンロード先とrwd-catalogue-mcpの `EMA_IMPORT_DIR` を同じ絶対パスにします。`import_catalogue_csv(filename)`はこのフォルダ直下のCSVファイル名だけを受け付け、任意パスは読みません。50 MiB上限、必須列、UTF-8、Study ID重複、研究種別を検証し、原本・SHA256・取込日時を保存します。
+`EMA_IMPORT_DIR`はCSV importのルートです。Studies exportは`studies/`、Data Sources exportは`data-sources/`へ分けます。Playwright MCPのStudies用ダウンロード先は`EMA_IMPORT_DIR/studies`と同じ絶対パスにします。`import_catalogue_csv(filename)`は`studies/`直下のCSVファイル名だけを受け付け、移行用にルート直下も読みます。任意パスは受け付けません。50 MiB上限、必須列、UTF-8、Study ID重複、研究種別を検証し、原本・SHA256・取込日時を保存します。
+
+```text
+data/imports/
+├── studies/       # Non-interventional Studies export
+└── data-sources/  # Human Data Sources export
+```
 
 このリポジトリの [`.codex/config.toml`](.codex/config.toml) には、2026-09-12時点のPlaywright MCP `0.0.80`を、表示ありのMicrosoft Edgeと `data/imports` 出力先で登録しています。初回は`npx`がパッケージを取得するためネット接続が必要です。バージョンを固定しているため、更新はrelease内容を確認して明示的に行います。別環境用のCodex設定例:
 
 ```toml
 [mcp_servers.playwright]
 command = "npx"
-args = ["-y", "@playwright/mcp@0.0.80", "--browser", "msedge", "--output-dir", "E:/codex/rwd-catalogue-mcp/data/imports"]
+args = ["-y", "@playwright/mcp@0.0.80", "--browser", "msedge", "--output-dir", "E:/codex/rwd-catalogue-mcp/data/imports/studies"]
 enabled = true
 startup_timeout_sec = 60
 tool_timeout_sec = 180
@@ -108,7 +115,7 @@ tool_timeout_sec = 180
 Claude Codeでは次のようにプロジェクトへ追加します。
 
 ```powershell
-claude mcp add --transport stdio --scope project playwright -- npx -y @playwright/mcp@0.0.80 --browser msedge --output-dir E:/codex/rwd-catalogue-mcp/data/imports
+claude mcp add --transport stdio --scope project playwright -- npx -y @playwright/mcp@0.0.80 --browser msedge --output-dir E:/codex/rwd-catalogue-mcp/data/imports/studies
 ```
 
 Linux/macOSでは利用可能なブラウザを指定し、必要ならPlaywrightのブラウザをインストールしてください。EMAの画面変更、ダウンロード確認、CAPTCHA等で自動操作を継続できない場合は、表示ブラウザでユーザーがExportを完了し、その後の取込から再開します。
@@ -180,7 +187,7 @@ stdioで17個のToolを公開します。初期抽出の5個、[追加探索の7
 | `compare_protocols` | `question`, `queries`, `filters`, `darwin_only=false`, `synonyms`, `codes`。検索語を統合し件数確認、1～5件なら全PDFと下書きJSONを保存 |
 | `get_protocol_comparison` | `comparison_id`。全件の保存済み抽出・質問別回答を集め、JSONと比較表を更新 |
 | `catalogue_status` | CSV snapshotの有無・最終取込時刻・期限・ブラウザ出力先を返す。通信なし |
-| `import_catalogue_csv` | `EMA_IMPORT_DIR`直下の公式CSVを検証し、Non-interventional studyだけを登録 |
+| `import_catalogue_csv` | `EMA_IMPORT_DIR/studies`直下の公式CSVを検証し、Non-interventional studyだけを登録 |
 
 ### Claude Codeで使う
 

@@ -36,6 +36,14 @@ class Service:
     def import_dir(self):
         return self.settings.import_dir or self.settings.db_path.parent / "imports"
 
+    @property
+    def study_import_dir(self):
+        return self.import_dir / "studies"
+
+    @property
+    def data_source_import_dir(self):
+        return self.import_dir / "data-sources"
+
     async def close(self):
         await self.client.close()
 
@@ -57,12 +65,14 @@ class Service:
             "age_seconds": age,
             "refresh_after_seconds": self.settings.catalogue_ttl,
             "import_directory": str(self.import_dir.resolve()),
+            "study_import_directory": str(self.study_import_dir.resolve()),
+            "data_source_import_directory": str(self.data_source_import_dir.resolve()),
             "browser_refresh_recommended": state != "current",
             "discovery_scope": "Only imported studies and individually retrieved Study IDs are searchable.",
             "browser_instruction": (
                 "When refresh is needed, use a visible user-initiated browser session to open the EMA Search "
                 "page, select Studies/Non-interventional as appropriate, click Export Results once, save the "
-                "CSV in import_directory, then call import_catalogue_csv. Wait on the same batch page; do not "
+                "CSV in study_import_directory, then call import_catalogue_csv. Wait on the same batch page; do not "
                 "crawl result pages, start background synchronization, or create duplicate exports."
             ),
         }
@@ -74,11 +84,17 @@ class Service:
             or filename != Path(filename).name
             or Path(filename).suffix.casefold() != ".csv"
         ):
-            raise RWEError("INVALID_INPUT", "filename must be a CSV basename inside import_directory.")
-        folder = self.import_dir.resolve()
-        path = (folder / filename).resolve()
-        if path.parent != folder or not path.is_file():
-            raise RWEError("CSV_NOT_FOUND", "CSV was not found in the configured import directory.")
+            raise RWEError(
+                "INVALID_INPUT", "filename must be a CSV basename inside the Studies import directory."
+            )
+        root = self.import_dir.resolve()
+        study_folder = self.study_import_dir.resolve()
+        candidates = [(study_folder / filename).resolve(), (root / filename).resolve()]
+        if any(path.parent not in {study_folder, root} for path in candidates):
+            raise RWEError("INVALID_INPUT", "CSV path escaped the configured import directory.")
+        path = next((candidate for candidate in candidates if candidate.is_file()), None)
+        if path is None:
+            raise RWEError("CSV_NOT_FOUND", "CSV was not found in the Studies import directory.")
         try:
             size = path.stat().st_size
         except OSError as exc:
