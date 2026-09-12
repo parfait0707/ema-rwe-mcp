@@ -1,0 +1,28 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ema-rwe-mcp"
+version = "0.3.0"
+description = "Evidence-backed EMA non-interventional protocol search and analysis MCP"
+requires-python = ">=3.12"
+dependencies = ["mcp>=1.12,<2", "httpx>=0.28,<1", "beautifulsoup4>=4.12,<5", "pydantic>=2.11,<3", "pymupdf>=1.25,<2", "platformdirs>=4,<5"]
+
+[project.optional-dependencies]
+llm = ["litellm>=1.63,<2"]
+dev = ["pytest>=8,<9", "pytest-asyncio>=0.26,<1", "ruff>=0.11,<1"]
+
+[project.scripts]
+ema-rwe = "ema_rwe.cli:main"
+ema-rwe-mcp = "ema_rwe.mcp.server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ema_rwe"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 110

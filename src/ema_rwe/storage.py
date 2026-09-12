@@ -1,0 +1,255 @@
+import csv
+import hashlib
+import io
+import json
+import re
+import sqlite3
+from contextlib import contextmanager
+from pathlib import Path
+
+from .domain import RWEError, Study, now
+from .ema import BASE, is_non_interventional, norm
+from .terminology import search_units
+from .vocabulary import canonical, expand
+
+
+class Repository:
+    def __init__(self, path: Path):
+        self.path = path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with self.connection() as db:
+            if db.execute("PRAGMA user_version").fetchone()[0] > 1:
+                raise RWEError("DATABASE_ERROR", "Database schema is newer than this server supports.")
+            db.executescript("""
+                PRAGMA journal_mode=WAL;
+                CREATE TABLE IF NOT EXISTS studies (id TEXT PRIMARY KEY, body TEXT NOT NULL);
+                CREATE VIRTUAL TABLE IF NOT EXISTS study_fts USING fts5(
+                    id UNINDEXED, title, metadata, design, definitions, data_sources,
+                    tokenize='unicode61 remove_diacritics 2');
+                CREATE TABLE IF NOT EXISTS analyses (
+                    study_id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL, body TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS imports (
+                    checksum TEXT PRIMARY KEY, filename TEXT, imported_at TEXT, count INTEGER);
+                PRAGMA user_version=1;
+            """)
+
+    @contextmanager
+    def connection(self):
+        db = sqlite3.connect(self.path, timeout=30)
+        db.row_factory = sqlite3.Row
+        try:
+            with db:
+                yield db
+        except sqlite3.Error as exc:
+            raise RWEError("DATABASE_ERROR", "SQLite operation failed.") from exc
+        finally:
+            db.close()
+
+    def get(self, study_id: str) -> Study | None:
+        with self.connection() as db:
+            row = db.execute("SELECT body FROM studies WHERE id=?", (study_id,)).fetchone()
+        return Study.model_validate_json(row[0]) if row else None
+
+    def upsert(self, study: Study):
+        with self.connection() as db:
+            db.execute(
+                "INSERT OR REPLACE INTO studies VALUES (?,?)", (study.study_id, study.model_dump_json())
+            )
+            self._index(db, study)
+
+    def _index(self, db, study):
+        row = db.execute("SELECT body FROM analyses WHERE study_id=?", (study.study_id,)).fetchone()
+        a = json.loads(row[0])["analysis"] if row else {}
+        db.execute("DELETE FROM study_fts WHERE id=?", (study.study_id,))
+
+        # Only structured facts are indexed; never protocol raw text or contact fields.
+        def values(value):
+            if isinstance(value, list):
+                return " ".join(values(x) for x in value)
+            return value.get("value", "") if isinstance(value, dict) else ""
+
+        db.execute(
+            "INSERT INTO study_fts VALUES (?,?,?,?,?,?)",
+            (
+                study.study_id,
+                study.title,
+                " ".join(
+                    [
+                        study.description,
+                        study.study_type,
+                        study.status,
+                        *study.countries,
+                        *study.data_source_types,
+                        values(a.get("population")),
+                        values(a.get("exposure")),
+                        values(a.get("outcomes")),
+                        values(a.get("comparator")),
+                    ]
+                ),
+                values(a.get("study_design")) + " " + values(a.get("statistical_analysis")),
+                values(a.get("disease_definitions")),
+                values(a.get("data_sources")),
+            ),
+        )
+
+    def analysis(self, study_id: str) -> dict | None:
+        with self.connection() as db:
+            row = db.execute("SELECT body FROM analyses WHERE study_id=?", (study_id,)).fetchone()
+        return json.loads(row[0]) if row else None
+
+    def save_analysis(self, study: Study, result: dict):
+        with self.connection() as db:
+            db.execute(
+                "INSERT OR REPLACE INTO analyses VALUES (?,?,?)",
+                (study.study_id, result["source"]["fingerprint"], json.dumps(result, ensure_ascii=False)),
+            )
+            self._index(db, study)
+
+    def invalidate_analysis(self, study: Study):
+        with self.connection() as db:
+            db.execute("DELETE FROM analyses WHERE study_id=?", (study.study_id,))
+            self._index(db, study)
+
+    def search(
+        self,
+        query: str,
+        limit: int,
+        darwin_only: bool,
+        status: list[str] | None,
+        analyzed_only: bool = False,
+        synonyms: list[str] | None = None,
+        codes=None,
+    ) -> list[dict]:
+        if not 1 <= limit <= 20 or len(query) > 2000:
+            raise RWEError("INVALID_INPUT", "limit must be 1..20; query must be at most 2000 characters.")
+        expansion = expand(query, synonyms, codes)
+        tokens = [canonical(t) for t in search_units(query, expansion) if canonical(t)]
+        match = " OR ".join('"' + t.replace('"', '""') + '"' for t in tokens)
+        with self.connection() as db:
+            if query.strip() and not match:
+                return []
+            if match:
+                rows = db.execute(
+                    """SELECT s.body, bm25(study_fts,0,3,1,5,4,3) AS rank
+                    FROM study_fts JOIN studies s ON s.id=study_fts.id
+                    WHERE study_fts MATCH ? ORDER BY rank, s.id""",
+                    (match,),
+                ).fetchall()
+            else:
+                rows = db.execute("SELECT body, 0 AS rank FROM studies ORDER BY id").fetchall()
+        results = []
+        for row in rows:
+            study = Study.model_validate_json(row["body"])
+            if not is_non_interventional(study.study_type):
+                continue
+            if darwin_only and study.darwin_eu is not True:
+                continue
+            if status and study.status.casefold() not in {s.casefold() for s in status}:
+                continue
+            analysis = self.analysis(study.study_id)
+            if analyzed_only and not analysis:
+                continue
+            result = study.model_dump(exclude={"tabs"})
+            result.update(
+                score=-row["rank"],
+                protocol_data_sources=(analysis["analysis"]["data_sources"] if analysis else []),
+                protocol_data_sources_status="extracted" if analysis else "not_analyzed",
+                data_source_types_status="available" if study.data_source_types else "not_provided",
+                protocol_source=analysis["source"] if analysis else None,
+                analysis_available=bool(analysis),
+            )
+            results.append(result)
+            if len(results) >= limit:
+                break
+        return results
+
+
+ALIASES = {
+    "study_id": ("study id", "study identifier", "id"),
+    "title": ("official title and acronym", "study title", "title"),
+    "study_type": ("study type", "type of study"),
+    "description": ("study description", "description"),
+    "eupas_number": ("eu pas number", "eupas number"),
+    "status": ("study status", "status"),
+    "darwin_eu": ("darwin eu study", "darwin eu"),
+    "countries": ("study countries", "countries"),
+    "data_source_types": ("data sources types", "data source type", "data source types"),
+    "catalogue_data_sources": ("data sources", "data source name", "data source names"),
+}
+
+
+def import_csv(repo: Repository, path: Path, column_map: dict[str, str] | None = None) -> dict:
+    raw = path.read_bytes()
+    checksum = hashlib.sha256(raw).hexdigest()
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise RWEError("CSV_SCHEMA_ERROR", "Export CSV must be UTF-8 (BOM supported).") from exc
+    try:
+        dialect = csv.Sniffer().sniff(text[:16384], delimiters=",;\t")
+    except csv.Error:
+        dialect = csv.excel
+    reader = csv.DictReader(io.StringIO(text), dialect=dialect)
+    headers = {norm(h): h for h in reader.fieldnames or []}
+    selected = {
+        key: next((headers[a] for a in aliases if a in headers), None) for key, aliases in ALIASES.items()
+    }
+    selected.update(column_map or {})
+    if any(
+        key not in ALIASES or value not in (reader.fieldnames or [])
+        for key, value in (column_map or {}).items()
+    ):
+        raise RWEError("CSV_SCHEMA_ERROR", "column-map must map known internal fields to existing headers.")
+    if any(
+        not selected.get(key) or selected[key] not in (reader.fieldnames or [])
+        for key in ("study_id", "title", "study_type")
+    ):
+        raise RWEError(
+            "CSV_SCHEMA_ERROR",
+            "Required CSV columns: Study ID, Official title and acronym, "
+            "Study type. Use --column-map for alternate headers. Found: " + str(reader.fieldnames),
+        )
+    studies, skipped, seen, excluded_ids = [], 0, set(), []
+    for lineno, row in enumerate(reader, 2):
+        v = {key: (row.get(col) or "").strip() for key, col in selected.items()}
+        sid = v["study_id"]
+        if not re.fullmatch(r"\d{1,20}", sid) or sid in seen:
+            raise RWEError("CSV_SCHEMA_ERROR", f"Invalid or duplicate Study ID at CSV record {lineno}.")
+        seen.add(sid)
+        if not is_non_interventional(v["study_type"]):
+            skipped += 1
+            excluded_ids.append(sid)
+            continue
+        if not v["title"]:
+            raise RWEError("CSV_SCHEMA_ERROR", f"Invalid or duplicate Study ID/title at CSV record {lineno}.")
+        for key in ("countries", "data_source_types", "catalogue_data_sources"):
+            v[key] = [x.strip() for x in re.split(r"[|;\n]+", v.get(key, "")) if x.strip()]
+        v["darwin_eu"] = {"yes": True, "true": True, "1": True, "no": False, "false": False, "0": False}.get(
+            v.get("darwin_eu", "").lower()
+        )
+        v["eupas_number"] = v.get("eupas_number") or None
+        studies.append(Study(**v, source_url=f"{BASE}/study/{sid}", metadata_source=f"CSV SHA256:{checksum}"))
+    # Preserve original bytes outside the search index. The raw official export may contain contact data.
+    archive = repo.path.parent / "raw" / f"{checksum}.csv"
+    archive.parent.mkdir(exist_ok=True)
+    if not archive.exists():
+        archive.write_bytes(raw)
+    with repo.connection() as db:
+        for sid in excluded_ids:
+            db.execute("DELETE FROM study_fts WHERE id=?", (sid,))
+            db.execute("DELETE FROM analyses WHERE study_id=?", (sid,))
+            db.execute("DELETE FROM studies WHERE id=?", (sid,))
+        for study in studies:
+            db.execute(
+                "INSERT OR REPLACE INTO studies VALUES (?,?)", (study.study_id, study.model_dump_json())
+            )
+            repo._index(db, study)
+        db.execute(
+            "INSERT OR REPLACE INTO imports VALUES (?,?,?,?)", (checksum, path.name, now(), len(studies))
+        )
+    return {
+        "imported": len(studies),
+        "skipped_out_of_scope": skipped,
+        "checksum": checksum,
+        "mode": "upsert; records absent from this export are retained",
+    }
