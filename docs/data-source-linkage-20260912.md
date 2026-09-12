@@ -1,5 +1,7 @@
 # Data Sources CSVとStudies CSVの結合検証（2026-09-12）
 
+> 2026-09-13追記：本書は過去の結合検証と当時の提案です。実装方針は[PDFによる用途別分類](source-types.md)へ変更しました。Data Sourcesインポーター・フィルター付きCSV登録は必須にせず、元CSVフォルダは依頼により削除済みです。以下の分類ルールを現行の検索仕様として適用しないでください。
+
 ## 対象
 
 - Studies: `data/imports/studies/20260912_export-data.csv`

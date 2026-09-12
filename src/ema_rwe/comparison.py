@@ -6,6 +6,7 @@ import tempfile
 import uuid
 
 from .domain import RWEError, now
+from .source_types import select_rows
 
 
 def atomic_write(path, text):
@@ -37,9 +38,24 @@ def cell(value):
 
 
 def table(rows):
+    if not rows:
+        return "比較対象は未確定です。screening_summaryとselection_statusを確認してください。"
     columns = [
         ("国", lambda r: r["study"]["countries"]),
         ("Data source type", lambda r: r["study"]["data_source_types"]),
+        ("希望タイプへの適合性", lambda r: r.get("source_suitability", {}).get("status")),
+        (
+            "PDF由来のタイプ・用途・判定根拠",
+            lambda r: [
+                f"{a['value']}: {', '.join(a['types'])}; {a['role']}; {a['basis']}; {a['usage']}; "
+                f"連結データ必要={a['requires_linkage']}; {a['definition']} (p. {', '.join(str(e['page']) for e in a['evidence'])})"
+                for a in r.get("source_suitability", {}).get("assessments", [])
+            ],
+        ),
+        (
+            "公式分類とPDF分類が重ならない",
+            lambda r: str(r.get("source_suitability", {}).get("catalogue_protocol_disjoint", False)),
+        ),
         (
             "PDF記載データソース（使用状態付き）",
             lambda r: [f"{v['value']} ({v['usage']})" for v in r.get("analysis", {}).get("data_sources", [])],
@@ -88,8 +104,8 @@ class Comparisons:
         return self.root / comparison_id / "comparison.json"
 
     async def prepare(self, question, candidates, search):
-        if not 1 <= len(candidates) <= 5:
-            raise RWEError("NEEDS_NARROWING", "Compare all candidates only after narrowing to 1..5.")
+        if not 1 <= len(candidates) <= self.service.settings.max_screening_studies:
+            raise RWEError("NEEDS_NARROWING", "Narrow candidates to the configured PDF screening limit.")
         cid = "cmp_" + uuid.uuid4().hex
         result = {
             "comparison_id": cid,
@@ -115,6 +131,7 @@ class Comparisons:
         return self.collect(cid)
 
     def write(self, result):
+        shown = select_rows(result)
         folder = self.path(result["comparison_id"]).parent
         for row in result["rows"]:
             row["data_source_types"] = row["study"]["data_source_types"]
@@ -133,11 +150,17 @@ class Comparisons:
             )
         result["json_path"] = str(folder / "comparison.json")
         result["markdown_path"] = str(folder / "comparison.md")
-        result["comparison_markdown"] = table(result["rows"])
+        result["comparison_markdown"] = table(shown)
+        result["comparison_markdown"] += "\n\n全一次判定結果（省略・エラーを含む）:\n\n" + "\n".join(
+            f"- Study {r['study_id']}: {r['suitability']}; {r['status']}; "
+            f"{'比較表に掲載' if r['in_comparison'] else '比較表の対象外／未選択'}"
+            + (f"; {cell(r['error']['message'])}" if r.get("error") else "")
+            for r in result["screening_summary"]
+        )
         atomic_write(folder / "comparison.md", result["comparison_markdown"])
         atomic_write(folder / "comparison.json", json.dumps(result, ensure_ascii=False, indent=2))
 
-    def collect(self, cid):
+    def collect(self, cid, selected_study_ids=None):
         try:
             result = json.loads(self.path(cid).read_text(encoding="utf-8"))
         except FileNotFoundError as exc:
@@ -191,11 +214,17 @@ class Comparisons:
             "complete" if all(r["status"] == "complete" for r in result["rows"]) else "incomplete"
         )
         result["pending_tools"] = todo
+        select_rows(result, selected_study_ids)
         result["instruction"] = (
             "Execute every pending tool for ALL rows. If needs_client_extraction, read all next_offset batches "
             "and cache_protocol_analysis; if needs_client_exploration, inspect relevant text and cache_protocol_answer. "
             "Then call get_protocol_comparison to update ALL JSON files and the table. Present comparison_markdown with "
             "citations; do not describe incomplete exports as finished. Report every error/missing protocol. "
+            "Report source_suitability by definition role; prefer matched sources, distinguish linked/inferred/other/unknown. "
+            "The processing status complete does not imply every question was answered. If needs_selection, show "
+            "screening_summary and ask the user to narrow or select eligible Study IDs within max_comparison_studies, "
+            "then pass selected_study_ids to get_protocol_comparison. Never silently take the first N. "
+            "All screened studies retain PDF/JSON, even when not displayed. "
             "For failed or interrupted PDF preparation, resolve the error and run compare_protocols again."
         )
         self.write(result)

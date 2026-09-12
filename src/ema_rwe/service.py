@@ -8,7 +8,7 @@ from pathlib import Path
 from .archive import ProtocolArchive
 from .comparison import Comparisons
 from .config import Settings
-from .domain import CodeCandidate, Extraction, ProtocolAnswer, RWEError, now
+from .domain import CodeCandidate, Extraction, ProtocolAnswer, RWEError, SourcePreference, now
 from .drugs import refresh_dictionary
 from .ema import BASE, is_non_interventional, parse_documents, parse_study, select_protocol
 from .exploration import Explorer
@@ -16,6 +16,7 @@ from .http import EMAClient
 from .llm import EXTRACTION_PROMPT, complete_json, configured, extract_with_provider
 from .pdf import extract_pages, sections, validate_evidence
 from .selection import SearchFilters, selection
+from .source_types import preference_for
 from .storage import Repository, import_csv
 from .terminology import proposed_codes
 from .vocabulary import expand
@@ -40,10 +41,6 @@ class Service:
     def study_import_dir(self):
         return self.import_dir / "studies"
 
-    @property
-    def data_source_import_dir(self):
-        return self.import_dir / "data-sources"
-
     async def close(self):
         await self.client.close()
 
@@ -66,7 +63,8 @@ class Service:
             "refresh_after_seconds": self.settings.catalogue_ttl,
             "import_directory": str(self.import_dir.resolve()),
             "study_import_directory": str(self.study_import_dir.resolve()),
-            "data_source_import_directory": str(self.data_source_import_dir.resolve()),
+            "max_screening_studies": self.settings.max_screening_studies,
+            "max_comparison_studies": self.settings.max_comparison_studies,
             "browser_refresh_recommended": state != "current",
             "discovery_scope": "Only imported studies and individually retrieved Study IDs are searchable.",
             "browser_instruction": (
@@ -116,11 +114,11 @@ class Service:
         filters: SearchFilters | None = None,
     ):
         if not 1 <= limit <= 20:
-            raise RWEError("INVALID_INPUT", "limit must be 1..20 (display capped at 5).")
+            raise RWEError("INVALID_INPUT", "limit must be 1..20; preview also obeys max_comparison_studies.")
         candidates = self.repo.search(
             query, None, darwin_only, status, analyzed_only, synonyms, codes, filters
         )
-        results = candidates[: min(limit, 5)]
+        results = candidates[: min(limit, self.settings.max_comparison_studies)]
         for result in results:
             result["protocol_id"] = (result.get("protocol_source") or {}).get("protocol_id")
             result["local_protocols"] = [
@@ -130,7 +128,9 @@ class Service:
         catalogue = self.catalogue_status()
         return {
             "query": query,
-            **selection(candidates),
+            **selection(candidates, self.settings.max_screening_studies),
+            "max_comparison_studies": self.settings.max_comparison_studies,
+            "source_filter_deferred": bool(filters and filters.data_source_types),
             "returned_count": len(results),
             "results_are_preview": len(results) < len(candidates),
             "filters": (filters or SearchFilters()).model_dump(),
@@ -159,6 +159,7 @@ class Service:
         darwin_only: bool = False,
         synonyms=None,
         codes=None,
+        source_preference: SourcePreference | None = None,
     ):
         if (
             not question.strip()
@@ -167,6 +168,7 @@ class Service:
             or any(not q.strip() for q in queries)
         ):
             raise RWEError("INVALID_INPUT", "A question and 1..20 nonempty search queries are required.")
+        preference = preference_for(filters, source_preference)
         unique = {}
         for query in queries:
             for row in self.repo.search(query, None, darwin_only, None, False, synonyms, codes, filters):
@@ -174,7 +176,10 @@ class Service:
         candidates = list(unique.values())
         catalogue = self.catalogue_status()
         search = {
-            **selection(candidates),
+            **selection(candidates, self.settings.max_screening_studies),
+            "max_comparison_studies": self.settings.max_comparison_studies,
+            "source_preference": preference.model_dump() if preference else None,
+            "source_filter_deferred": bool(preference),
             "queries": queries,
             "filters": (filters or SearchFilters()).model_dump(),
             "query_expansions": [expand(q, synonyms, codes) for q in queries],
@@ -189,12 +194,12 @@ class Service:
                 else "refine_queries_or_request_fresh_export"
             ),
         }
-        if not 1 <= len(candidates) <= 5:
+        if not 1 <= len(candidates) <= self.settings.max_screening_studies:
             return {**search, "network_requests": 0, "rows": [], "pdf_downloads": 0}
         return await self.comparisons.prepare(question, candidates, search)
 
-    async def get_protocol_comparison(self, comparison_id: str):
-        return await asyncio.to_thread(self.comparisons.collect, comparison_id)
+    async def get_protocol_comparison(self, comparison_id: str, selected_study_ids: list[str] | None = None):
+        return await asyncio.to_thread(self.comparisons.collect, comparison_id, selected_study_ids)
 
     async def get_study(self, study_id: str, refresh: bool = False):
         if not re.fullmatch(r"\d{1,20}", study_id):
@@ -217,6 +222,8 @@ class Service:
             content, _ = await self.client.get(parsed.tabs[key], refresh)
             extra[key] = content.decode("utf-8", errors="replace")
         parsed = parse_study(text, study_id, extra["methodological-aspects"], extra["data-management"])
+        parsed.data_source_types_source = parsed.tabs["data-management"]
+        parsed.data_source_types_checked_at = parsed.detail_checked_at or now()
         # Persist current type even when excluded, so outdated CSV entries disappear from search.
         parsed.detail_checked_at = now()
         self.repo.upsert(parsed)
@@ -278,7 +285,7 @@ class Service:
                     "url": result["protocol"]["document_url"],
                     "sha256": result["download"]["sha256"],
                     "version": result["protocol"]["version"],
-                    "schema": "0.1",
+                    "schema": "0.2",
                     "parser": "structural-v4",
                     "prompt": EXTRACTION_PROMPT,
                     "model": self.settings.llm_model or "client-assisted",
@@ -298,7 +305,7 @@ class Service:
             "fingerprint": fingerprint,
             "selection_reason": result["selection_reason"],
             "extractor": self.settings.llm_model or "client-assisted",
-            "schema_version": "0.1",
+            "schema_version": "0.2",
         }
         previous = self.repo.analysis(study_id)
         if previous and previous["source"]["fingerprint"] != fingerprint:

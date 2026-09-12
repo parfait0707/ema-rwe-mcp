@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ema-rwe-mcp"
-version = "0.5.0"
+version = "0.6.0"
 description = "Evidence-backed EMA non-interventional protocol search and analysis MCP"
 requires-python = ">=3.12"
 dependencies = ["mcp>=1.12,<2", "httpx>=0.28,<1", "beautifulsoup4>=4.12,<5", "pydantic>=2.11,<3", "pymupdf>=1.25,<2", "platformdirs>=4,<5"]

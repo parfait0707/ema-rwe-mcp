@@ -19,7 +19,7 @@ class Repository:
         self.path = path
         path.parent.mkdir(parents=True, exist_ok=True)
         with self.connection() as db:
-            if db.execute("PRAGMA user_version").fetchone()[0] > 2:
+            if db.execute("PRAGMA user_version").fetchone()[0] > 3:
                 raise RWEError("DATABASE_ERROR", "Database schema is newer than this server supports.")
             db.executescript("""
                 PRAGMA journal_mode=WAL;
@@ -29,11 +29,14 @@ class Repository:
                     tokenize='unicode61 remove_diacritics 2');
                 CREATE TABLE IF NOT EXISTS analyses (
                     study_id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL, body TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS analysis_history (
+                    snapshot_id TEXT PRIMARY KEY, study_id TEXT NOT NULL,
+                    fingerprint TEXT NOT NULL, body TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS imports (
                     checksum TEXT PRIMARY KEY, filename TEXT, imported_at TEXT, count INTEGER);
                 CREATE TABLE IF NOT EXISTS study_catalogue_search (
                     study_id TEXT PRIMARY KEY, search_text TEXT NOT NULL);
-                PRAGMA user_version=2;
+                PRAGMA user_version=3;
             """)
 
     @contextmanager
@@ -107,7 +110,12 @@ class Repository:
                 + " "
                 + values(a.get("statistical_analysis")),
                 values(a.get("disease_definitions")),
-                values(a.get("data_sources")),
+                values(a.get("data_sources"))
+                + " "
+                + " ".join(
+                    " ".join([s["value"], *s["types"], s["role"], s["definition"]])
+                    for s in a.get("source_assessments", [])
+                ),
             ),
         )
 
@@ -118,6 +126,7 @@ class Repository:
 
     def save_analysis(self, study: Study, result: dict):
         with self.connection() as db:
+            self._archive_analysis(db, study.study_id, replacement=result)
             db.execute(
                 "INSERT OR REPLACE INTO analyses VALUES (?,?,?)",
                 (study.study_id, result["source"]["fingerprint"], json.dumps(result, ensure_ascii=False)),
@@ -126,8 +135,24 @@ class Repository:
 
     def invalidate_analysis(self, study: Study):
         with self.connection() as db:
+            self._archive_analysis(db, study.study_id)
             db.execute("DELETE FROM analyses WHERE study_id=?", (study.study_id,))
             self._index(db, study)
+
+    @staticmethod
+    def _archive_analysis(db, study_id, replacement=None):
+        row = db.execute("SELECT fingerprint, body FROM analyses WHERE study_id=?", (study_id,)).fetchone()
+        if row:
+            if (
+                replacement
+                and row["fingerprint"] == replacement["source"]["fingerprint"]
+                and json.loads(row["body"])["analysis"] == replacement["analysis"]
+            ):
+                return  # Updating freshness timestamps alone is not a new extraction revision.
+            db.execute(
+                "INSERT OR IGNORE INTO analysis_history VALUES (?,?,?,?)",
+                (hashlib.sha256(row["body"].encode()).hexdigest(), study_id, row["fingerprint"], row["body"]),
+            )
 
     def search(
         self,
@@ -177,6 +202,9 @@ class Repository:
             result.update(
                 score=-row["rank"],
                 protocol_data_sources=(analysis["analysis"]["data_sources"] if analysis else []),
+                protocol_source_assessments=(
+                    analysis["analysis"].get("source_assessments", []) if analysis else []
+                ),
                 protocol_data_sources_status="extracted" if analysis else "not_analyzed",
                 data_source_types_status="available" if study.data_source_types else "not_provided",
                 protocol_source=analysis["source"] if analysis else None,
@@ -306,11 +334,23 @@ def import_csv(repo: Repository, path: Path, column_map: dict[str, str] | None =
         archive.write_bytes(raw)
     with repo.connection() as db:
         for sid in excluded_ids:
+            repo._archive_analysis(db, sid)
             db.execute("DELETE FROM study_fts WHERE id=?", (sid,))
             db.execute("DELETE FROM analyses WHERE study_id=?", (sid,))
             db.execute("DELETE FROM study_catalogue_search WHERE study_id=?", (sid,))
             db.execute("DELETE FROM studies WHERE id=?", (sid,))
         for study in studies:
+            old_row = db.execute("SELECT body FROM studies WHERE id=?", (study.study_id,)).fetchone()
+            old = Study.model_validate_json(old_row[0]) if old_row else None
+            if not selected.get("data_source_types") and old:
+                study.data_source_types = old.data_source_types
+                study.data_source_types_source = old.data_source_types_source or old.metadata_source
+                study.data_source_types_checked_at = (
+                    old.data_source_types_checked_at or old.detail_checked_at or old.retrieved_at
+                )
+            elif selected.get("data_source_types"):
+                study.data_source_types_source = study.metadata_source
+                study.data_source_types_checked_at = study.retrieved_at
             db.execute(
                 "INSERT OR REPLACE INTO studies VALUES (?,?)", (study.study_id, study.model_dump_json())
             )

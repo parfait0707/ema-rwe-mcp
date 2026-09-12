@@ -17,6 +17,8 @@ EMA_DRUG_DICTIONARY_PATH = "E:/codex/rwd-catalogue-mcp/data/ema-medicines.json"
 EMA_IMPORT_DIR = "E:/codex/rwd-catalogue-mcp/data/imports"
 EMA_CACHE_TTL_SECONDS = "2592000"
 EMA_CATALOGUE_TTL_SECONDS = "2592000"
+EMA_MAX_SCREENING_STUDIES = "5"
+EMA_MAX_COMPARISON_STUDIES = "5"
 
 # Optional caller-side browser used only for a visible, user-initiated official CSV export.
 # It is a separate MCP; ema-rwe never calls it or crawls /search itself.

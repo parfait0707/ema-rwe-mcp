@@ -7,7 +7,7 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from .config import Settings
-from .domain import CodeCandidate, Extraction, RWEError
+from .domain import CodeCandidate, Extraction, RWEError, SourcePreference
 from .selection import SearchFilters
 from .service import Service
 from .storage import Repository, import_csv
@@ -47,6 +47,16 @@ def parser():
     compare.add_argument("--darwin-only", action="store_true")
     compare.add_argument("--synonym", action="append")
     compare.add_argument("--code", action="append", type=code_argument)
+    compare.add_argument(
+        "--prefer-source-type",
+        action="append",
+        default=[],
+        choices=["claims", "registry", "ehr", "drug_dispensing_prescription", "other"],
+    )
+    compare.add_argument(
+        "--source-role", default="any", choices=["any", "cohort", "outcome", "exposure", "covariate", "other"]
+    )
+    compare.add_argument("--source-mode", default="prefer", choices=["prefer", "only"])
     for cmd in (search, compare):
         cmd.add_argument("--country", action="append", default=[])
         cmd.add_argument(
@@ -54,6 +64,7 @@ def parser():
             action="append",
             choices=["claims", "registry", "ehr", "drug_dispensing_prescription"],
             default=[],
+            help="Legacy strict source request, deferred until PDF assessment; prefer --prefer-source-type for comparison.",
         )
         cmd.add_argument(
             "--study-design",
@@ -63,6 +74,9 @@ def parser():
         )
     comparison = commands.add_parser("comparison")
     comparison.add_argument("comparison_id")
+    comparison.add_argument(
+        "--study-id", action="append", help="User-selected eligible IDs after completed screening."
+    )
     plan = commands.add_parser("plan-search")
     plan.add_argument("question")
     plan.add_argument("--llm", action="store_true")
@@ -140,11 +154,27 @@ async def run(args):
                     filters,
                 )
             case "compare":
+                if (
+                    args.source_role != "any" or args.source_mode != "prefer"
+                ) and not args.prefer_source_type:
+                    raise RWEError(
+                        "INVALID_INPUT", "--source-role/--source-mode requires --prefer-source-type."
+                    )
                 return await service.compare_protocols(
-                    args.question, args.query, filters, args.darwin_only, args.synonym, args.code
+                    args.question,
+                    args.query,
+                    filters,
+                    args.darwin_only,
+                    args.synonym,
+                    args.code,
+                    SourcePreference(
+                        types=args.prefer_source_type, role=args.source_role, mode=args.source_mode
+                    )
+                    if args.prefer_source_type
+                    else None,
                 )
             case "comparison":
-                return await service.get_protocol_comparison(args.comparison_id)
+                return await service.get_protocol_comparison(args.comparison_id, args.study_id)
             case "plan-search":
                 return await service.plan_study_search(args.question, args.llm)
             case "local-protocols":

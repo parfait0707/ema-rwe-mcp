@@ -308,4 +308,4 @@ def validate_evidence(extraction: Extraction, pages: list[Page]):
         if name in {"schema_version", "missing_information"} or value is None:
             continue
         for fact in value if isinstance(value, list) else [value]:
-            validate_fact(fact, name == "data_sources", name != "key_notes")
+            validate_fact(fact, name in {"data_sources", "source_assessments"}, name != "key_notes")

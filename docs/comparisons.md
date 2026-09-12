@@ -1,6 +1,6 @@
-# 全候補の比較と保存（v0.4）
+# 全候補の比較と保存（v0.6）
 
-2026-09-12の追加要望に基づき、同一質問に複数研究が該当する場合は全件を比較する。最大5件。ちょうど5件は処理し、6件以上なら国・ソース種別・研究デザインの追加条件をユーザーに尋ねる。
+同一質問の全検索式を統合して数え、一次判定上限（EMA_MAX_SCREENING_STUDIES、既定5件）以内の研究を全件処理する。上限を超えたら国・研究デザイン・臨床条件で絞る。比較表の上限は独立したEMA_MAX_COMPARISON_STUDIES（既定5件）。タイプ判定と優先順位は[用途別分類](source-types.md)を参照。
 
 ## 検索と絞込
 
@@ -16,21 +16,21 @@
   "darwin_only": false,
   "filters": {
     "countries": ["Japan"],
-    "data_source_types": ["claims"],
     "study_designs": ["cohort", "case-control"]
-  }
+  },
+  "source_preference": {"types": ["claims"], "role": "cohort", "mode": "prefer"}
 }
 ```
 
 国はカタログの英語表記を指定する。日本/JP、米国/US/USA、英国/UKの別表記も受け付ける。同一フィールド内はOR、フィールド間はAND。ソース種別はclaims、registry、ehr、drug_dispensing_prescription。研究デザインはcohort、case-control、cross-sectional、ecological、self-controlled。
 
-ソース種別はカタログの専用フィールドに基づき、研究タイトルに出てきただけの語で判定しない。研究デザインは専用フィールド、欠落時のみ保存済みの抽出事実を使う。一般的なNon-interventionalという研究種別とcohort等の研究デザインは別項目。
+希望タイプはsource_preferenceへ渡す。PDFの質問別探索から根拠付きで判定し、公式分類は別に保持する。types内はOR。mode=preferは他タイプも残し、onlyは明示的な限定要求で使用する。旧filters.data_source_typesはPDF判定後のonly指定として扱い、未判定PDFを検索時に除外しない。研究デザインは専用フィールド、欠落時のみ保存済みの抽出事実を使う。一般的なNon-interventionalという研究種別とcohort等の研究デザインは別項目。
 
-候補数は登録済みのローカルメタデータと保存済み解析による検索の一致数。検索結果表示の5件上限より前に数える。サイト全体の検索結果総数ではなく、未取得PDFの内容まで検索した結果でもない。プロトコルの有無や質問への適合性は後続処理で確認するため、6件以上ならこの候補段階で保守的に絞込を求める。未登録研究を調べるには公式CSVを追加取込するか、既知のStudy IDで `get_study` を実行して検索対象へ登録する。Drupal node IDをStudy IDとして使わない。
+候補数は登録済みのローカルメタデータと保存済み解析による検索の一致数。表示上限より前に数える。サイト全体の検索結果総数ではなく、未取得PDFの内容まで検索した結果でもない。プロトコルの有無や質問への適合性は後続処理で確認するため、一次判定上限を超えたら候補段階で絞込を求める。source typeが未判定なら、その指定だけで候補数を減らすことはできない。未登録研究を調べるには公式CSVを追加取込するか、既知のStudy IDで `get_study` を実行して検索対象へ登録する。Drupal node IDをStudy IDとして使わない。
 
 ## 全件処理
 
-1～5件のとき `compare_protocols` は全研究についてStudy documentsから選んだ最新PDFを取得・保持し、各研究の下書きJSONを作る。最新版は既存のTTL・版選択規則に従う。PDF内容を差し替えた場合は異なるIDで保持する。
+一次判定上限以内のとき `compare_protocols` は全研究についてStudy documentsから選んだ最新PDFを取得・保持し、各研究の下書きJSONを作る。最新版は既存のTTL・版選択規則に従う。PDF内容を差し替えた場合は異なるIDで保持する。
 
 戻り値の `pending_tools` を全件実行する。
 
@@ -38,7 +38,7 @@
 - `research_protocol`：質問別の追加探索。`needs_client_exploration` なら `get_protocol_outline`、`search_protocol_text`、`read_protocol_text` で方法・定義・隣接章・コード付録を確認し、`cache_protocol_answer` に保存する。
 - 最後に `get_protocol_comparison(comparison_id)`：保存済み解析と質問別回答を全件集約してJSON/Markdownを更新する。未処理が残れば繰り返す。
 
-内部LLM設定時も上記のツール順序は同じ。各解析・探索ツールが内部APIを呼んで検証・保存する。比較ツール1回が内部で5件分のLLM処理を連続実行する設計ではない。APIの長い探索がクライアントのツールタイムアウトを超える場合は上限・タイムアウト設定の調整が必要。
+内部LLM設定時も上記のツール順序は同じ。各解析・探索ツールが内部APIを呼んで検証・保存する。比較ツール1回が内部で全件分のLLM処理を連続実行する設計ではない。APIの長い探索がクライアントのツールタイムアウトを超える場合は上限・タイムアウト設定の調整が必要。
 
 比較を始める前に読み直しを必要とする場合は `get_study(refresh=true)` や `get_protocol(refresh=true)` を使う。通常はTTL内のキャッシュを再利用する。
 
@@ -49,7 +49,7 @@
 <DBの親フォルダ>/comparisons/cmp_<ID>/
   study_<Study ID>.json   # 全候補について1ファイルずつ
   comparison.json        # 質問・検索展開・条件・全研究・処理状態
-  comparison.md          # 最大5研究を列にした比較表
+  comparison.md          # 比較上限以内の研究を列にした表と全一次判定一覧
 ```
 
 `rows` にはStudy ID、国、Data source typeと取得状態、PDF記載データソースと使用状態、PDF ID・ローカルパス、共通抽出、質問別回答、JSONパスを含める。抽出と回答の各事実には物理ページ・章・原文引用がある。カタログ由来の名称は `study.catalogue_data_sources` に区別して残す。未解析を空欄だけで表現せず `not_analyzed` と明示する。回答できない項目は `missing_information` に調査範囲・理由を残す。
@@ -63,8 +63,14 @@
 CLIは同じCoreを使う。
 
 ```powershell
-.venv/Scripts/ema-rwe compare "NVAF患者の定義" --query "NVAF" --query "non-valvular atrial fibrillation" --source-type claims --country Japan
+.venv/Scripts/ema-rwe compare "NVAF患者の定義" --query "NVAF" --query "non-valvular atrial fibrillation" --prefer-source-type claims --source-role cohort --country Japan
 .venv/Scripts/ema-rwe comparison "cmp_<戻り値のID>"
 ```
 
 比較表には根拠ページとPDFリンクを含めてユーザーに提示し、JSONへのリンクも添える。一部の研究だけを代表として回答しない。
+
+## 一次判定数と比較表の上限が異なる場合
+
+一次判定上限12、比較上限5などを設定できる。上限は開始時のsearchへ保存し、既存比較の途中では変えない。全件解析が完了しても比較候補が表示上限を超える場合は、selection_status=needs_selectionとなり、全screening_summaryとeligible_study_idsからユーザーに追加条件または選択を求める。選択後にget_protocol_comparison(comparison_id, selected_study_ids=[...])を呼ぶ。自動的な上位N件選択はしない。非掲載の研究もrows、PDF、JSON、一次判定一覧に残す。
+
+status=completeは処理完了であり、表示対象の選択完了とは別。selection_statusはscreening_incomplete／needs_selection／ready／no_confirmed_matches。厳密指定に一致しない・判定不能・取得失敗の研究も明示する。

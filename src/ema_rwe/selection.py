@@ -72,6 +72,9 @@ def attributes(row):
 def filter_rows(rows, filters):
     filters = filters or SearchFilters()
     requested = filters.model_dump()
+    # PDF assessment is deferred until bounded candidate screening. Missing catalogue types
+    # must not exclude a study; legacy source filters are enforced in comparison output.
+    requested.pop("data_source_types")
     requested["countries"] = [country(c) for c in filters.countries]
     return [
         r
@@ -80,7 +83,7 @@ def filter_rows(rows, filters):
     ]
 
 
-def selection(rows):
+def selection(rows, max_screening_studies=5):
     counts = {key: Counter() for key in ("countries", "data_source_types", "study_designs")}
     unknown = dict.fromkeys(counts, 0)
     for row in rows:
@@ -90,11 +93,12 @@ def selection(rows):
     total = len(rows)
     return {
         "total_matches": total,
-        "status": "needs_narrowing" if total > 5 else "ready" if total else "no_matches",
+        "status": "needs_narrowing" if total > max_screening_studies else "ready" if total else "no_matches",
+        "max_screening_studies": max_screening_studies,
         "facets": {key: dict(values) for key, values in counts.items()},
         "unknown_metadata_counts": unknown,
-        "next_action": "Ask the user for country, source type or study design filters; do not pick a top five."
-        if total > 5
+        "next_action": "Ask for country, study design or clinical conditions; source preference cannot exclude unassessed PDFs. Do not silently select a subset."
+        if total > max_screening_studies
         else "Process ALL matching studies using compare_protocols; do not pick one representative."
         if total
         else "Review English synonyms/codes and imported catalogue coverage; no local candidates matched.",

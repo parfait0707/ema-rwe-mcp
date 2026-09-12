@@ -21,6 +21,12 @@ class Settings:
     timeout: float = field(default_factory=lambda: float(os.getenv("EMA_HTTP_TIMEOUT_SECONDS", "30")))
     ttl: int = field(default_factory=lambda: int(os.getenv("EMA_CACHE_TTL_SECONDS", "2592000")))
     catalogue_ttl: int = field(default_factory=lambda: int(os.getenv("EMA_CATALOGUE_TTL_SECONDS", "2592000")))
+    max_screening_studies: int = field(
+        default_factory=lambda: int(os.getenv("EMA_MAX_SCREENING_STUDIES", "5"))
+    )
+    max_comparison_studies: int = field(
+        default_factory=lambda: int(os.getenv("EMA_MAX_COMPARISON_STUDIES", "5"))
+    )
     user_agent: str = field(default_factory=lambda: os.getenv("EMA_USER_AGENT", "ema-rwe-mcp/0.1"))
     llm_base_url: str = field(default_factory=lambda: os.getenv("LLM_BASE_URL", ""))
     llm_api_key: str = field(default_factory=lambda: os.getenv("LLM_API_KEY", ""))
@@ -36,3 +42,9 @@ class Settings:
     import_dir: Path | None = field(
         default_factory=lambda: Path(os.environ["EMA_IMPORT_DIR"]) if os.getenv("EMA_IMPORT_DIR") else None
     )
+
+    def __post_init__(self):
+        for name in ("max_screening_studies", "max_comparison_studies"):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 1000:
+                raise ValueError(f"{name} must be an integer from 1 to 1000.")

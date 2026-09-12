@@ -79,7 +79,7 @@ async def test_filter_and_unknown_metadata_counts(service):
     assert {r["study_id"] for r in result["results"]} == {"124", "126", "128"}
     assert (
         service.search_studies("opioid", filters=SearchFilters(data_source_types=["ehr"]))["total_matches"]
-        == 0
+        == 6  # Source filters are deferred; neither unknown nor other official types are dropped.
     )
     assert not service.requests
 

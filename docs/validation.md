@@ -85,7 +85,20 @@ v0.1時点で`pytest`全46件、`ruff check src tests`、sdistとwheelのビル�
 - Studies CSVの`Data source(s)`にある2,004参照を正規化名称で照合し、857 Studyの全参照がData Sources CSVへ一意に一致した。曖昧一致と未一致は0件。
 - C5.1公式type`Administrative healthcare records (e.g., claims)`を持つ42 Data Sourceから、329 Studyをclaims利用可能資産へのリンク候補として抽出できた。Study側F8.7のclaims 831件とは分母・意味が異なり、329件をclaims使用Studyとは断定しない。
 - `Other linked data sources`は自由記述1,174断片のうち名称25件、acronym 47件だけが一意に一致した。主結合とは分けて扱う。
-- 詳細は[`data-source-linkage-20260912.md`](data-source-linkage-20260912.md)。原本は`data/imports/data-sources`、Studies原本は`data/imports/studies`へ分離し、どちらもGit管理しない。
+- 詳細は[`data-source-linkage-20260912.md`](data-source-linkage-20260912.md)。調査当時は原本を`data/imports/data-sources`へ保管した。2026-09-13のユーザー依頼でこのフォルダと元CSVを削除済み。Studies原本は`data/imports/studies`に保持し、Git管理しない。
+
+## PDF由来の用途別データタイプ・独立上限（v0.6、2026-09-13）
+
+- `.venv/Scripts/python -m pytest -q`: **141 passed**（16.82秒）。実stdioのMCP発見・新引数の検証・不正引用の拒否を含む。
+- `ruff check src tests`と`ruff format --check src tests`成功。`git diff --check`成功。
+- `python -m build`で0.6.0のsdist／wheelを生成。`uv lock --locked --offline`で78パッケージのロック整合性を確認。
+- 合成PDFとモックHTTP／LLMで、caller-assisted保存と内部LLMの両経路、source_assessmentsの引用・ページ・ソース名検証、希望タイプ変更時の再利用を検証。実際のLLMによる分類精度を測定したテストではない。
+- 希望タイプ、用途違い、planned／candidate／unclear、連結依存、推定、他タイプ、未判定、矛盾、一般抽出だけでは質問への適合を確定しないことを検証。
+- 一次判定3／比較2の独立設定、全PDF／JSONの保持、明示的なID選択、不正・重複・過大な選択の拒否、設定変更後も既存比較の上限が変わらないことを検証。一次判定上限を6にすると6PDFを保存し、既定の表示5件へ自動切捨てしないことも確認。
+- 公式type未判定6件へ希望typeを指定しても、既定の5件ゲートをすり抜けずPDF通信しないことを検証。
+- DB schema 2→3、旧解析の履歴退避、確認日時だけの更新で履歴が増えないこと、type列のないStudies CSV再登録で公式分類・由来・確認日時・解析が維持されることを検証。
+- `data/imports/data-sources`のCSV1ファイルと空ディレクトリを個別削除し、フォルダが存在しないことを確認。Studies CSV（13,443,910 bytes）は残存。再帰削除は自動承認レビューで拒否されたため使用しなかった。
+- Data Sources CSVの必須取込・名称結合は導入していない。公式Study分類とプロトコルの用途別分類を別々に保持する。[仕様](source-types.md)。
 
 ## 未検証事項（継続）
 

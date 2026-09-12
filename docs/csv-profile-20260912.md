@@ -62,7 +62,7 @@ MCPの取込必須項目はStudy ID、Title、Study typeである。3項目と�
 
 ## 今後の改善候補
 
-- Data Sources用CSVとの結合可能性は[`data-source-linkage-20260912.md`](data-source-linkage-20260912.md)で検証した。Studyの`Data source(s)`主参照は全件一意に一致するが、Data Source側C5.1は資産の構成であり、Study側F8.7の使用分類を置き換えない。C5.1はData source ID付き補助情報として保存し、F8.7はStudy detailまたはfilter条件付きStudy snapshotから取得する。
+- Data Sources用CSVとの結合可能性は[`data-source-linkage-20260912.md`](data-source-linkage-20260912.md)で検証した。Studyの`Data source(s)`主参照は全件一意に一致するが、Data Source側C5.1は資産の構成であり、Study側F8.7の使用分類を置き換えない。当時はC5.1を補助保存する案を検討したが、2026-09-13に[PDF由来の用途別分類](source-types.md)を採用した。Data Sources CSVの継続登録は不要。F8.7は選択研究のStudy detailから別途取得する。
 - `Protocol file(s) - URI`を候補発見に使いつつ、Study documentsとの照合結果と版選択理由を記録する。CSVだけで最新版とは判定しない。
 - 完全exportと絞込exportを区別するimport modeを追加する。完全snapshotの場合だけ、CSVから消えた古いレコードを削除またはtombstone化できるようにする。
 - 重複ヘッダーを位置付きで保持する汎用profile toolを追加する。現状は検索に使わない重複欄を警告し、原本だけを保持する。

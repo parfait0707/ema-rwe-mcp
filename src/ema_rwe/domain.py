@@ -33,6 +33,8 @@ class Study(Model):
     darwin_eu: bool | None = None
     countries: list[str] = Field(default_factory=list)
     data_source_types: list[str] = Field(default_factory=list)
+    data_source_types_source: str | None = None
+    data_source_types_checked_at: str | None = None
     catalogue_data_sources: list[str] = Field(default_factory=list)
     source_url: str
     metadata_source: str = ""
@@ -65,14 +67,35 @@ class DataSource(Fact):
     usage: Literal["used", "planned", "candidate", "unclear"]
 
 
+SourceType = Literal["claims", "registry", "ehr", "drug_dispensing_prescription", "other"]
+SourceRole = Literal["cohort", "outcome", "exposure", "covariate", "other", "unclear"]
+
+
+class SourceAssessment(DataSource):
+    """One source component's role in a definition, backed by protocol passages."""
+
+    types: list[SourceType] = Field(min_length=1, max_length=5)
+    role: SourceRole
+    basis: Literal["explicit", "inferred"]
+    definition: str = Field(min_length=1, max_length=4000)
+    requires_linkage: bool
+
+
+class SourcePreference(Model):
+    types: list[SourceType] = Field(min_length=1, max_length=5)
+    role: Literal["any", "cohort", "outcome", "exposure", "covariate", "other"] = "any"
+    mode: Literal["prefer", "only"] = "prefer"
+
+
 class Extraction(Model):
-    schema_version: Literal["0.1"] = "0.1"
+    schema_version: Literal["0.2"] = "0.2"
     study_design: Fact | None = None
     population: Fact | None = None
     exposure: Fact | None = None
     comparator: Fact | None = None
     outcomes: list[Fact] = Field(default_factory=list, max_length=40)
     data_sources: list[DataSource] = Field(default_factory=list, max_length=60)
+    source_assessments: list[SourceAssessment] = Field(default_factory=list, max_length=120)
     disease_definitions: list[Fact] = Field(default_factory=list, max_length=60)
     statistical_analysis: Fact | None = None
     key_notes: list[Fact] = Field(default_factory=list, max_length=20)
@@ -81,6 +104,7 @@ class Extraction(Model):
 
 class ProtocolAnswer(Model):
     answers: list[Fact] = Field(default_factory=list, max_length=30)
+    source_assessments: list[SourceAssessment] = Field(default_factory=list, max_length=120)
     missing_information: list[str] = Field(default_factory=list, max_length=30)
 
 

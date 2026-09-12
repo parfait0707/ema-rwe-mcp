@@ -2,7 +2,7 @@
 
 EMA Catalogueの **Non-interventional study** を検索し、Study documentsの最新プロトコルPDFから、研究デザイン・疾患定義・データソースを出典付きで抽出・再利用するPython MCPサーバーです。Core、CLI、MCPを分離しています。
 
-`docs/spec/v0.1.md` と追加要件に基づくv0.5実装です。追加探索の仕様は [docs/spec/v0.2.md](docs/spec/v0.2.md)、医薬品・コード検索は [docs/clinical-search.md](docs/clinical-search.md)、複数研究の比較は [docs/comparisons.md](docs/comparisons.md) を参照してください。通常検索はSQLite FTS5/BM25だけで実行し、PDFは選択した研究についてのみ取得します。
+`docs/spec/v0.1.md` と追加要件に基づくv0.6実装です。追加探索の仕様は [docs/spec/v0.2.md](docs/spec/v0.2.md)、医薬品・コード検索は [docs/clinical-search.md](docs/clinical-search.md)、複数研究の比較は [docs/comparisons.md](docs/comparisons.md) を参照してください。通常検索はSQLite FTS5/BM25だけで実行し、PDFは選択した研究についてのみ取得します。
 
 ## セットアップ
 
@@ -37,11 +37,12 @@ flowchart TD
     D --> E[自然言語を英語同義語・コード候補へ展開]
     E --> F[全検索語をローカル検索して重複除去]
     F --> G{候補数}
-    G -->|6件以上| H[国・source type・study designを追加]
+    G -->|一次判定上限超過| H[国・study design・臨床条件を追加]
     H --> F
-    G -->|1～5件| I[全候補の最新PDFを取得・保存]
-    I --> J[全件を抽出・追加探索]
-    J --> K[JSONと比較表を保存・提示]
+    G -->|一次判定上限以内| I[全候補の最新PDFを取得・保存]
+    I --> J[全件を抽出・追加探索しデータタイプと用途を判定]
+    J --> K[全JSONを保存・希望タイプを優先した比較表を提示]
+    K --> M[表示上限超過なら全一次判定結果から選択を求める]
     G -->|0件| L[検索語・コード・CSV収録範囲を確認]
 ```
 
@@ -59,7 +60,7 @@ flowchart TD
 - `Data sources (types)` / `Data source type` 列があれば取り込みます。2026-09-12のStudies exportにはData source type列がなかったため、そのsnapshotでは空欄として明示し、選択研究のdetail pageで補完します。
 - `Data source(s)`と`Other linked data sources`はカタログ上のデータソース候補として取り込みます。ATC、INN/common name、疾患、outcome、目的などの公開臨床metadataも候補検索だけに索引化します。連絡先は索引化しません。
 - 複数値の区切りは `|`・`;`・改行です。値内部のカンマは分割しません。実CSVの構造・欠損率は [CSV実データ調査](docs/csv-profile-20260912.md) に記録しています。
-- Human Data Sources CSVとの名称結合は、Studiesの主source参照2,004件すべてで一意に成功しました。ただしStudy側F8.7は研究での使用分類、Data Source側C5.1は資産の構成分類です。C5.1をF8.7の代用にせず、補助候補として扱う判定規則は [Data Sources結合検証](docs/data-source-linkage-20260912.md) に記録しています。
+- Data Sources CSVの取込・結合は不要です。データタイプは候補PDFの該当用途からLLMで判定し、公式のStudy分類と分けて保存します。[データタイプの比較仕様](docs/source-types.md)を参照してください。過去の[Data Sources結合検証](docs/data-source-linkage-20260912.md)は調査履歴です。
 - 原本CSVに連絡先が含まれる場合があります。原本は検索対象から分離され、連絡先専用列をDB／FTS／検索結果には入れません。
 
 ### CSVを事前登録せず質問する場合
@@ -93,15 +94,14 @@ flowchart TD
 
 CSVが有効期間内なのに0件なら、先に英訳・同義語・ICD-10/ATC・絞込条件を見直します。同じsnapshotを再取得しても候補は増えないためです。既知のStudy IDはCSVなしでも `get_study` / `analyze_protocol` で直接登録できます。
 
-`EMA_IMPORT_DIR`はCSV importのルートです。Studies exportは`studies/`、Data Sources exportは`data-sources/`へ分けます。Playwright MCPのStudies用ダウンロード先は`EMA_IMPORT_DIR/studies`と同じ絶対パスにします。`import_catalogue_csv(filename)`は`studies/`直下のCSVファイル名だけを受け付け、移行用にルート直下も読みます。任意パスは受け付けません。50 MiB上限、必須列、UTF-8、Study ID重複、研究種別を検証し、原本・SHA256・取込日時を保存します。
+`EMA_IMPORT_DIR`はCSV importのルートです。Studies exportは`studies/`へ保存します。Data Sources exportは不要です。Playwright MCPのStudies用ダウンロード先は`EMA_IMPORT_DIR/studies`と同じ絶対パスにします。`import_catalogue_csv(filename)`は`studies/`直下のCSVファイル名だけを受け付け、移行用にルート直下も読みます。任意パスは受け付けません。50 MiB上限、必須列、UTF-8、Study ID重複、研究種別を検証し、原本・SHA256・取込日時を保存します。
 
 ```text
 data/imports/
-├── studies/       # Non-interventional Studies export
-└── data-sources/  # Human Data Sources export
+└── studies/       # Non-interventional Studies export
 ```
 
-このリポジトリの [`.codex/config.toml`](.codex/config.toml) には、2026-09-12時点のPlaywright MCP `0.0.80`を、表示ありのMicrosoft Edgeと `data/imports` 出力先で登録しています。初回は`npx`がパッケージを取得するためネット接続が必要です。バージョンを固定しているため、更新はrelease内容を確認して明示的に行います。別環境用のCodex設定例:
+このリポジトリの [`.codex/config.toml`](.codex/config.toml) には、2026-09-12時点のPlaywright MCP `0.0.80`を、表示ありのMicrosoft Edgeと `data/imports/studies` 出力先で登録しています。初回は`npx`がパッケージを取得するためネット接続が必要です。バージョンを固定しているため、更新はrelease内容を確認して明示的に行います。別環境用のCodex設定例:
 
 ```toml
 [mcp_servers.playwright]
@@ -132,11 +132,11 @@ Linux/macOSでは利用可能なブラウザを指定し、必要ならPlaywrigh
 |---|---|---|
 | 発見元 | `/search/`の検索結果とExport操作 | 既知のStudy IDのStudy documents |
 | robotsの扱い | `/search/`配下が明示的にDisallow | Studyページ、Study documents、`/system/files/`の対象PDFは同じ禁止対象ではない |
-| 取得量 | 検索母集団全体のmetadata export | 1～5件へ絞った研究の最新版だけ |
+| 取得量 | 検索母集団全体のmetadata export | 一次判定上限（既定5件）以内の研究の最新版だけ |
 | MCPの取得方法 | 直接HTTP取得を行わず、ユーザー起点の表示ブラウザ操作 | 識別可能なUser-Agent、間隔制御、robots確認付きでオンデマンド取得 |
 | 保存目的 | ローカル検索用snapshot。原本とchecksumを保持 | 引用再確認・追加探索・版差替え検出。Study ID＋SHA256の不変IDで保持 |
 
-PDF保存は「サイト全体のPDFを収集する」処理ではありません。ローカル候補が5件以下になってから、その研究のStudy documentsに掲載された最新版だけを取得します。取得時にも各URLのrobots判定、EMA HTTPSホスト制限、サイズ・ページ数制限、最低2秒間隔を適用します。CSV Exportは入口が禁止対象の `/search/` 配下なので、同じHTTPクライアントから自動取得しない設計です。
+PDF保存は「サイト全体のPDFを収集する」処理ではありません。ローカル候補が一次判定上限（既定5件）以内になってから、その研究のStudy documentsに掲載された最新版だけを取得します。取得時にも各URLのrobots判定、EMA HTTPSホスト制限、サイズ・ページ数制限、最低2秒間隔を適用します。CSV Exportは入口が禁止対象の `/search/` 配下なので、同じHTTPクライアントから自動取得しない設計です。
 
 ## 2. プロトコルの抽出と再利用
 
@@ -166,6 +166,7 @@ PDF保存は「サイト全体のPDFを収集する」処理ではありませ�
 | `data_source_types_status` | `available` / `not_provided` |
 | `catalogue_data_sources` | カタログ上の名称。プロトコル本文由来と混同しないため別欄 |
 | `protocol_data_sources` | プロトコル本文由来の名称・使用区分・引用・ページ |
+| `protocol_source_assessments` | PDF由来のデータタイプ・定義用途・明示／推定・連結依存・根拠 |
 | `protocol_data_sources_status` | `extracted` / `not_analyzed` |
 | `protocol_source` | 名称を抽出したPDF URL・版・取得日等 |
 
@@ -179,13 +180,13 @@ stdioで17個のToolを公開します。初期抽出の5個、[追加探索の7
 
 | Tool | 主な引数・動作 |
 |---|---|
-| `search_studies` | `query`, `limit=5`, `darwin_only=true`, `status`, `analyzed_only=false`, `filters`。通信なし。表示は最大5件、`total_matches`は打切り前の総数。互換性のためlimitは20まで受理 |
+| `search_studies` | `query`, `limit=5`, `darwin_only=true`, `status`, `analyzed_only=false`, `filters`。通信なし。表示は比較上限（既定5件）まで、`total_matches`は打切り前の総数。互換性のためlimitは20まで受理 |
 | `get_study` | `study_id`, `refresh=false`。研究種別とData source typeを各タブで確認 |
 | `get_protocol` | `study_id`, `version="latest"`, `download=true`, `refresh=false` |
 | `analyze_protocol` | `study_id`, `force_refresh=false`, `offset=0`, `max_chars=30000` |
 | `cache_protocol_analysis` | `study_id`, `fingerprint`, `analysis`, `coverage_complete=true` |
-| `compare_protocols` | `question`, `queries`, `filters`, `darwin_only=false`, `synonyms`, `codes`。検索語を統合し件数確認、1～5件なら全PDFと下書きJSONを保存 |
-| `get_protocol_comparison` | `comparison_id`。全件の保存済み抽出・質問別回答を集め、JSONと比較表を更新 |
+| `compare_protocols` | `question`, `queries`, `filters`, `source_preference`, `darwin_only=false`, `synonyms`, `codes`。一次判定上限以内なら全PDFと下書きJSONを保存。typeはPDF判定後に優先／限定 |
+| `get_protocol_comparison` | `comparison_id`, `selected_study_ids`（ユーザーが選択した場合）。全件の保存済み抽出・質問別回答を集め、JSONと比較表を更新 |
 | `catalogue_status` | CSV snapshotの有無・最終取込時刻・期限・ブラウザ出力先を返す。通信なし |
 | `import_catalogue_csv` | `EMA_IMPORT_DIR/studies`直下の公式CSVを検証し、Non-interventional studyだけを登録 |
 
@@ -258,21 +259,28 @@ macOS/Linuxではコマンドを配置先の `.venv/bin/python` にし、DB等�
 
 依頼例:
 
-> EMA RWEでNVAF患者をclaimsデータで定義した研究を調べてください。DARWIN EU限定にはせず、同義語とコード候補を含む全検索語をcompare_protocolsで統合してください。6件以上なら国・データ種別・研究デザインの追加条件を私に聞いてください。5件以内なら全件の最新版PDFを保存し、共通抽出と質問別探索を完了・保存してから、get_protocol_comparisonの比較表とJSONを提示してください。診断コード、診断回数・間隔、観察期間、除外条件、データソース名と根拠ページを比較してください。
+> EMA RWEでNVAF患者をclaimsデータで定義した研究を調べてください。DARWIN EU限定にはせず、同義語とコード候補を含む全検索語をcompare_protocolsで統合してください。source_preferenceはclaims、roleはcohort、modeはpreferにしてください。一次判定上限（既定5件）を超えたら国・研究デザインなどの追加条件を私に聞いてください。上限以内なら全件の最新版PDFを保存し、共通抽出と質問別探索を完了・保存してから、get_protocol_comparisonの比較表とJSONを提示してください。診断コード、診断回数・間隔、観察期間、除外条件、データソース名と根拠ページを比較してください。
 
 日英語・略語・英米綴りの同義語を展開し、`query_expansion`に展開内容を返します。網羅的な医学辞書ではありません。呼出元が`synonyms`を追加でき、`plan_study_search(use_llm=true)`では内部LLMに複数の検索式を作らせられます。研究デザイン・疾患定義・データソースの構造化抽出もFTSに追加されます。BM25値は関連度比較用で、確率ではありません。
 
 ## 複数プロトコルの比較・保存
 
-`compare_protocols` は全検索語の候補をStudy IDで重複除去して数えます。**1～5件は全件を処理し、6件以上は `needs_narrowing` を返して追加条件を求めます。** 上位5件を勝手に選びません。`search_studies` の表示件数を減らしても総件数は変わりません。
+`compare_protocols`は全検索式の候補を重複除去して数えます。一次判定上限以内なら全件のPDFを保存し、共通抽出・質問別探索を完了してJSONを作ります。上限を超えたら国・研究デザインなどの追加条件を求めます。候補数はローカル索引の一致数で、EMA全体や未取得PDF本文の網羅検索ではありません。
 
-絞込条件は `filters.countries`、`filters.data_source_types`（`claims` / `registry` / `ehr` / `drug_dispensing_prescription`）、`filters.study_designs`（`case-control` / `cohort` / `cross-sectional` / `ecological` / `self-controlled`）です。候補の国・種別・デザインの件数とメタデータ不明件数も返します。同じ欄の複数値はOR、異なる欄はANDで判定します。
+データタイプは`source_preference={"types":["claims"],"role":"cohort","mode":"prefer"}`のように指定します。既定のpreferは希望タイプを優先し、他タイプを補足として残します。onlyは明示的な限定要求用です。type未判定の研究は検索時に除外せず、PDFの質問に該当する定義・用途から判定します。旧`filters.data_source_types`はPDF判定後のonly指定です。国・研究デザインは従来どおりメタデータで絞ります。
 
-件数は**ローカルに登録された候補研究数**です。EMAサイト全体の一致数や、本文まで確認済みの適格プロトコル数ではありません。メタデータが不明な研究は明示したフィルタに一致しません。取得した最新メタデータ・本文でも条件への適合を確認してください。
+| 環境変数 | 既定値 | 内容 |
+|---|---:|---|
+| `EMA_MAX_SCREENING_STUDIES` | 5 | PDF取得・全件解析に進める最大研究数 |
+| `EMA_MAX_COMPARISON_STUDIES` | 5 | 比較表へ掲載する最大研究数 |
 
-5件以内になると全PDFを保存し、`<DBの親フォルダ>/comparisons/<comparison_id>/` に `study_<Study ID>.json`、`comparison.json`、`comparison.md` を作ります。初回は下書きです。呼出元が全件の `pending_tools` を実行し、追加APIキーなしの場合は抽出・質問別回答を保存し、最後に `get_protocol_comparison` で完成させます。内部LLM設定時も同じツール順序で、抽出・探索の各ツール内でAPIを呼びます。
+このチェックアウトでは[.codex/config.toml](.codex/config.toml)の`mcp_servers.ema-rwe.env`でそれぞれ変更できます。MCPを再起動した後の新しい比較から適用します。`.env.example`は自動読込しません。
 
-比較表には国、Data source type、PDF記載データソース名・使用状態、研究デザイン、対象集団、疾患定義、質問への回答、根拠ページ、PDFリンク・ID、欠落事項・処理状態を含めます。取得失敗した研究もJSONと表に残します。全件のPDF・抽出・質問別回答がそろうまで `incomplete` です。詳細は [比較ワークフロー](docs/comparisons.md) を参照してください。
+一次判定上限を増やした場合も全研究のPDF・JSONを保存します。比較候補が表示上限を超えたら、全一次判定一覧を提示してユーザーの選択を求め、`get_protocol_comparison(comparison_id, selected_study_ids=[...])`へ渡します。勝手に上位5件を選びません。
+
+比較表は希望タイプと該当用途の根拠がある定義を優先し、連結データが必要な定義、推定分類、他タイプ、不明を区別します。公式Data source type、PDF内のソース名・使用状態、疾患・アウトカム定義、ページ、PDF ID、JSONパスを保持します。非掲載や取得失敗も一次判定一覧とJSONに残します。詳細は[比較ワークフロー](docs/comparisons.md)と[用途別データタイプ分類](docs/source-types.md)を参照してください。
+
+旧スキーマの解析は更新時に履歴へ退避し、新スキーマで再読解します。Studies CSVにtype列がない場合も取得済みの公式分類・由来・確認日時とPDF解析を保持します。
 
 ## 内部LiteLLMと追加APIキーなしの違い
 

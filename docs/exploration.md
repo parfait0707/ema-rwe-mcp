@@ -6,7 +6,7 @@
 
 薬剤クラスと個別薬、IPTWと傾向スコア全体などは同一概念とみなさない。曖昧なAF/PSは自動展開しない。辞書は網羅的な医学用語集ではなく、実際に用いた展開を `query_expansion` で確認できる。呼出元は `synonyms=[...]` を追加できる。
 
-`plan_study_search(question, use_llm=true)` は内部LLMに疾患・曝露・アウトカム・designを分けた最大5つの検索式と追加同義語を作らせる。`use_llm=false` はネット通信なしで辞書展開を返す。**このToolは検索計画を返すだけ。** 各queryを `search_studies` で確認し、不足した概念や過剰に広がった概念を修正する。v0.4では全検索語を `compare_protocols` に渡して候補を統合・重複除去し、6件以上なら追加条件をユーザーに確認、1～5件なら全件を処理する。[比較ワークフロー](comparisons.md)を参照。取りこぼしがないことを保証するものではない。
+`plan_study_search(question, use_llm=true)` は内部LLMに疾患・曝露・アウトカム・designを分けた最大5つの検索式と追加同義語を作らせる。`use_llm=false` はネット通信なしで辞書展開を返す。**このToolは検索計画を返すだけ。** 各queryを `search_studies` で確認し、不足した概念や過剰に広がった概念を修正する。全検索語を `compare_protocols` に渡して候補を統合・重複除去し、一次判定上限（既定5件）を超えたら追加条件をユーザーに確認し、上限以内なら全件を処理する。source_assessmentsでデータタイプと定義用途を根拠付きで保存する。[用途別分類](source-types.md)を参照。[比較ワークフロー](comparisons.md)を参照。取りこぼしがないことを保証するものではない。
 
 ## 章構造
 

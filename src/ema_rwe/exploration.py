@@ -4,11 +4,11 @@ import json
 from pydantic import ValidationError
 
 from .domain import Extraction, ProtocolAnswer, RWEError, now
-from .llm import complete_json, configured
+from .llm import SOURCE_ASSESSMENT_PROMPT, complete_json, configured
 from .pdf import extract_pages, search_sections, sections, validate_evidence
 from .terminology import clinical_expansion, proposed_codes
 
-EXPLORER_VERSION = "drug-inn-atc-exploration-v4"
+EXPLORER_VERSION = "source-role-exploration-v5"
 
 
 class Explorer:
@@ -96,6 +96,7 @@ class Explorer:
         # Also validate answers beyond the Extraction key_notes limit.
         if len(answer.answers) > 20:
             validate_evidence(Extraction(key_notes=answer.answers[20:]), pages)
+        validate_evidence(Extraction(source_assessments=answer.source_assessments), pages)
         result = {
             "status": "answered",
             "question": question,
@@ -135,7 +136,11 @@ class Explorer:
                 "Pass codes=[{system,code}] for code-only tables. Consider vocabulary/version and source database; "
                 "never equate retrieved codes with the requested outcome until you read the definition and algorithm. "
                 "Then call cache_protocol_answer with exact quotes, physical pages and section labels. "
-                "No match is not proof that the information is absent.",
+                "No match is not proof that the information is absent. "
+                + SOURCE_ASSESSMENT_PROMPT
+                + " Return source_assessments only for definitions relevant to this question. Inspect their actual "
+                "data inputs, even if the question does not explicitly mention source type. Do not substitute "
+                "another outcome's or another cohort's data. Include all relevant types, not just the user's preferred type.",
             }
         messages = [
             {
@@ -158,7 +163,11 @@ class Explorer:
                 '{"action":"read","start_page":1,"end_page":2,"offset":0}, or '
                 '{"action":"finish","answer": <schema object>}. '
                 "An empty search is not proof of absence. Read relevant sections before finishing. "
-                "If contradictory passages remain, describe the uncertainty with evidence.",
+                "If contradictory passages remain, describe the uncertainty with evidence. "
+                + SOURCE_ASSESSMENT_PROMPT
+                + " Return source_assessments only for definitions relevant to this question. Inspect their actual "
+                "data inputs even when source type is not explicitly asked. Do not substitute another outcome's "
+                "or another cohort's data. Include all relevant types, not just a preferred type.",
             },
             {
                 "role": "user",

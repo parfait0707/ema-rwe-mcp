@@ -66,6 +66,12 @@ async def test_stdio_discovery_validation_and_local_search(settings, csv_file, p
         }
         catalogue = await session.call_tool("catalogue_status", {})
         assert json.loads(catalogue.content[0].text)["status"] == "current"
+        assert json.loads(catalogue.content[0].text)["max_screening_studies"] == 5
+        assert json.loads(catalogue.content[0].text)["max_comparison_studies"] == 5
+        comparison_tool = next(t for t in tools.tools if t.name == "compare_protocols")
+        assert "source_preference" in comparison_tool.inputSchema["properties"]
+        collection_tool = next(t for t in tools.tools if t.name == "get_protocol_comparison")
+        assert "selected_study_ids" in collection_tool.inputSchema["properties"]
         imported = await session.call_tool("import_catalogue_csv", {"filename": "export-data.csv"})
         assert json.loads(imported.content[0].text)["imported"] == 2
         outside = await session.call_tool("import_catalogue_csv", {"filename": "../export-data.csv"})
@@ -76,11 +82,26 @@ async def test_stdio_discovery_validation_and_local_search(settings, csv_file, p
         assert body["network_requests"] == 0
         assert body["results"][0]["data_source_types"] == ["EHR", "Claims"]
         narrow = await session.call_tool(
-            "compare_protocols", {"question": "What definition?", "queries": ["NarrowingExample"]}
+            "compare_protocols",
+            {
+                "question": "What definition?",
+                "queries": ["NarrowingExample"],
+                "source_preference": {"types": ["ehr"], "role": "outcome", "mode": "prefer"},
+            },
         )
         body = json.loads(narrow.content[0].text)
         assert body["status"] == "needs_narrowing"
         assert body["total_matches"] == 6 and body["network_requests"] == 0
+        assert body["source_preference"]["role"] == "outcome"
+        invalid_preference = await session.call_tool(
+            "compare_protocols",
+            {
+                "question": "What definition?",
+                "queries": ["NarrowingExample"],
+                "source_preference": {"types": ["claims"], "role": "made-up-role"},
+            },
+        )
+        assert invalid_preference.isError
         filtered = await session.call_tool(
             "search_studies",
             {
@@ -148,3 +169,30 @@ async def test_stdio_discovery_validation_and_local_search(settings, csv_file, p
         assert json.loads(saved.content[0].text)["status"] == "answered"
         cached = await session.call_tool("research_protocol", {"protocol_id": pid, "question": "Analysis?"})
         assert json.loads(cached.content[0].text)["cached"]
+        invalid_source = await session.call_tool(
+            "cache_protocol_answer",
+            {
+                "protocol_id": pid,
+                "question": "Source?",
+                "answer": {
+                    "source_assessments": [
+                        {
+                            "value": "Invented Database",
+                            "types": ["claims"],
+                            "role": "cohort",
+                            "basis": "inferred",
+                            "usage": "planned",
+                            "requires_linkage": False,
+                            "definition": "Patients defined using diagnoses",
+                            "evidence": [
+                                {
+                                    "page": 1,
+                                    "quote": "The study will use Example Primary Care Database (EPCD).",
+                                }
+                            ],
+                        }
+                    ]
+                },
+            },
+        )
+        assert json.loads(invalid_source.content[0].text)["error"]["code"] == "EVIDENCE_INVALID"
