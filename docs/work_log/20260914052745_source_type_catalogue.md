@@ -30,3 +30,9 @@
 - `.codex/config.toml`のWindows絶対パスは既に`data/imports`、`data/ema.sqlite3`を指しているため変更なし。Playwriteの出力先を`source_type/`用に切り替える手順は手動。
 - DBはWALモードで運用されるため、解析結果をキャッシュすると`data/ema.sqlite3`が作業ツリー上で変更扱いになる。カタログ更新時だけ意図的にコミットする運用とする。
 - `data_source_types`の詳細ページ由来文字列（例: Drug dispensing）は絞り込みではothers扱い。
+
+## 追記（同日）
+
+- `Repository.__init__`で`user_version=3`のときはDDLを実行しないようにした。無変更のDDLでもSQLiteヘッダの変更カウンタが進み、MCP起動のたびに`data/ema.sqlite3`がGit上で変更扱いになっていたため。
+- `.mcp.json`に`ema-rwe`（`uv run --directory /workspace ema-rwe-mcp`）を追加。stdio経由で`catalogue_status`が`source_type_imports=[claims, ehr, registry]`を返すことを確認。`.mcp.json`は他サーバー設定を含む未追跡ファイルのため、コミット対象には含めていない。
+- `docs/spec/v0.3.md`を新設し、v0.2末尾の追記を移動。READMEを更新。

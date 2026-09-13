@@ -19,8 +19,11 @@ class Repository:
         self.path = path
         path.parent.mkdir(parents=True, exist_ok=True)
         with self.connection() as db:
-            if db.execute("PRAGMA user_version").fetchone()[0] > 3:
+            version = db.execute("PRAGMA user_version").fetchone()[0]
+            if version > 3:
                 raise RWEError("DATABASE_ERROR", "Database schema is newer than this server supports.")
+            if version == 3:
+                return  # Committed catalogue: a no-op DDL still bumps the header and dirties git.
             db.executescript("""
                 PRAGMA journal_mode=WAL;
                 CREATE TABLE IF NOT EXISTS studies (id TEXT PRIMARY KEY, body TEXT NOT NULL);

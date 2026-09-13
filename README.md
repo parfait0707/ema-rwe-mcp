@@ -2,7 +2,7 @@
 
 EMA Catalogueの **Non-interventional study** を検索し、Study documentsの最新プロトコルPDFから、研究デザイン・疾患定義・データソースを出典付きで抽出・再利用するPython MCPサーバーです。Core、CLI、MCPを分離しています。
 
-`docs/spec/v0.1.md` と追加要件に基づくv0.6実装です。追加探索の仕様は [docs/spec/v0.2.md](docs/spec/v0.2.md)、医薬品・コード検索は [docs/clinical-search.md](docs/clinical-search.md)、複数研究の比較は [docs/comparisons.md](docs/comparisons.md) を参照してください。通常検索はSQLite FTS5/BM25だけで実行し、PDFは選択した研究についてのみ取得します。
+`docs/spec/v0.1.md` と追加要件に基づくv0.6実装です。追加探索の仕様は [docs/spec/v0.2.md](docs/spec/v0.2.md)、種別タグ付きカタログと絞り込み質問は [docs/spec/v0.3.md](docs/spec/v0.3.md)、医薬品・コード検索は [docs/clinical-search.md](docs/clinical-search.md)、複数研究の比較は [docs/comparisons.md](docs/comparisons.md) を参照してください。通常検索はSQLite FTS5/BM25だけで実行し、PDFは選択した研究についてのみ取得します。
 
 ## セットアップ
 
@@ -27,19 +27,21 @@ $env:EMA_IMPORT_DIR = "E:/codex/rwd-catalogue-mcp/data/imports"
 
 ## 1. 公式CSVで検索対象を登録
 
-[EMA検索ページ](https://catalogues.ema.europa.eu/search?f%5B0%5D=content_type%3Adarwin_study)のStudies用Exportから、必要な研究のCSVをブラウザでダウンロードします。
+[EMA検索ページ](https://catalogues.ema.europa.eu/search?f%5B0%5D=content_type%3Adarwin_study)のStudies用Exportから、必要な研究のCSVをブラウザでダウンロードします。cloneした直後は`data/ema.sqlite3`に2026-09-13時点のNon-interventional全件と種別タグが入っているため、この手順はカタログを更新したいときだけ必要です。
 
 ### CSVを事前登録する場合
 
 ```mermaid
 flowchart TD
-    A[EMA SearchでStudiesを選択] --> B[Export ResultsでCSVを取得]
-    B --> C[import-csvで検証・登録]
-    C --> D[Non-interventionalだけをSQLite FTSへ登録]
+    A[EMA SearchでStudiesを選択] --> B[Export Resultsで全件CSVを取得]
+    A --> B2[Data source typeをclaims/EHR/registryに限定し種別ごとにExport]
+    B --> C[import-allで検証・登録]
+    B2 --> C
+    C --> D[Non-interventionalだけをSQLite FTSへ登録し種別タグを付与]
     D --> E[自然言語を英語同義語・コード候補へ展開]
     E --> F[全検索語をローカル検索して重複除去]
     F --> G{候補数}
-    G -->|一次判定上限超過| H[国・study design・臨床条件を追加]
+    G -->|一次判定上限超過| H[種別 claims/ehr/registry/others と実施国をユーザーに質問]
     H --> F
     G -->|一次判定上限以内| I[全候補の最新PDFを取得・保存]
     I --> J[全件を抽出・追加探索しデータタイプと用途を判定]
@@ -49,9 +51,12 @@ flowchart TD
 ```
 
 ```powershell
+# data/imports/studies/ と data/imports/source_type/ の全CSVを順に取り込む
+.venv/Scripts/ema-rwe import-all
+# 単一ファイル（任意パス。種別タグは付かない）
 .venv/Scripts/ema-rwe import-csv ./export-data.csv
 .venv/Scripts/ema-rwe search "opioid cohort" --limit 5
-.venv/Scripts/ema-rwe search "diabetes" --all-studies
+.venv/Scripts/ema-rwe search "diabetes" --all-studies --source-type registry --country Denmark
 ```
 
 - `Non-interventional study` / `Non-interventional` と明示された研究だけ取り込みます。種別不明・介入研究は除外します。
@@ -59,10 +64,10 @@ flowchart TD
 - 元CSVのバイト列、SHA256、ファイル名、取込時刻を保存します。研究ID単位のupsertであり、今回のCSVにない既存研究は削除しません。
 - 必須列は `Study ID`, `Official title and acronym`（公式CSVでは`Title`）, `Study type`。別名の対応は `storage.py` の `ALIASES` を参照してください。不一致はエラーになり、黙って0件登録しません。
 - 列名が異なる場合は `--column-map ./columns.json` を使用します。例: `{"study_id":"Study identifier","title":"Title","study_type":"Type"}`。
-- `Data sources (types)` / `Data source type` 列があれば取り込みます。2026-09-12のStudies exportにはData source type列がなかったため、そのsnapshotでは空欄として明示し、選択研究のdetail pageで補完します。
+- `Data sources (types)` / `Data source type` 列があれば取り込みます。2026-09-12／13のStudies exportにはData source type列がないため、種別を限定したexportを`source_type/`に置いてファイル名の種別をタグにします。種別exportを取り込む前の研究はすべて`others`として扱われます。
 - `Data source(s)`と`Other linked data sources`はカタログ上のデータソース候補として取り込みます。ATC、INN/common name、疾患、outcome、目的などの公開臨床metadataも候補検索だけに索引化します。連絡先は索引化しません。
 - 複数値の区切りは `|`・`;`・改行です。値内部のカンマは分割しません。実CSVの構造・欠損率は [CSV実データ調査](docs/csv-profile-20260912.md) に記録しています。
-- Data Sources CSVの取込・結合は不要です。データタイプは候補PDFの該当用途からLLMで判定し、公式のStudy分類と分けて保存します。[データタイプの比較仕様](docs/source-types.md)を参照してください。過去の[Data Sources結合検証](docs/data-source-linkage-20260912.md)は調査履歴です。
+- Data Sources CSVの取込・結合は不要です。カタログの種別タグは候補の絞り込みに使い、定義ごとのデータタイプは候補PDFの該当用途からLLMで判定して公式のStudy分類と分けて保存します。[データタイプの比較仕様](docs/source-types.md)を参照してください。過去の[Data Sources結合検証](docs/data-source-linkage-20260912.md)は調査履歴です。
 - 原本CSVに連絡先が含まれる場合があります。原本は検索対象から分離され、連絡先専用列をDB／FTS／検索結果には入れません。
 
 ### CSVを事前登録せず質問する場合
@@ -79,7 +84,7 @@ flowchart TD
     F -->|未登録または期限切れ| G[Playwright MCPで表示ブラウザを開く]
     G --> H[EMA SearchでStudiesを選びExport Resultsを1回実行]
     H --> I[Studies CSVをEMA_IMPORT_DIR/studiesへ保存]
-    I --> J[import_catalogue_csvで検証・登録]
+    I --> J[import_catalogue_csvで検証・登録。種別限定exportはsource_typeへ]
     J --> K[元の全検索語を再実行]
     K --> E
     F -->|有効期間内| L[同義語・コード・条件を見直す]
@@ -191,46 +196,38 @@ stdioで17個のToolを公開します。初期抽出の5個、[追加探索の7
 
 | Tool | 主な引数・動作 |
 |---|---|
-| `search_studies` | `query`, `limit=5`, `darwin_only=true`, `status`, `analyzed_only=false`, `filters`。通信なし。表示は比較上限（既定5件）まで、`total_matches`は打切り前の総数。互換性のためlimitは20まで受理 |
+| `search_studies` | `query`, `limit=5`, `darwin_only=true`, `status`, `analyzed_only=false`, `filters`。通信なし。表示は比較上限（既定5件）まで、`total_matches`は打切り前の総数。`filters.data_source_types`はclaims／ehr／registry／othersの種別タグで絞る。互換性のためlimitは20まで受理 |
 | `get_study` | `study_id`, `refresh=false`。研究種別とData source typeを各タブで確認 |
 | `get_protocol` | `study_id`, `version="latest"`, `download=true`, `refresh=false` |
 | `analyze_protocol` | `study_id`, `force_refresh=false`, `offset=0`, `max_chars=30000` |
 | `cache_protocol_analysis` | `study_id`, `fingerprint`, `analysis`, `coverage_complete=true` |
-| `compare_protocols` | `question`, `queries`, `filters`, `source_preference`, `darwin_only=false`, `synonyms`, `codes`。一次判定上限以内なら全PDFと下書きJSONを保存。typeはPDF判定後に優先／限定 |
+| `compare_protocols` | `question`, `queries`, `filters`, `source_preference`, `darwin_only=false`, `synonyms`, `codes`。一次判定上限以内なら全PDFと下書きJSONを保存。上限超過時は`next_action`で種別と実施国の質問を指示。`source_preference`はPDF判定後に優先／限定 |
 | `get_protocol_comparison` | `comparison_id`, `selected_study_ids`（ユーザーが選択した場合）。全件の保存済み抽出・質問別回答を集め、JSONと比較表を更新 |
-| `catalogue_status` | CSV snapshotの有無・最終取込時刻・期限・ブラウザ出力先を返す。通信なし |
+| `catalogue_status` | CSV snapshotの有無・最終取込時刻・期限・`studies`／`source_type`出力先・取込済み種別（`source_type_imports`）を返す。通信なし |
 | `import_catalogue_csv` | `EMA_IMPORT_DIR/studies`または`source_type`直下の公式CSVを検証し、Non-interventional studyだけを登録。`source_type/`のファイルは名前の種別でタグ付け |
 
 ### Claude Codeで使う
 
-先に上記のセットアップを実行します。このリポジトリを作業ディレクトリにして、次を実行するとプロジェクト用の `.mcp.json` に登録されます。各パスは自分の配置先へ置き換えてください。
-
-```powershell
-claude mcp add --transport stdio --scope project --env EMA_DB_PATH=E:/codex/rwd-catalogue-mcp/data/ema.sqlite3 --env EMA_CACHE_DIR=E:/codex/rwd-catalogue-mcp/cache/http --env EMA_PROTOCOL_DIR=E:/codex/rwd-catalogue-mcp/data/protocols --env EMA_DRUG_DICTIONARY_PATH=E:/codex/rwd-catalogue-mcp/data/ema-medicines.json --env EMA_IMPORT_DIR=E:/codex/rwd-catalogue-mcp/data/imports --env EMA_CACHE_TTL_SECONDS=2592000 --env EMA_CATALOGUE_TTL_SECONDS=2592000 ema-rwe -- E:/codex/rwd-catalogue-mcp/.venv/Scripts/python.exe -m ema_rwe.mcp.server
-claude mcp list
-```
-
-手動設定の場合は、プロジェクトルートの `.mcp.json` に以下を記載します。既存設定があれば `mcpServers` に `ema-rwe` を追加します。
+先に上記のセットアップを実行します。`EMA_DB_PATH`の既定がチェックアウト内の`data/ema.sqlite3`になったため、環境変数なしでも起動できます。uvを使う場合はプロジェクトルートの `.mcp.json` に次を記載します（このリポジトリの `.mcp.json` にはこの形で登録済み。`--directory`は自分の配置先へ置き換えてください）。
 
 ```json
 {
   "mcpServers": {
     "ema-rwe": {
       "type": "stdio",
-      "command": "E:/codex/rwd-catalogue-mcp/.venv/Scripts/python.exe",
-      "args": ["-m", "ema_rwe.mcp.server"],
-      "env": {
-        "EMA_DB_PATH": "E:/codex/rwd-catalogue-mcp/data/ema.sqlite3",
-        "EMA_CACHE_DIR": "E:/codex/rwd-catalogue-mcp/cache/http",
-        "EMA_PROTOCOL_DIR": "E:/codex/rwd-catalogue-mcp/data/protocols",
-        "EMA_DRUG_DICTIONARY_PATH": "E:/codex/rwd-catalogue-mcp/data/ema-medicines.json",
-        "EMA_IMPORT_DIR": "E:/codex/rwd-catalogue-mcp/data/imports",
-        "EMA_CACHE_TTL_SECONDS": "2592000",
-        "EMA_CATALOGUE_TTL_SECONDS": "2592000"
-      }
+      "command": "uv",
+      "args": ["run", "--directory", "/path/to/rwd-catalogue-mcp", "ema-rwe-mcp"],
+      "env": {}
     }
   }
 }
+```
+
+venvのPythonを直接使う場合や、DB・キャッシュ・PDFの置き場所を変える場合は次のように環境変数で上書きします。
+
+```powershell
+claude mcp add --transport stdio --scope project --env EMA_DB_PATH=E:/codex/rwd-catalogue-mcp/data/ema.sqlite3 --env EMA_CACHE_DIR=E:/codex/rwd-catalogue-mcp/cache/http --env EMA_PROTOCOL_DIR=E:/codex/rwd-catalogue-mcp/data/protocols --env EMA_DRUG_DICTIONARY_PATH=E:/codex/rwd-catalogue-mcp/data/ema-medicines.json --env EMA_IMPORT_DIR=E:/codex/rwd-catalogue-mcp/data/imports ema-rwe -- E:/codex/rwd-catalogue-mcp/.venv/Scripts/python.exe -m ema_rwe.mcp.server
+claude mcp list
 ```
 
 Claude Codeをこのディレクトリで起動し、プロジェクトMCPの初回確認に応答した後、`/mcp` で接続を確認します。登録済みセッションは再起動してください。Codex用TOMLはClaude Codeには読み込まれません。[Claude Code公式MCPガイド](https://code.claude.com/docs/en/mcp)
@@ -291,7 +288,7 @@ macOS/Linuxではコマンドを配置先の `.venv/bin/python` にし、DB等�
 
 比較表は希望タイプと該当用途の根拠がある定義を優先し、連結データが必要な定義、推定分類、他タイプ、不明を区別します。公式Data source type、PDF内のソース名・使用状態、疾患・アウトカム定義、ページ、PDF ID、JSONパスを保持します。非掲載や取得失敗も一次判定一覧とJSONに残します。詳細は[比較ワークフロー](docs/comparisons.md)と[用途別データタイプ分類](docs/source-types.md)を参照してください。
 
-旧スキーマの解析は更新時に履歴へ退避し、新スキーマで再読解します。Studies CSVにtype列がない場合も取得済みの公式分類・由来・確認日時とPDF解析を保持します。
+旧スキーマの解析は更新時に履歴へ退避し、新スキーマで再読解します。Studies CSVにtype列がない場合も、種別exportから付与したタグ・詳細ページ由来の公式分類・由来・確認日時とPDF解析を保持します。
 
 ## 内部LiteLLMと追加APIキーなしの違い
 
