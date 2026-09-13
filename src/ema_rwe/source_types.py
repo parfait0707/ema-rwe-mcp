@@ -5,12 +5,8 @@ from .selection import SOURCE_ALIASES, categories
 
 
 def preference_for(filters, preference):
-    legacy = filters.data_source_types if filters else []
-    if legacy and preference:
-        raise RWEError(
-            "INVALID_INPUT", "Use source_preference or legacy filters.data_source_types, not both."
-        )
-    return preference or (SourcePreference(types=legacy, mode="only") if legacy else None)
+    """filters.data_source_types narrows catalogue candidates; only source_preference ranks PDF evidence."""
+    return preference
 
 
 def assess_row(row, preference):

@@ -8,7 +8,9 @@ from pydantic import Field
 from .domain import Model
 from .vocabulary import canonical, contains
 
-SourceType = Literal["claims", "registry", "ehr", "drug_dispensing_prescription"]
+# Catalogue narrowing categories. "others" is every study outside the claims/ehr/registry exports.
+SourceType = Literal["claims", "ehr", "registry", "others"]
+TYPED_SOURCES = ("claims", "ehr", "registry")
 Design = Literal["case-control", "cohort", "cross-sectional", "ecological", "self-controlled"]
 
 
@@ -61,10 +63,15 @@ def categories(values, aliases):
     return sorted(key for key, names in aliases.items() if any(contains(v, n) for v in values for n in names))
 
 
+def source_categories(values):
+    """Catalogue narrowing categories; anything outside the typed exports counts as others."""
+    return [c for c in categories(values, SOURCE_ALIASES) if c in TYPED_SOURCES] or ["others"]
+
+
 def attributes(row):
     return {
         "countries": sorted({country(c) for c in row["countries"]}),
-        "data_source_types": categories(row["data_source_types"], SOURCE_ALIASES),
+        "data_source_types": source_categories(row["data_source_types"]),
         "study_designs": categories(row.get("study_designs", []), DESIGN_ALIASES),
     }
 
@@ -72,9 +79,6 @@ def attributes(row):
 def filter_rows(rows, filters):
     filters = filters or SearchFilters()
     requested = filters.model_dump()
-    # PDF assessment is deferred until bounded candidate screening. Missing catalogue types
-    # must not exclude a study; legacy source filters are enforced in comparison output.
-    requested.pop("data_source_types")
     requested["countries"] = [country(c) for c in filters.countries]
     return [
         r
@@ -90,6 +94,7 @@ def selection(rows, max_screening_studies=5):
         for key, values in attributes(row).items():
             counts[key].update(values)
             unknown[key] += not values
+        unknown["data_source_types"] += not row["data_source_types"]
     total = len(rows)
     return {
         "total_matches": total,
@@ -97,7 +102,9 @@ def selection(rows, max_screening_studies=5):
         "max_screening_studies": max_screening_studies,
         "facets": {key: dict(values) for key, values in counts.items()},
         "unknown_metadata_counts": unknown,
-        "next_action": "Ask for country, study design or clinical conditions; source preference cannot exclude unassessed PDFs. Do not silently select a subset."
+        "next_action": "Ask the user for a catalogue source type (claims, ehr, registry, others) AND study "
+        "countries, showing the facets counts; study design or clinical conditions may narrow further. "
+        "Pass the answers as filters. Do not silently select a subset."
         if total > max_screening_studies
         else "Process ALL matching studies using compare_protocols; do not pick one representative."
         if total

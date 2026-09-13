@@ -17,9 +17,9 @@
 
 `mode=prefer`は同じタイプを優先し、他タイプも補足として残す。`mode=only`はユーザーが限定を明示した場合だけ使い、該当する用途に明示的な根拠があり、他タイプとの連結を必要としない行だけを比較表の候補にする。推定・不明・非掲載の研究もJSONと一次判定一覧に残す。`only`は「使用予定」も含み、完了研究限定ではない。
 
-従来の`filters.data_source_types`／CLIの`--source-type`はPDF判定後の`only`指定として受け付ける。`source_preference`との併用はエラー。ローカル検索段階では、公式分類が空欄／他タイプでも除外しない。`search_studies`は`source_filter_deferred=true`と未判定を含む候補を返す。最終的な厳密判定には`compare_protocols`を使う。
+`filters.data_source_types`／CLIの`--source-type`はカタログの種別タグ（`claims`／`ehr`／`registry`／`others`）でローカル候補を絞る条件で、`source_preference`と併用できる。タグはEMA検索画面でData source typeを限定したexportを`data/imports/source_type/<日付>_<種別>_export-data.csv`として取り込んだときに付与する（Studies exportに種別列はなく、ファイル名だけが根拠）。`others`は3種別のexportいずれにも含まれない研究で、種別exportを取り込む前はすべて`others`になる。取り込んだ種別は`catalogue_status.source_type_imports`で確認する。
 
-国・研究デザインは引き続きメタデータで絞る。候補数は全検索式の重複除去後のローカル一致数で、EMA全体や未取得PDFを網羅する数ではない。source typeを未確認PDFから判断する前に、それを根拠に候補数を小さく見せない。
+一次判定上限を超えたら、`facets`の件数を示して種別と実施国の両方をユーザーに尋ね、回答を`filters`へ渡す。国・研究デザインも引き続きメタデータで絞る。候補数は全検索式の重複除去後のローカル一致数で、EMA全体や未取得PDFを網羅する数ではない。PDF由来の判定（`source_preference`）は絞り込み後の一次判定で行い、カタログのタグとは別に保持する。
 
 ## 抽出・追加探索
 
