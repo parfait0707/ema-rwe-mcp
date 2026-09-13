@@ -39,9 +39,10 @@ def create_server(service: Service | None = None):
             "Search both product names and INN/common names plus ATC codes. Translate unknown Japanese drug names "
             "into English synonyms, then rerun search for dictionary expansion. Do not equate combination products with single ingredients."
             " For each research question, use compare_protocols with ALL query variants to count the deduplicated candidate union. "
-            "If needs_narrowing, ask the user for countries, source types (claims/registry/ehr/drug_dispensing_prescription) "
-            "or study designs (case-control/cohort/cross-sectional/ecological/self-controlled). Obey max_screening_studies "
-            "(default 5); never silently choose a subset. Source type is assessed from PDFs, so unknowns cannot narrow the count. "
+            "If needs_narrowing, ask the user BOTH for a catalogue source type (claims/ehr/registry/others) AND for study "
+            "countries, quoting the facets counts; study designs (case-control/cohort/cross-sectional/ecological/self-controlled) "
+            "may narrow further. Pass the answers as filters. Obey max_screening_studies (default 5); never silently choose a subset. "
+            "Catalogue source types come from filtered official exports; others means outside claims/ehr/registry. "
             "Within the screening limit, process ALL pending_tools, cache all extractions and answers, and call get_protocol_comparison. "
             "Use source_preference with types, role (cohort/outcome/exposure/covariate/any) and mode=prefer by default. "
             "Use mode=only only for explicit user requests. Catalogue types are separate from protocol source_assessments. "
@@ -76,7 +77,7 @@ def create_server(service: Service | None = None):
 
     @server.tool()
     async def catalogue_status() -> dict:
-        """Report local CSV coverage/freshness, Studies import directory and screening/comparison limits."""
+        """Report local CSV coverage/freshness, import directories, imported source types and limits."""
         try:
             return service.catalogue_status()
         except RWEError as exc:
@@ -84,10 +85,11 @@ def create_server(service: Service | None = None):
 
     @server.tool()
     async def import_catalogue_csv(filename: str, column_map: dict[str, str] | None = None) -> dict:
-        """Validate/import one browser-downloaded Studies CSV from the configured studies directory.
+        """Validate/import one browser-downloaded Studies CSV from studies/ or source_type/.
 
         Accepts a basename, never an arbitrary path. A legacy file in the import root is also accepted.
-        The official raw bytes and checksum are retained.
+        A file in source_type/ must be named <date>_<claims|ehr|registry>_export-data.csv; its studies are
+        tagged with that catalogue source type. The official raw bytes and checksum are retained.
         """
         try:
             return service.import_catalogue_csv(filename, column_map)
@@ -110,7 +112,7 @@ def create_server(service: Service | None = None):
         darwin_only is separate from Non-interventional scope. Use false for all eligible EMA studies.
         Protocol names require analyze_protocol then cache_protocol_analysis on first use.
         analyzed_only restricts results to cached analyses; source timestamps indicate freshness.
-        Legacy source filters are deferred to PDF assessment; local previews retain unknown and other types.
+        filters.data_source_types (claims/ehr/registry/others) narrows by tagged catalogue source type.
         """
         try:
             return service.search_studies(
@@ -134,8 +136,8 @@ def create_server(service: Service | None = None):
         Above that limit ask for narrower conditions, without downloading PDFs. Within it save ALL PDFs/JSON
         and process every pending tool. source_preference={types:[claims],role:outcome,mode:prefer} prioritizes
         protocol evidence after screening. mode=only requires explicit support for that role without linkage.
-        Legacy filters.data_source_types means deferred mode=only; do not also pass source_preference.
-        Unknown official types never exclude local candidates. Country/design filters still use metadata.
+        filters.data_source_types/countries/study_designs narrow candidates by catalogue metadata before
+        screening; use them to answer needs_narrowing. source_preference ranks PDF evidence afterwards.
         """
         return await call(
             "compare_protocols", question, queries, filters, darwin_only, synonyms, codes, source_preference

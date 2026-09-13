@@ -77,10 +77,15 @@ async def test_filter_and_unknown_metadata_counts(service):
     result = service.search_studies("opioid", filters=f)
     assert result["total_matches"] == 3
     assert {r["study_id"] for r in result["results"]} == {"124", "126", "128"}
+    # Catalogue source types narrow candidates; untagged studies are reachable only through "others".
     assert (
         service.search_studies("opioid", filters=SearchFilters(data_source_types=["ehr"]))["total_matches"]
-        == 6  # Source filters are deferred; neither unknown nor other official types are dropped.
+        == 0
     )
+    others = service.search_studies("opioid", filters=SearchFilters(data_source_types=["others"]))
+    assert [r["study_id"] for r in others["results"]] == ["123"]
+    assert preview["facets"]["data_source_types"] == {"claims": 5, "others": 1}
+    assert "claims, ehr, registry, others" in preview["next_action"] and "countries" in preview["next_action"]
     assert not service.requests
 
 
@@ -89,7 +94,7 @@ async def test_filter_and_unknown_metadata_counts(service):
     [
         ("Disease registry", "Nested case-control", "registry", "case-control"),
         ("Electronic healthcare records (EHR)", "Cross-sectional", "ehr", "cross-sectional"),
-        ("Drug dispensing/prescription data", "Ecological", "drug_dispensing_prescription", "ecological"),
+        ("Drug dispensing/prescription data", "Ecological", "others", "ecological"),
         ("Claims", "Self-controlled case series", "claims", "self-controlled"),
     ],
 )

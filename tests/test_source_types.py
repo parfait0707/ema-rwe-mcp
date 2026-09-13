@@ -242,24 +242,24 @@ async def test_screening_limit_can_exceed_five(service, website):
     assert len(list(service.archive.directory.glob("*.pdf"))) == 6
 
 
-async def test_strict_filter_is_deferred_and_unknown_is_visible(service, website):
+async def test_catalogue_source_filter_narrows_before_pdf_screening(service, website):
     seed(service.repo, 1)
     typed_pdf(website)
-    initial = await service.compare_protocols(
-        "How defined?", ["opioid"], filters=SearchFilters(data_source_types=["claims"])
+    excluded = await service.compare_protocols(
+        "How defined?", ["opioid"], filters=SearchFilters(data_source_types=["ehr"])
     )
+    assert excluded["status"] == "no_matches" and excluded["rows"] == [] and not service.requests
+    initial = await service.compare_protocols(
+        "How defined?",
+        ["opioid"],
+        filters=SearchFilters(data_source_types=["claims"]),
+        source_preference=SourcePreference(types=["ehr"]),
+    )
+    assert initial["search"]["filters"]["data_source_types"] == ["claims"]
+    assert initial["search"]["source_preference"]["types"] == ["ehr"]
     done = await complete_rows(service, initial, include_sources=False)
-    assert done["selection_status"] == "no_confirmed_matches"
     assert done["rows"][0]["source_suitability"]["status"] == "unknown"
-    assert done["screening_summary"][0]["suitability"] == "unknown"
     assert Path(done["rows"][0]["json_path"]).exists()
-    with pytest.raises(RWEError, match="not both"):
-        await service.compare_protocols(
-            "How defined?",
-            ["opioid"],
-            filters=SearchFilters(data_source_types=["claims"]),
-            source_preference=SourcePreference(types=["ehr"]),
-        )
 
 
 async def test_unknown_source_preferences_cannot_evade_screening_gate(service):

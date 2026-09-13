@@ -4,8 +4,16 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .env
-data/
+# data/: only the committed catalogue DB and the empty import folders are tracked.
+data/*
+!data/ema.sqlite3
+!data/imports/
+data/imports/*
+!data/imports/studies/
+!data/imports/source_type/
+data/imports/studies/*
+data/imports/source_type/*
+!data/imports/*/.gitkeep
 cache/
 dist/
 *.egg-info/
-

@@ -258,7 +258,14 @@ SEARCH_COLUMNS = (
 )
 
 
-def import_csv(repo: Repository, path: Path, column_map: dict[str, str] | None = None) -> dict:
+def import_csv(
+    repo: Repository, path: Path, column_map: dict[str, str] | None = None, source_type: str | None = None
+) -> dict:
+    """Upsert one official Studies export. With source_type, every record is tagged with that catalogue type.
+
+    Filtered exports (claims/ehr/registry) share the plain export schema; only the file name carries the type.
+    Tags accumulate across typed imports and survive later untyped imports of the full export.
+    """
     raw = path.read_bytes()
     checksum = hashlib.sha256(raw).hexdigest()
     try:
@@ -342,7 +349,13 @@ def import_csv(repo: Repository, path: Path, column_map: dict[str, str] | None =
         for study in studies:
             old_row = db.execute("SELECT body FROM studies WHERE id=?", (study.study_id,)).fetchone()
             old = Study.model_validate_json(old_row[0]) if old_row else None
-            if not selected.get("data_source_types") and old:
+            if source_type:
+                study.data_source_types = list(
+                    dict.fromkeys([*(old.data_source_types if old else []), source_type])
+                )
+                study.data_source_types_source = f"filtered export {path.name} SHA256:{checksum}"
+                study.data_source_types_checked_at = study.retrieved_at
+            elif not selected.get("data_source_types") and old:
                 study.data_source_types = old.data_source_types
                 study.data_source_types_source = old.data_source_types_source or old.metadata_source
                 study.data_source_types_checked_at = (
@@ -363,12 +376,15 @@ def import_csv(repo: Repository, path: Path, column_map: dict[str, str] | None =
             "INSERT OR REPLACE INTO imports VALUES (?,?,?,?)", (checksum, path.name, now(), len(studies))
         )
     schema_warnings = []
-    if not selected.get("data_source_types"):
-        schema_warnings.append("CSV has no Data source type column; detail-page enrichment is required.")
+    if not selected.get("data_source_types") and not source_type:
+        schema_warnings.append(
+            "CSV has no Data source type column; import filtered exports from source_type/ to tag studies."
+        )
     if duplicate_headers:
         schema_warnings.append("Duplicate non-indexed CSV headers: " + ", ".join(duplicate_headers))
     return {
         "imported": len(studies),
+        "source_type": source_type,
         "skipped_out_of_scope": skipped,
         "checksum": checksum,
         "mode": "upsert; records absent from this export are retained",

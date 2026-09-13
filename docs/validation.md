@@ -100,6 +100,15 @@ v0.1時点で`pytest`全46件、`ruff check src tests`、sdistとwheelのビル�
 - `data/imports/data-sources`のCSV1ファイルと空ディレクトリを個別削除し、フォルダが存在しないことを確認。Studies CSV（13,443,910 bytes）は残存。再帰削除は自動承認レビューで拒否されたため使用しなかった。
 - Data Sources CSVの必須取込・名称結合は導入していない。公式Study分類とプロトコルの用途別分類を別々に保持する。[仕様](source-types.md)。
 
+## 2026-09-14 種別タグ付きカタログDBの構築
+
+- `data/imports/studies/20260913_all_export-data.csv`（Non-interventional全件）と`data/imports/source_type/20260913_{claims,ehr,registry}_export-data.csv`を`uv run ema-rwe import-all`で取り込み、`data/ema.sqlite3`（約36.8 MB、WALチェックポイント済み）を構築してコミット。CSV本体はGit管理外。
+- 取込結果: studies 3,312件、claims 819件、ehr 914件、registry 536件（すべてNon-interventional）。種別exportの和集合1,799件は全件の部分集合で、タグなし（others）1,513件。3種別すべてを持つ研究77件。
+- 全件exportにData source type列がないことを確認（`schema_warnings`）。種別exportも同じ列構成で、種別はファイル名にのみ含まれる。
+- CLIスモーク: `search "type 2 diabetes SGLT2" --all-studies`は1,947件で`needs_narrowing`、`next_action`が種別と実施国の質問を指示。`--source-type registry --country Denmark`で89件に減少。通信なし。
+- `uv run pytest -q`: 148 passed（種別タグ取込・ファイル名解析・others絞り込み・既定DBパスの回帰テストを追加）。`ruff check`／`ruff format --check`とも合格。
+- 未検証: Windows側`.codex/config.toml`の絶対パスでの実起動、MCPクライアントからの`needs_narrowing`→質問→`filters`再実行の実会話。
+
 ## 未検証事項（継続）
 
 - 外部LLM API呼出しの実認証検証は未実施。キーなしの呼出元LLM方式は合成PDFで保存・再利用まで検証。
