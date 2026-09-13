@@ -1,6 +1,6 @@
 import logging
 from contextlib import asynccontextmanager
-from typing import Annotated
+from typing import Annotated, Literal
 
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
@@ -24,36 +24,14 @@ def create_server(service: Service | None = None):
         "EMA RWE protocol search",
         lifespan=lifespan,
         instructions=(
-            "Search non-interventional EMA studies using English keywords where possible. Search is local; "
-            "unanalysed protocol data sources are explicitly empty/not_analyzed. Analyze relevant candidates. "
-            "When analyze_protocol returns needs_client_extraction, read all section batches, extract according "
-            "to analysis_schema, then cache_protocol_analysis. Repeat search to return evidence-backed database "
-            "names. Never describe planned data sources as actually used. Cite protocol source URLs and pages."
-            " Inspect query_expansion, refine synonyms, or use plan_study_search. PDFs have stable protocol_id. "
-            "For follow-up questions use research_protocol, search_protocol_text, get_protocol_outline, "
-            "read_protocol_text and cache_protocol_answer. These tools explore all archived text without EMA requests."
-            " Translate clinical questions into English names, related terms and typed code candidates using "
-            "plan_study_search. Search codes independently too; verify vocabulary, version and outcome/exposure "
-            "role from methods and code-list appendices. Retrieval hints are not study definitions."
-            " For medicine questions, check clinical.drugs.needs_refresh and call refresh_drug_dictionary if needed. "
-            "Search both product names and INN/common names plus ATC codes. Translate unknown Japanese drug names "
-            "into English synonyms, then rerun search for dictionary expansion. Do not equate combination products with single ingredients."
-            " For each research question, use compare_protocols with ALL query variants to count the deduplicated candidate union. "
-            "If needs_narrowing, ask the user BOTH for a catalogue source type (claims/ehr/registry/others) AND for study "
-            "countries, quoting the facets counts; study designs (case-control/cohort/cross-sectional/ecological/self-controlled) "
-            "may narrow further. Pass the answers as filters. Obey max_screening_studies (default 5); never silently choose a subset. "
-            "Catalogue source types come from filtered official exports; others means outside claims/ehr/registry. "
-            "Within the screening limit, process ALL pending_tools, cache all extractions and answers, and call get_protocol_comparison. "
-            "Use source_preference with types, role (cohort/outcome/exposure/covariate/any) and mode=prefer by default. "
-            "Use mode=only only for explicit user requests. Catalogue types are separate from protocol source_assessments. "
-            "Prioritize the same type for the requested definition role; distinguish linked data, inferred types and unknowns. "
-            "When selection_status=needs_selection, show all screening summaries and ask for eligible Study IDs or narrower "
-            "conditions within max_comparison_studies (default 5). Do not silently select a top N. "
-            "Present its comparison table and JSON paths, including failures. Use darwin_only=false unless specifically requested."
-            " Check catalogue_status before research. If no CSV has been imported, or it is stale and local "
-            "search has no candidates, use the caller's Playwright MCP in a visible user-initiated session to "
-            "download one official Studies CSV into study_import_directory, call import_catalogue_csv, and retry all "
-            "queries. Do not crawl /search pages, run background sync, or repeatedly download an unchanged export."
+            "Evidence-backed search of Non-interventional EMA studies over a local catalogue; PDFs are fetched "
+            "only for screened studies. Workflow: 1) plan_study_search to turn the question into English terms "
+            "and codes; 2) compare_protocols with ALL query variants, role=outcome/condition/exposure when the "
+            "question names one, darwin_only=false; 3) if needs_narrowing, ask the user for a source type "
+            "(claims/ehr/registry/others) AND countries using facets, or let them pick study_ids from candidates, "
+            "then rerun; 4) within max_screening_studies process every pending tool, cache all extractions and "
+            "answers, then get_protocol_comparison. Never choose a subset silently, never call planned data "
+            "sources used, cite PDF pages. Full procedure and field semantics: docs/mcp-workflow.md."
         ),
     )
 
@@ -68,11 +46,7 @@ def create_server(service: Service | None = None):
 
     @server.tool()
     async def refresh_drug_dictionary(force: bool = False) -> dict:
-        """Download/cache official EMA human product-name, INN/common-name and ATC mappings. Reuse for seven days.
-
-        Search stays offline. Refresh once before medicine searches if clinical.drugs.needs_refresh is true.
-        Covers EMA centralised medicines, not every country's brands. No API key required.
-        """
+        """Refresh the cached EMA product-name/INN/ATC dictionary when drugs_need_refresh is true."""
         return await call("refresh_drug_dictionary", force)
 
     @server.tool()
@@ -85,12 +59,7 @@ def create_server(service: Service | None = None):
 
     @server.tool()
     async def import_catalogue_csv(filename: str, column_map: dict[str, str] | None = None) -> dict:
-        """Validate/import one browser-downloaded Studies CSV from studies/ or source_type/.
-
-        Accepts a basename, never an arbitrary path. A legacy file in the import root is also accepted.
-        A file in source_type/ must be named <date>_<claims|ehr|registry>_export-data.csv; its studies are
-        tagged with that catalogue source type. The official raw bytes and checksum are retained.
-        """
+        """Import one official Studies CSV by basename from studies/ or source_type/ (type in file name)."""
         try:
             return service.import_catalogue_csv(filename, column_map)
         except RWEError as exc:
@@ -106,17 +75,17 @@ def create_server(service: Service | None = None):
         synonyms: list[str] | None = None,
         codes: list[CodeCandidate] | None = None,
         filters: SearchFilters | None = None,
+        role: Literal["any", "outcome", "condition", "exposure"] = "any",
+        detail: Literal["compact", "full"] = "compact",
     ) -> dict:
-        """Local search. Always returns catalogue data_source_types and protocol_data_sources with status.
+        """Local catalogue search (no network). Multi-word queries must co-occur; role scopes the columns.
 
-        darwin_only is separate from Non-interventional scope. Use false for all eligible EMA studies.
-        Protocol names require analyze_protocol then cache_protocol_analysis on first use.
-        analyzed_only restricts results to cached analyses; source timestamps indicate freshness.
-        filters.data_source_types (claims/ehr/registry/others) narrows by tagged catalogue source type.
+        Use darwin_only=false for all eligible studies. filters narrow by country, source type
+        (claims/ehr/registry/others) and design. detail=full adds descriptions and provenance.
         """
         try:
             return service.search_studies(
-                query, limit, darwin_only, status, analyzed_only, synonyms, codes, filters
+                query, limit, darwin_only, status, analyzed_only, synonyms, codes, filters, role, detail
             )
         except RWEError as exc:
             return exc.as_dict()
@@ -130,29 +99,32 @@ def create_server(service: Service | None = None):
         synonyms: list[str] | None = None,
         codes: list[CodeCandidate] | None = None,
         source_preference: SourcePreference | None = None,
+        role: Literal["any", "outcome", "condition", "exposure"] = "any",
+        study_ids: list[str] | None = None,
     ) -> dict:
-        """Count ALL query variants before the configured PDF screening limit (default 5).
+        """Screen the deduplicated union of all query variants; PDFs are fetched only within the limit.
 
-        Above that limit ask for narrower conditions, without downloading PDFs. Within it save ALL PDFs/JSON
-        and process every pending tool. source_preference={types:[claims],role:outcome,mode:prefer} prioritizes
-        protocol evidence after screening. mode=only requires explicit support for that role without linkage.
-        filters.data_source_types/countries/study_designs narrow candidates by catalogue metadata before
-        screening; use them to answer needs_narrowing. source_preference ranks PDF evidence afterwards.
+        needs_narrowing returns facets and, when few enough, candidates: narrow via filters or pass the
+        user's study_ids. source_preference ranks PDF evidence for a definition role after screening.
         """
         return await call(
-            "compare_protocols", question, queries, filters, darwin_only, synonyms, codes, source_preference
+            "compare_protocols",
+            question,
+            queries,
+            filters,
+            darwin_only,
+            synonyms,
+            codes,
+            source_preference,
+            role,
+            study_ids,
         )
 
     @server.tool()
     async def get_protocol_comparison(
         comparison_id: str, selected_study_ids: list[str] | None = None
     ) -> dict:
-        """Update all comparison JSON/Markdown files from validated saved analyses and question answers.
-
-        Status is complete only when EVERY row has its PDF, current-fingerprint extraction and saved answer.
-        If needs_selection, ask the user for eligible Study IDs within max_comparison_studies and pass them
-        as selected_study_ids. All screened rows and their exports remain visible in screening_summary.
-        """
+        """Rebuild the comparison JSON/Markdown; if needs_selection, pass the user's selected_study_ids."""
         return await call("get_protocol_comparison", comparison_id, selected_study_ids)
 
     @server.tool()
@@ -174,30 +146,19 @@ def create_server(service: Service | None = None):
         offset: Annotated[int, Field(ge=0)] = 0,
         max_chars: Annotated[int, Field(ge=6000, le=60000)] = 30000,
     ) -> dict:
-        """Reuse analysis or extract via configured LLM. Without provider, return paginated evidence sections.
-
-        Read all next_offset batches, then use cache_protocol_analysis to persist your structured extraction.
-        force_refresh rechecks documents and PDF, including changed bytes at the same URL.
-        """
+        """Return the cached extraction, or paginated PDF sections to extract from (follow next_offset)."""
         return await call("analyze_protocol", study_id, force_refresh, offset, max_chars)
 
     @server.tool()
     async def cache_protocol_analysis(
         study_id: str, fingerprint: str, analysis: Extraction, coverage_complete: bool = False
     ) -> dict:
-        """Cache caller-extracted facts after all batches were reviewed. Verifies fingerprint and exact quotes.
-
-        Data source names must appear verbatim in quotes. Set usage used/planned/candidate/unclear honestly.
-        This is the API-key-free extraction route for Claude Code and Codex.
-        """
+        """Save a caller extraction; fingerprint and verbatim quotes are verified before caching."""
         return await call("cache_protocol_analysis", study_id, fingerprint, analysis, coverage_complete)
 
     @server.tool()
     async def plan_study_search(question: str, use_llm: bool = False) -> dict:
-        """Show auditable synonyms; optionally ask the configured LLM for multiple search formulations.
-
-        Execute/refine the returned queries with search_studies. Does not itself search/download studies.
-        """
+        """Turn a question into English terms, code candidates and queries; does not search."""
         return await call("plan_study_search", question, use_llm)
 
     @server.tool()
@@ -218,10 +179,7 @@ def create_server(service: Service | None = None):
         synonyms: list[str] | None = None,
         codes: list[CodeCandidate] | None = None,
     ) -> dict:
-        """Search the entire archived PDF with synonym expansion, including initially excluded sections.
-
-        Results expose section_id, role, parent and neighbours. A zero-hit search does not prove absence.
-        """
+        """Search one archived PDF (all sections) with synonym expansion; zero hits do not prove absence."""
         return await call("search_protocol_text", protocol_id, query, limit, synonyms, codes)
 
     @server.tool()
@@ -240,11 +198,7 @@ def create_server(service: Service | None = None):
 
     @server.tool()
     async def research_protocol(protocol_id: str, question: str, force: bool = False) -> dict:
-        """Answer a follow-up question from a retained PDF. Reuse saved answer or run bounded LLM exploration.
-
-        Without internal LLM, returns initial hits and instructions for caller-driven exploration and caching.
-        Internal LLM can refine searches, inspect outline and read pages; its actions are recorded in trace.
-        """
+        """Answer a question from one archived PDF: saved answer, bounded LLM run, or caller-driven hits."""
         return await call("research_protocol", protocol_id, question, force)
 
     @server.tool()
