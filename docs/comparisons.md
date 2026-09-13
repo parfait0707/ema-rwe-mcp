@@ -6,7 +6,7 @@
 
 1. `plan_study_search` と呼出元の推論で英語の同義語・略語・ICD-10/ATC等の検索候補を作る。未知の日本語薬剤名は英訳し、医薬品辞書が期限切れなら更新する。
 2. `compare_protocols(question=..., queries=[全検索語], synonyms=[...], codes=[...], darwin_only=false)` に渡す。各queryの検索結果をStudy IDで重複除去する。新しい検索語を試す際も既存の検索語を含める。
-3. `needs_narrowing` なら、`total_matches`、`facets`、`unknown_metadata_counts` を使って追加条件を尋ねる。別queryや表示limitだけで件数を小さく見せたり、任意の5件を選んだりしない。
+3. `needs_narrowing` なら、`total_matches`、`facets`、`unknown_metadata_counts` を示して、データソース種別（claims／ehr／registry／others）と実施国の両方をユーザーに尋ねる。研究デザインや臨床条件でさらに絞ってもよい。別queryや表示limitだけで件数を小さく見せたり、任意の5件を選んだりしない。
 4. 条件を加えた同じ検索語集合で再実行する。0件なら登録範囲・英訳・フィルタを見直す。フィルタで除外した不明メタデータがないかも報告する。
 
 ```json
@@ -22,11 +22,11 @@
 }
 ```
 
-国はカタログの英語表記を指定する。日本/JP、米国/US/USA、英国/UKの別表記も受け付ける。同一フィールド内はOR、フィールド間はAND。ソース種別はclaims、registry、ehr、drug_dispensing_prescription。研究デザインはcohort、case-control、cross-sectional、ecological、self-controlled。
+国はカタログの英語表記を指定する。日本/JP、米国/US/USA、英国/UKの別表記も受け付ける。同一フィールド内はOR、フィールド間はAND。ソース種別はclaims、ehr、registry、others（othersは種別限定exportのいずれにも含まれない研究）。研究デザインはcohort、case-control、cross-sectional、ecological、self-controlled。
 
-希望タイプはsource_preferenceへ渡す。PDFの質問別探索から根拠付きで判定し、公式分類は別に保持する。types内はOR。mode=preferは他タイプも残し、onlyは明示的な限定要求で使用する。旧filters.data_source_typesはPDF判定後のonly指定として扱い、未判定PDFを検索時に除外しない。研究デザインは専用フィールド、欠落時のみ保存済みの抽出事実を使う。一般的なNon-interventionalという研究種別とcohort等の研究デザインは別項目。
+希望タイプはsource_preferenceへ渡す。PDFの質問別探索から根拠付きで判定し、公式分類は別に保持する。types内はOR。mode=preferは他タイプも残し、onlyは明示的な限定要求で使用する。filters.data_source_typesはカタログの種別タグによる候補の絞り込みで、source_preferenceとは独立。研究デザインは専用フィールド、欠落時のみ保存済みの抽出事実を使う。一般的なNon-interventionalという研究種別とcohort等の研究デザインは別項目。
 
-候補数は登録済みのローカルメタデータと保存済み解析による検索の一致数。表示上限より前に数える。サイト全体の検索結果総数ではなく、未取得PDFの内容まで検索した結果でもない。プロトコルの有無や質問への適合性は後続処理で確認するため、一次判定上限を超えたら候補段階で絞込を求める。source typeが未判定なら、その指定だけで候補数を減らすことはできない。未登録研究を調べるには公式CSVを追加取込するか、既知のStudy IDで `get_study` を実行して検索対象へ登録する。Drupal node IDをStudy IDとして使わない。
+候補数は登録済みのローカルメタデータと保存済み解析による検索の一致数。表示上限より前に数える。サイト全体の検索結果総数ではなく、未取得PDFの内容まで検索した結果でもない。プロトコルの有無や質問への適合性は後続処理で確認するため、一次判定上限を超えたら候補段階で絞込を求める。種別タグは`data/imports/source_type/`の種別限定exportから付与し、タグのない研究はothersとして絞り込める。未登録研究を調べるには公式CSVを追加取込するか、既知のStudy IDで `get_study` を実行して検索対象へ登録する。Drupal node IDをStudy IDとして使わない。
 
 ## 全件処理
 
