@@ -1,0 +1,1315 @@
+[
+ {
+  "concept_id": "liver_injury",
+  "input_terms": [
+   "肝障害",
+   "薬物性肝障害",
+   "肝機能障害",
+   "肝毒性",
+   "liver injury",
+   "drug-induced liver injury",
+   "hepatotoxicity"
+  ],
+  "english_terms": [
+   "liver injury",
+   "drug-induced liver injury",
+   "DILI",
+   "hepatotoxicity"
+  ],
+  "related_terms": [
+   "hepatic injury",
+   "hepatic events",
+   "toxic liver disease",
+   "hepatic failure",
+   "hepatitis",
+   "jaundice",
+   "abnormal liver function",
+   "elevated liver enzymes",
+   "transaminase elevation"
+  ],
+  "code_candidates": [
+   {
+    "system": "ICD-10",
+    "code": "K71",
+    "label": "Toxic liver disease",
+    "vocabulary_version": "WHO ICD-10 2019",
+    "relation": "candidate",
+    "source_url": "https://icd.who.int/browse10/2019/en#/K71"
+   },
+   {
+    "system": "ICD-10",
+    "code": "K72",
+    "label": "Hepatic failure, not elsewhere classified",
+    "vocabulary_version": "WHO ICD-10 2019",
+    "relation": "related",
+    "source_url": "https://icd.who.int/browse10/2019/en#/K72"
+   }
+  ]
+ },
+ {
+  "concept_id": "type_2_diabetes",
+  "input_terms": [
+   "2型糖尿病",
+   "２型糖尿病",
+   "type 2 diabetes"
+  ],
+  "english_terms": [
+   "type 2 diabetes mellitus",
+   "type 2 diabetes",
+   "T2DM"
+  ],
+  "related_terms": [
+   "diabetes mellitus"
+  ],
+  "code_candidates": [
+   {
+    "system": "ICD-10",
+    "code": "E11",
+    "label": "Type 2 diabetes mellitus",
+    "vocabulary_version": "WHO ICD-10 2019",
+    "relation": "candidate",
+    "source_url": "https://icd.who.int/browse10/2019/en#/E11"
+   }
+  ]
+ },
+ {
+  "concept_id": "type_1_diabetes",
+  "input_terms": [
+   "1型糖尿病",
+   "１型糖尿病",
+   "type 1 diabetes"
+  ],
+  "english_terms": [
+   "type 1 diabetes mellitus",
+   "type 1 diabetes",
+   "T1DM"
+  ],
+  "related_terms": [
+   "diabetes mellitus"
+  ],
+  "code_candidates": [
+   {
+    "system": "ICD-10",
+    "code": "E10",
+    "label": "Type 1 diabetes mellitus",
+    "vocabulary_version": "WHO ICD-10 2019",
+    "relation": "candidate",
+    "source_url": "https://icd.who.int/browse10/2019/en#/E10"
+   }
+  ]
+ },
+ {
+  "concept_id": "hypoglycaemia",
+  "input_terms": [
+   "低血糖",
+   "hypoglycemia",
+   "hypoglycaemia"
+  ],
+  "english_terms": [
+   "hypoglycaemia",
+   "hypoglycemia"
+  ],
+  "related_terms": [
+   "severe hypoglycaemia"
+  ],
+  "code_candidates": [
+   {
+    "system": "ICD-10",
+    "code": "E16.2",
+    "label": "Hypoglycaemia, unspecified",
+    "vocabulary_version": "WHO ICD-10 2019",
+    "relation": "candidate",
+    "source_url": "https://icd.who.int/browse10/2019/en#/E16.2"
+   }
+  ]
+ },
+ {
+  "concept_id": "atrial_fibrillation",
+  "input_terms": [
+   "心房細動",
+   "atrial fibrillation"
+  ],
+  "english_terms": [
+   "atrial fibrillation",
+   "AF"
+  ],
+  "related_terms": [
+   "atrial flutter",
+   "non-valvular atrial fibrillation",
+   "NVAF"
+  ],
+  "code_candidates": [
+   {
+    "system": "ICD-10",
+    "code": "I48",
+    "label": "Atrial fibrillation and flutter",
+    "vocabulary_version": "WHO ICD-10 2019",
+    "relation": "candidate",
+    "source_url": "https://icd.who.int/browse10/2019/en#/I48"
+   }
+  ]
+ },
+ {
+  "concept_id": "heart_failure",
+  "input_terms": [
+   "心不全",
+   "heart failure"
+  ],
+  "english_terms": [
+   "heart failure",
+   "chronic heart failure",
+   "CHF"
+  ],
+  "related_terms": [
+   "HFrEF",
+   "HFpEF",
+   "hospitalisation for heart failure"
+  ],
+  "code_candidates": [
+   {
+    "system": "ICD-10",
+    "code": "I50",
+    "label": "Heart failure",
+    "vocabulary_version": "WHO ICD-10 2019",
+    "relation": "candidate",
+    "source_url": "https://icd.who.int/browse10/2019/en#/I50"
+   }
+  ]
+ },
+ {
+  "concept_id": "myocardial_infarction",
+  "input_terms": [
+   "心筋梗塞",
+   "急性心筋梗塞",
+   "myocardial infarction"
+  ],
+  "english_terms": [
+   "myocardial infarction",
+   "acute myocardial infarction",
+   "MI"
+  ],
+  "related_terms": [
+   "acute coronary syndrome",
+   "ischaemic heart disease"
+  ],
+  "code_candidates": [
+   {
+    "system": "ICD-10",
+    "code": "I21",
+    "label": "Acute myocardial infarction",
+    "vocabulary_version": "WHO ICD-10 2019",
+    "relation": "candidate",
+    "source_url": "https://icd.who.int/browse10/2019/en#/I21"
+   }
+  ]
+ },
+ {
+  "concept_id": "stroke",
+  "input_terms": [
+   "脳卒中",
+   "脳梗塞",
+   "stroke",
+   "ischaemic stroke",
+   "ischemic stroke"
+  ],
+  "english_terms": [
+   "stroke",
+   "ischaemic stroke",
+   "ischemic stroke",
+   "cerebral infarction"
+  ],
+  "related_terms": [
+   "cerebrovascular accident",
+   "transient ischaemic attack",
+   "systemic embolism"
+  ],
+  "code_candidates": [
+   {
+    "system": "ICD-10",
+    "code": "I63",
+    "label": "Cerebral infarction",
+    "vocabulary_version": "WHO ICD-10 2019",
+    "relation": "candidate",
+    "source_url": "https://icd.who.int/browse10/2019/en#/I63"
+   },
+   {
+    "system": "ICD-10",
+    "code": "I64",
+    "label": "Stroke, not specified as haemorrhage or infarction",
+    "vocabulary_version": "WHO ICD-10 2019",
+    "relation": "related",
+    "source_url": "https://icd.who.int/browse10/2019/en#/I64"
+   }
+  ]
+ },
+ {
+  "concept_id": "intracranial_haemorrhage",
+  "input_terms": [
+   "頭蓋内出血",
+   "脳出血",
+   "intracranial haemorrhage",
+   "intracranial hemorrhage"
+  ],
+  "english_terms": [
+   "intracranial haemorrhage",
+   "intracranial hemorrhage",
+   "intracerebral haemorrhage"
+  ],
+  "related_terms": [
+   "haemorrhagic stroke",
+   "subarachnoid haemorrhage"
+  ],
+  "code_candidates": [
+   {
+    "system": "ICD-10",
+    "code": "I61",
+    "label": "Intracerebral haemorrhage",
+    "vocabulary_version": "WHO ICD-10 2019",
+    "relation": "candidate",
+    "source_url": "https://icd.who.int/browse10/2019/en#/I61"
+   },
+   {
+    "system": "ICD-10",
+    "code": "I62",
+    "label": "Other nontraumatic intracranial haemorrhage",
+    "vocabulary_version": "WHO ICD-10 2019",
+    "relation": "related",
+    "source_url": "https://icd.who.int/browse10/2019/en#/I62"
+   }
+  ]
+ },
+ {
+  "concept_id": "gastrointestinal_bleeding",
+  "input_terms": [
+   "消化管出血",
+   "gastrointestinal bleeding",
+   "GI bleeding"
+  ],
+  "english_terms": [
+   "gastrointestinal bleeding",
+   "gastrointestinal haemorrhage",
+   "GI bleeding"
+  ],
+  "related_terms": [
+   "major bleeding",
+   "upper gastrointestinal bleeding"
+  ],
+  "code_candidates": [
+   {
+    "system": "ICD-10",
+    "code": "K92.2",
+    "label": "Gastrointestinal haemorrhage, unspecified",
+    "vocabulary_version": "WHO ICD-10 2019",
+    "relation": "candidate",
+    "source_url": "https://icd.who.int/browse10/2019/en#/K92.2"
+   }
+  ]
+ },
+ {
+  "concept_id": "major_bleeding",
+  "input_terms": [
+   "大出血",
+   "重大な出血",
+   "major bleeding"
+  ],
+  "english_terms": [
+   "major bleeding",
+   "bleeding",
+   "haemorrhage"
+  ],
+  "related_terms": [
+   "clinically relevant non-major bleeding",
+   "intracranial haemorrhage",
+   "gastrointestinal bleeding"
+  ],
+  "code_candidates": [
+   {
+    "system": "ICD-10",
+    "code": "R58",
+    "label": "Haemorrhage, not elsewhere classified",
+    "vocabulary_version": "WHO ICD-10 2019",
+    "relation": "related",
+    "source_url": "https://icd.who.int/browse10/2019/en#/R58"
+   }
+  ]
+ },
+ {
+  "concept_id": "venous_thromboembolism",
+  "input_terms": [
+   "静脈血栓塞栓症",
+   "深部静脈血栓症",
+   "肺塞栓症",
+   "venous thromboembolism",
+   "VTE"
+  ],
+  "english_terms": [
+   "venous thromboembolism",
+   "VTE",
+   "deep vein thrombosis",
+   "pulmonary embolism"
+  ],
+  "related_terms": [
+   "thrombosis"
+  ],
+  "code_candidates": [
+   {
+    "system": "ICD-10",
+    "code": "I26",
+    "label": "Pulmonary embolism",
+    "vocabulary_version": "WHO ICD-10 2019",
+    "relation": "candidate",
+    "source_url": "https://icd.who.int/browse10/2019/en#/I26"
+   },
+   {
+    "system": "ICD-10",
+    "code": "I80",
+    "label": "Phlebitis and thrombophlebitis",
+    "vocabulary_version": "WHO ICD-10 2019",
+    "relation": "candidate",
+    "source_url": "https://icd.who.int/browse10/2019/en#/I80"
+   },
+   {
+    "system": "ICD-10",
+    "code": "I82",
+    "label": "Other venous embolism and thrombosis",
+    "vocabulary_version": "WHO ICD-10 2019",
+    "relation": "related",
+    "source_url": "https://icd.who.int/browse10/2019/en#/I82"
+   }
+  ]
+ },
+ {
+  "concept_id": "hypertension",
+  "input_terms": [
+   "高血圧",
+   "hypertension"
+  ],
+  "english_terms": [
+   "hypertension",
+   "essential hypertension"
+  ],
+  "related_terms": [
+   "blood pressure"
+  ],
+  "code_candidates": [
+   {
+    "system": "ICD-10",
+    "code": "I10",
+    "label": "Essential (primary) hypertension",
+    "vocabulary_version": "WHO ICD-10 2019",
+    "relation": "candidate",
+    "source_url": "https://icd.who.int/browse10/2019/en#/I10"
+   }
+  ]
+ },
+ {
+  "concept_id": "dyslipidaemia",
+  "input_terms": [
+   "脂質異常症",
+   "高脂血症",
+   "高コレステロール血症",
+   "dyslipidemia",
+   "dyslipidaemia",
+   "hypercholesterolemia"
+  ],
+  "english_terms": [
+   "dyslipidaemia",
+   "dyslipidemia",
+   "hypercholesterolaemia",
+   "hypercholesterolemia",
+   "hyperlipidaemia"
+  ],
+  "related_terms": [
+   "LDL cholesterol",
+   "statin"
+  ],
+  "code_candidates": [
+   {
+    "system": "ICD-10",
+    "code": "E78",
+    "label": "Disorders of lipoprotein metabolism and other lipidaemias",
+    "vocabulary_version": "WHO ICD-10 2019",
+    "relation": "candidate",
+    "source_url": "https://icd.who.int/browse10/2019/en#/E78"
+   }
+  ]
+ },
+ {
+  "concept_id": "chronic_kidney_disease",
+  "input_terms": [
+   "慢性腎臓病",
+   "慢性腎不全",
+   "chronic kidney disease",
+   "CKD"
+  ],
+  "english_terms": [
+   "chronic kidney disease",
+   "CKD"
+  ],
+  "related_terms": [
+   "renal impairment",
+   "end-stage renal disease",
+   "eGFR"
+  ],
+  "code_candidates": [
+   {
+    "system": "ICD-10",
+    "code": "N18",
+    "label": "Chronic kidney disease",
+    "vocabulary_version": "WHO ICD-10 2019",
+    "relation": "candidate",
+    "source_url": "https://icd.who.int/browse10/2019/en#/N18"
+   }
+  ]
+ },
+ {
+  "concept_id": "acute_kidney_injury",
+  "input_terms": [
+   "急性腎障害",
+   "急性腎不全",
+   "acute kidney injury",
+   "AKI"
+  ],
+  "english_terms": [
+   "acute kidney injury",
+   "AKI",
+   "acute renal failure"
+  ],
+  "related_terms": [
+   "renal impairment"
+  ],
+  "code_candidates": [
+   {
+    "system": "ICD-10",
+    "code": "N17",
+    "label": "Acute renal failure",
+    "vocabulary_version": "WHO ICD-10 2019",
+    "relation": "candidate",
+    "source_url": "https://icd.who.int/browse10/2019/en#/N17"
+   }
+  ]
+ },
+ {
+  "concept_id": "copd",
+  "input_terms": [
+   "慢性閉塞性肺疾患",
+   "COPD"
+  ],
+  "english_terms": [
+   "chronic obstructive pulmonary disease",
+   "COPD"
+  ],
+  "related_terms": [
+   "exacerbation",
+   "emphysema"
+  ],
+  "code_candidates": [
+   {
+    "system": "ICD-10",
+    "code": "J44",
+    "label": "Other chronic obstructive pulmonary disease",
+    "vocabulary_version": "WHO ICD-10 2019",
+    "relation": "candidate",
+    "source_url": "https://icd.who.int/browse10/2019/en#/J44"
+   }
+  ]
+ },
+ {
+  "concept_id": "asthma",
+  "input_terms": [
+   "喘息",
+   "気管支喘息",
+   "asthma"
+  ],
+  "english_terms": [
+   "asthma",
+   "bronchial asthma"
+  ],
+  "related_terms": [
+   "asthma exacerbation",
+   "severe asthma"
+  ],
+  "code_candidates": [
+   {
+    "system": "ICD-10",
+    "code": "J45",
+    "label": "Asthma",
+    "vocabulary_version": "WHO ICD-10 2019",
+    "relation": "candidate",
+    "source_url": "https://icd.who.int/browse10/2019/en#/J45"
+   }
+  ]
+ },
+ {
+  "concept_id": "pneumonia",
+  "input_terms": [
+   "肺炎",
+   "pneumonia"
+  ],
+  "english_terms": [
+   "pneumonia"
+  ],
+  "related_terms": [
+   "community-acquired pneumonia",
+   "lower respiratory tract infection"
+  ],
+  "code_candidates": [
+   {
+    "system": "ICD-10",
+    "code": "J18",
+    "label": "Pneumonia, organism unspecified",
+    "vocabulary_version": "WHO ICD-10 2019",
+    "relation": "candidate",
+    "source_url": "https://icd.who.int/browse10/2019/en#/J18"
+   }
+  ]
+ },
+ {
+  "concept_id": "rheumatoid_arthritis",
+  "input_terms": [
+   "関節リウマチ",
+   "rheumatoid arthritis"
+  ],
+  "english_terms": [
+   "rheumatoid arthritis",
+   "RA"
+  ],
+  "related_terms": [
+   "DMARD",
+   "biologic"
+  ],
+  "code_candidates": [
+   {
+    "system": "ICD-10",
+    "code": "M05",
+    "label": "Seropositive rheumatoid arthritis",
+    "vocabulary_version": "WHO ICD-10 2019",
+    "relation": "candidate",
+    "source_url": "https://icd.who.int/browse10/2019/en#/M05"
+   },
+   {
+    "system": "ICD-10",
+    "code": "M06",
+    "label": "Other rheumatoid arthritis",
+    "vocabulary_version": "WHO ICD-10 2019",
+    "relation": "candidate",
+    "source_url": "https://icd.who.int/browse10/2019/en#/M06"
+   }
+  ]
+ },
+ {
+  "concept_id": "psoriasis",
+  "input_terms": [
+   "乾癬",
+   "psoriasis"
+  ],
+  "english_terms": [
+   "psoriasis",
+   "plaque psoriasis"
+  ],
+  "related_terms": [
+   "psoriatic arthritis"
+  ],
+  "code_candidates": [
+   {
+    "system": "ICD-10",
+    "code": "L40",
+    "label": "Psoriasis",
+    "vocabulary_version": "WHO ICD-10 2019",
+    "relation": "candidate",
+    "source_url": "https://icd.who.int/browse10/2019/en#/L40"
+   }
+  ]
+ },
+ {
+  "concept_id": "ulcerative_colitis",
+  "input_terms": [
+   "潰瘍性大腸炎",
+   "ulcerative colitis"
+  ],
+  "english_terms": [
+   "ulcerative colitis",
+   "colitis ulcerative"
+  ],
+  "related_terms": [
+   "inflammatory bowel disease",
+   "IBD"
+  ],
+  "code_candidates": [
+   {
+    "system": "ICD-10",
+    "code": "K51",
+    "label": "Ulcerative colitis",
+    "vocabulary_version": "WHO ICD-10 2019",
+    "relation": "candidate",
+    "source_url": "https://icd.who.int/browse10/2019/en#/K51"
+   }
+  ]
+ },
+ {
+  "concept_id": "crohn_disease",
+  "input_terms": [
+   "クローン病",
+   "Crohn's disease",
+   "Crohn disease"
+  ],
+  "english_terms": [
+   "Crohn's disease",
+   "Crohn disease"
+  ],
+  "related_terms": [
+   "inflammatory bowel disease",
+   "IBD"
+  ],
+  "code_candidates": [
+   {
+    "system": "ICD-10",
+    "code": "K50",
+    "label": "Crohn disease [regional enteritis]",
+    "vocabulary_version": "WHO ICD-10 2019",
+    "relation": "candidate",
+    "source_url": "https://icd.who.int/browse10/2019/en#/K50"
+   }
+  ]
+ },
+ {
+  "concept_id": "multiple_sclerosis",
+  "input_terms": [
+   "多発性硬化症",
+   "multiple sclerosis"
+  ],
+  "english_terms": [
+   "multiple sclerosis",
+   "MS"
+  ],
+  "related_terms": [
+   "relapsing multiple sclerosis",
+   "disease-modifying therapy"
+  ],
+  "code_candidates": [
+   {
+    "system": "ICD-10",
+    "code": "G35",
+    "label": "Multiple sclerosis",
+    "vocabulary_version": "WHO ICD-10 2019",
+    "relation": "candidate",
+    "source_url": "https://icd.who.int/browse10/2019/en#/G35"
+   }
+  ]
+ },
+ {
+  "concept_id": "migraine",
+  "input_terms": [
+   "片頭痛",
+   "偏頭痛",
+   "migraine"
+  ],
+  "english_terms": [
+   "migraine"
+  ],
+  "related_terms": [
+   "headache",
+   "CGRP"
+  ],
+  "code_candidates": [
+   {
+    "system": "ICD-10",
+    "code": "G43",
+    "label": "Migraine",
+    "vocabulary_version": "WHO ICD-10 2019",
+    "relation": "candidate",
+    "source_url": "https://icd.who.int/browse10/2019/en#/G43"
+   }
+  ]
+ },
+ {
+  "concept_id": "epilepsy",
+  "input_terms": [
+   "てんかん",
+   "epilepsy"
+  ],
+  "english_terms": [
+   "epilepsy",
+   "seizures"
+  ],
+  "related_terms": [
+   "antiepileptic",
+   "anticonvulsant"
+  ],
+  "code_candidates": [
+   {
+    "system": "ICD-10",
+    "code": "G40",
+    "label": "Epilepsy",
+    "vocabulary_version": "WHO ICD-10 2019",
+    "relation": "candidate",
+    "source_url": "https://icd.who.int/browse10/2019/en#/G40"
+   }
+  ]
+ },
+ {
+  "concept_id": "parkinson_disease",
+  "input_terms": [
+   "パーキンソン病",
+   "Parkinson's disease",
+   "Parkinson disease"
+  ],
+  "english_terms": [
+   "Parkinson's disease",
+   "Parkinson disease"
+  ],
+  "related_terms": [
+   "parkinsonism"
+  ],
+  "code_candidates": [
+   {
+    "system": "ICD-10",
+    "code": "G20",
+    "label": "Parkinson disease",
+    "vocabulary_version": "WHO ICD-10 2019",
+    "relation": "candidate",
+    "source_url": "https://icd.who.int/browse10/2019/en#/G20"
+   }
+  ]
+ },
+ {
+  "concept_id": "dementia",
+  "input_terms": [
+   "認知症",
+   "アルツハイマー病",
+   "dementia",
+   "Alzheimer"
+  ],
+  "english_terms": [
+   "dementia",
+   "Alzheimer's disease",
+   "Alzheimer disease"
+  ],
+  "related_terms": [
+   "cognitive impairment"
+  ],
+  "code_candidates": [
+   {
+    "system": "ICD-10",
+    "code": "G30",
+    "label": "Alzheimer disease",
+    "vocabulary_version": "WHO ICD-10 2019",
+    "relation": "candidate",
+    "source_url": "https://icd.who.int/browse10/2019/en#/G30"
+   },
+   {
+    "system": "ICD-10",
+    "code": "F03",
+    "label": "Unspecified dementia",
+    "vocabulary_version": "WHO ICD-10 2019",
+    "relation": "related",
+    "source_url": "https://icd.who.int/browse10/2019/en#/F03"
+   }
+  ]
+ },
+ {
+  "concept_id": "depression",
+  "input_terms": [
+   "うつ病",
+   "抑うつ",
+   "depression",
+   "major depressive disorder"
+  ],
+  "english_terms": [
+   "depression",
+   "major depressive disorder",
+   "depressive disorder"
+  ],
+  "related_terms": [
+   "antidepressant",
+   "suicidality"
+  ],
+  "code_candidates": [
+   {
+    "system": "ICD-10",
+    "code": "F32",
+    "label": "Depressive episode",
+    "vocabulary_version": "WHO ICD-10 2019",
+    "relation": "candidate",
+    "source_url": "https://icd.who.int/browse10/2019/en#/F32"
+   },
+   {
+    "system": "ICD-10",
+    "code": "F33",
+    "label": "Recurrent depressive disorder",
+    "vocabulary_version": "WHO ICD-10 2019",
+    "relation": "candidate",
+    "source_url": "https://icd.who.int/browse10/2019/en#/F33"
+   }
+  ]
+ },
+ {
+  "concept_id": "schizophrenia",
+  "input_terms": [
+   "統合失調症",
+   "schizophrenia"
+  ],
+  "english_terms": [
+   "schizophrenia"
+  ],
+  "related_terms": [
+   "antipsychotic",
+   "psychosis"
+  ],
+  "code_candidates": [
+   {
+    "system": "ICD-10",
+    "code": "F20",
+    "label": "Schizophrenia",
+    "vocabulary_version": "WHO ICD-10 2019",
+    "relation": "candidate",
+    "source_url": "https://icd.who.int/browse10/2019/en#/F20"
+   }
+  ]
+ },
+ {
+  "concept_id": "osteoporosis",
+  "input_terms": [
+   "骨粗鬆症",
+   "骨粗しょう症",
+   "osteoporosis"
+  ],
+  "english_terms": [
+   "osteoporosis"
+  ],
+  "related_terms": [
+   "fracture",
+   "fragility fracture",
+   "bone mineral density"
+  ],
+  "code_candidates": [
+   {
+    "system": "ICD-10",
+    "code": "M81",
+    "label": "Osteoporosis without pathological fracture",
+    "vocabulary_version": "WHO ICD-10 2019",
+    "relation": "candidate",
+    "source_url": "https://icd.who.int/browse10/2019/en#/M81"
+   },
+   {
+    "system": "ICD-10",
+    "code": "M80",
+    "label": "Osteoporosis with pathological fracture",
+    "vocabulary_version": "WHO ICD-10 2019",
+    "relation": "related",
+    "source_url": "https://icd.who.int/browse10/2019/en#/M80"
+   }
+  ]
+ },
+ {
+  "concept_id": "multiple_myeloma",
+  "input_terms": [
+   "多発性骨髄腫",
+   "multiple myeloma"
+  ],
+  "english_terms": [
+   "multiple myeloma",
+   "plasma cell myeloma"
+  ],
+  "related_terms": [
+   "myeloma"
+  ],
+  "code_candidates": [
+   {
+    "system": "ICD-10",
+    "code": "C90.0",
+    "label": "Multiple myeloma",
+    "vocabulary_version": "WHO ICD-10 2019",
+    "relation": "candidate",
+    "source_url": "https://icd.who.int/browse10/2019/en#/C90.0"
+   }
+  ]
+ },
+ {
+  "concept_id": "breast_cancer",
+  "input_terms": [
+   "乳癌",
+   "乳がん",
+   "breast cancer"
+  ],
+  "english_terms": [
+   "breast cancer",
+   "breast neoplasm"
+  ],
+  "related_terms": [
+   "HER2",
+   "hormone receptor"
+  ],
+  "code_candidates": [
+   {
+    "system": "ICD-10",
+    "code": "C50",
+    "label": "Malignant neoplasm of breast",
+    "vocabulary_version": "WHO ICD-10 2019",
+    "relation": "candidate",
+    "source_url": "https://icd.who.int/browse10/2019/en#/C50"
+   }
+  ]
+ },
+ {
+  "concept_id": "lung_cancer",
+  "input_terms": [
+   "肺癌",
+   "肺がん",
+   "lung cancer"
+  ],
+  "english_terms": [
+   "lung cancer",
+   "non-small cell lung cancer",
+   "NSCLC"
+  ],
+  "related_terms": [
+   "lung neoplasm"
+  ],
+  "code_candidates": [
+   {
+    "system": "ICD-10",
+    "code": "C34",
+    "label": "Malignant neoplasm of bronchus and lung",
+    "vocabulary_version": "WHO ICD-10 2019",
+    "relation": "candidate",
+    "source_url": "https://icd.who.int/browse10/2019/en#/C34"
+   }
+  ]
+ },
+ {
+  "concept_id": "colorectal_cancer",
+  "input_terms": [
+   "大腸癌",
+   "大腸がん",
+   "結腸癌",
+   "直腸癌",
+   "colorectal cancer"
+  ],
+  "english_terms": [
+   "colorectal cancer",
+   "colon cancer",
+   "rectal cancer"
+  ],
+  "related_terms": [
+   "colorectal neoplasm"
+  ],
+  "code_candidates": [
+   {
+    "system": "ICD-10",
+    "code": "C18",
+    "label": "Malignant neoplasm of colon",
+    "vocabulary_version": "WHO ICD-10 2019",
+    "relation": "candidate",
+    "source_url": "https://icd.who.int/browse10/2019/en#/C18"
+   },
+   {
+    "system": "ICD-10",
+    "code": "C20",
+    "label": "Malignant neoplasm of rectum",
+    "vocabulary_version": "WHO ICD-10 2019",
+    "relation": "candidate",
+    "source_url": "https://icd.who.int/browse10/2019/en#/C20"
+   }
+  ]
+ },
+ {
+  "concept_id": "prostate_cancer",
+  "input_terms": [
+   "前立腺癌",
+   "前立腺がん",
+   "prostate cancer"
+  ],
+  "english_terms": [
+   "prostate cancer"
+  ],
+  "related_terms": [
+   "androgen deprivation"
+  ],
+  "code_candidates": [
+   {
+    "system": "ICD-10",
+    "code": "C61",
+    "label": "Malignant neoplasm of prostate",
+    "vocabulary_version": "WHO ICD-10 2019",
+    "relation": "candidate",
+    "source_url": "https://icd.who.int/browse10/2019/en#/C61"
+   }
+  ]
+ },
+ {
+  "concept_id": "hepatocellular_carcinoma",
+  "input_terms": [
+   "肝癌",
+   "肝がん",
+   "肝細胞癌",
+   "hepatocellular carcinoma",
+   "liver cancer"
+  ],
+  "english_terms": [
+   "hepatocellular carcinoma",
+   "liver cancer",
+   "HCC"
+  ],
+  "related_terms": [
+   "hepatic neoplasm"
+  ],
+  "code_candidates": [
+   {
+    "system": "ICD-10",
+    "code": "C22",
+    "label": "Malignant neoplasm of liver and intrahepatic bile ducts",
+    "vocabulary_version": "WHO ICD-10 2019",
+    "relation": "candidate",
+    "source_url": "https://icd.who.int/browse10/2019/en#/C22"
+   }
+  ]
+ },
+ {
+  "concept_id": "thrombocytopenia",
+  "input_terms": [
+   "血小板減少症",
+   "血小板減少",
+   "thrombocytopenia"
+  ],
+  "english_terms": [
+   "thrombocytopenia"
+  ],
+  "related_terms": [
+   "immune thrombocytopenia",
+   "platelet count"
+  ],
+  "code_candidates": [
+   {
+    "system": "ICD-10",
+    "code": "D69.6",
+    "label": "Thrombocytopenia, unspecified",
+    "vocabulary_version": "WHO ICD-10 2019",
+    "relation": "candidate",
+    "source_url": "https://icd.who.int/browse10/2019/en#/D69.6"
+   }
+  ]
+ },
+ {
+  "concept_id": "neutropenia",
+  "input_terms": [
+   "好中球減少症",
+   "好中球減少",
+   "無顆粒球症",
+   "neutropenia",
+   "agranulocytosis"
+  ],
+  "english_terms": [
+   "neutropenia",
+   "agranulocytosis"
+  ],
+  "related_terms": [
+   "febrile neutropenia",
+   "leukopenia"
+  ],
+  "code_candidates": [
+   {
+    "system": "ICD-10",
+    "code": "D70",
+    "label": "Agranulocytosis",
+    "vocabulary_version": "WHO ICD-10 2019",
+    "relation": "candidate",
+    "source_url": "https://icd.who.int/browse10/2019/en#/D70"
+   }
+  ]
+ },
+ {
+  "concept_id": "acute_pancreatitis",
+  "input_terms": [
+   "急性膵炎",
+   "膵炎",
+   "pancreatitis"
+  ],
+  "english_terms": [
+   "acute pancreatitis",
+   "pancreatitis"
+  ],
+  "related_terms": [
+   "lipase"
+  ],
+  "code_candidates": [
+   {
+    "system": "ICD-10",
+    "code": "K85",
+    "label": "Acute pancreatitis",
+    "vocabulary_version": "WHO ICD-10 2019",
+    "relation": "candidate",
+    "source_url": "https://icd.who.int/browse10/2019/en#/K85"
+   }
+  ]
+ },
+ {
+  "concept_id": "anaphylaxis",
+  "input_terms": [
+   "アナフィラキシー",
+   "anaphylaxis"
+  ],
+  "english_terms": [
+   "anaphylaxis",
+   "anaphylactic reaction"
+  ],
+  "related_terms": [
+   "hypersensitivity",
+   "allergic reaction"
+  ],
+  "code_candidates": [
+   {
+    "system": "ICD-10",
+    "code": "T78.2",
+    "label": "Anaphylactic shock, unspecified",
+    "vocabulary_version": "WHO ICD-10 2019",
+    "relation": "candidate",
+    "source_url": "https://icd.who.int/browse10/2019/en#/T78.2"
+   }
+  ]
+ },
+ {
+  "concept_id": "herpes_zoster",
+  "input_terms": [
+   "帯状疱疹",
+   "herpes zoster",
+   "shingles"
+  ],
+  "english_terms": [
+   "herpes zoster",
+   "shingles"
+  ],
+  "related_terms": [
+   "varicella zoster"
+  ],
+  "code_candidates": [
+   {
+    "system": "ICD-10",
+    "code": "B02",
+    "label": "Zoster [herpes zoster]",
+    "vocabulary_version": "WHO ICD-10 2019",
+    "relation": "candidate",
+    "source_url": "https://icd.who.int/browse10/2019/en#/B02"
+   }
+  ]
+ },
+ {
+  "concept_id": "covid19",
+  "input_terms": [
+   "新型コロナウイルス感染症",
+   "COVID-19",
+   "COVID19",
+   "SARS-CoV-2"
+  ],
+  "english_terms": [
+   "COVID-19",
+   "SARS-CoV-2 infection"
+  ],
+  "related_terms": [
+   "coronavirus"
+  ],
+  "code_candidates": [
+   {
+    "system": "ICD-10",
+    "code": "U07.1",
+    "label": "COVID-19, virus identified",
+    "vocabulary_version": "WHO ICD-10 2019",
+    "relation": "candidate",
+    "source_url": "https://icd.who.int/browse10/2019/en#/U07.1"
+   }
+  ]
+ },
+ {
+  "concept_id": "serious_infection",
+  "input_terms": [
+   "重篤な感染症",
+   "重症感染症",
+   "serious infection"
+  ],
+  "english_terms": [
+   "serious infection",
+   "serious infections"
+  ],
+  "related_terms": [
+   "hospitalised infection",
+   "sepsis",
+   "opportunistic infection"
+  ],
+  "code_candidates": []
+ },
+ {
+  "concept_id": "rhabdomyolysis",
+  "input_terms": [
+   "横紋筋融解症",
+   "ミオパチー",
+   "rhabdomyolysis",
+   "myopathy"
+  ],
+  "english_terms": [
+   "rhabdomyolysis",
+   "myopathy"
+  ],
+  "related_terms": [
+   "creatine kinase",
+   "muscle symptoms"
+  ],
+  "code_candidates": []
+ },
+ {
+  "concept_id": "major_adverse_cardiovascular_events",
+  "input_terms": [
+   "主要心血管イベント",
+   "心血管イベント",
+   "MACE"
+  ],
+  "english_terms": [
+   "major adverse cardiovascular events",
+   "MACE",
+   "cardiovascular events"
+  ],
+  "related_terms": [
+   "cardiovascular death",
+   "myocardial infarction",
+   "stroke"
+  ],
+  "code_candidates": []
+ },
+ {
+  "concept_id": "fracture",
+  "input_terms": [
+   "骨折",
+   "fracture"
+  ],
+  "english_terms": [
+   "fracture",
+   "fractures"
+  ],
+  "related_terms": [
+   "hip fracture",
+   "fragility fracture",
+   "osteoporotic fracture"
+  ],
+  "code_candidates": []
+ },
+ {
+  "concept_id": "pregnancy_outcomes",
+  "input_terms": [
+   "妊娠",
+   "妊娠転帰",
+   "先天異常",
+   "pregnancy",
+   "pregnancy outcomes"
+  ],
+  "english_terms": [
+   "pregnancy",
+   "pregnancy outcomes"
+  ],
+  "related_terms": [
+   "major congenital malformations",
+   "spontaneous abortion",
+   "preterm birth",
+   "stillbirth"
+  ],
+  "code_candidates": []
+ }
+]
