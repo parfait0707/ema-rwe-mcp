@@ -10,8 +10,31 @@ from pathlib import Path
 from .domain import RWEError, Study, now
 from .ema import BASE, is_non_interventional, norm
 from .selection import filter_rows
-from .terminology import search_units
+from .terminology import search_phrases
 from .vocabulary import canonical, expand
+
+SCHEMA_VERSION = 4
+FTS_COLUMNS = (
+    "id UNINDEXED",
+    "title",
+    "metadata",
+    "design",
+    "definitions",
+    "data_sources",
+    "condition",
+    "outcomes",
+    "exposure",
+    "objective",
+)
+# bm25 weights per FTS column (id has none). Title and the role-specific columns outrank free text.
+BM25_WEIGHTS = (0, 3, 1, 5, 4, 3, 4, 4, 4, 2)
+# Which columns a role-scoped search may match. Title is always allowed: it names the outcome.
+ROLE_COLUMNS = {
+    "any": None,
+    "outcome": ("title", "outcomes", "objective", "definitions"),
+    "condition": ("title", "condition"),
+    "exposure": ("title", "exposure", "data_sources"),
+}
 
 
 class Repository:
@@ -20,15 +43,16 @@ class Repository:
         path.parent.mkdir(parents=True, exist_ok=True)
         with self.connection() as db:
             version = db.execute("PRAGMA user_version").fetchone()[0]
-            if version > 3:
+            if version > SCHEMA_VERSION:
                 raise RWEError("DATABASE_ERROR", "Database schema is newer than this server supports.")
-            if version == 3:
+            if version == SCHEMA_VERSION:
                 return  # Committed catalogue: a no-op DDL still bumps the header and dirties git.
-            db.executescript("""
+            db.executescript(f"""
                 PRAGMA journal_mode=WAL;
                 CREATE TABLE IF NOT EXISTS studies (id TEXT PRIMARY KEY, body TEXT NOT NULL);
-                CREATE VIRTUAL TABLE IF NOT EXISTS study_fts USING fts5(
-                    id UNINDEXED, title, metadata, design, definitions, data_sources,
+                DROP TABLE IF EXISTS study_fts;
+                CREATE VIRTUAL TABLE study_fts USING fts5(
+                    {", ".join(FTS_COLUMNS)},
                     tokenize='unicode61 remove_diacritics 2');
                 CREATE TABLE IF NOT EXISTS analyses (
                     study_id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL, body TEXT NOT NULL);
@@ -39,8 +63,11 @@ class Repository:
                     checksum TEXT PRIMARY KEY, filename TEXT, imported_at TEXT, count INTEGER);
                 CREATE TABLE IF NOT EXISTS study_catalogue_search (
                     study_id TEXT PRIMARY KEY, search_text TEXT NOT NULL);
-                PRAGMA user_version=3;
+                PRAGMA user_version={SCHEMA_VERSION};
             """)
+            # Re-index existing rows; role columns stay empty until the export is imported again.
+            for row in db.execute("SELECT body FROM studies").fetchall():
+                self._index(db, Study.model_validate_json(row[0]))
 
     @contextmanager
     def connection(self):
@@ -89,7 +116,7 @@ class Repository:
             return value.get("value", "") if isinstance(value, dict) else ""
 
         db.execute(
-            "INSERT INTO study_fts VALUES (?,?,?,?,?,?)",
+            "INSERT INTO study_fts VALUES (?,?,?,?,?,?,?,?,?,?)",
             (
                 study.study_id,
                 study.title,
@@ -102,8 +129,6 @@ class Repository:
                         *study.data_source_types,
                         catalogue_search_text,
                         values(a.get("population")),
-                        values(a.get("exposure")),
-                        values(a.get("outcomes")),
                         values(a.get("comparator")),
                     ]
                 ),
@@ -119,6 +144,10 @@ class Repository:
                     " ".join([s["value"], *s["types"], s["role"], s["definition"]])
                     for s in a.get("source_assessments", [])
                 ),
+                " ".join(study.conditions),
+                study.outcomes + " " + values(a.get("outcomes")),
+                " ".join(study.exposures) + " " + values(a.get("exposure")),
+                study.objective,
             ),
         )
 
@@ -167,18 +196,20 @@ class Repository:
         synonyms: list[str] | None = None,
         codes=None,
         filters=None,
+        role: str = "any",
     ) -> list[dict]:
         if (limit is not None and not 1 <= limit <= 20) or len(query) > 2000:
             raise RWEError("INVALID_INPUT", "limit must be 1..20; query must be at most 2000 characters.")
+        if role not in ROLE_COLUMNS:
+            raise RWEError("INVALID_INPUT", "role must be one of any, outcome, condition, exposure.")
         expansion = expand(query, synonyms, codes)
-        tokens = [canonical(t) for t in search_units(query, expansion) if canonical(t)]
-        match = " OR ".join('"' + t.replace('"', '""') + '"' for t in tokens)
+        match = fts_match(search_phrases(query, expansion), ROLE_COLUMNS[role])
         with self.connection() as db:
             if query.strip() and not match:
                 return []
             if match:
                 rows = db.execute(
-                    """SELECT s.body, bm25(study_fts,0,3,1,5,4,3) AS rank
+                    f"""SELECT s.body, bm25(study_fts,{",".join(map(str, BM25_WEIGHTS))}) AS rank
                     FROM study_fts JOIN studies s ON s.id=study_fts.id
                     WHERE study_fts MATCH ? ORDER BY rank, s.id""",
                     (match,),
@@ -219,6 +250,20 @@ class Repository:
         return results
 
 
+def fts_match(groups: list[list[str]], columns: tuple[str, ...] | None) -> str:
+    """OR of word groups. Multi-word groups must co-occur within three tokens of one column."""
+    clauses = []
+    for group in groups:
+        words = ['"' + canonical(w).replace('"', '""') + '"' for w in group if canonical(w)]
+        if not words:
+            continue
+        clauses.append(words[0] if len(words) == 1 else f"NEAR({' '.join(words)}, 3)")
+    if not clauses:
+        return ""
+    expr = " OR ".join(clauses)
+    return f"{{{' '.join(columns)}}}: ({expr})" if columns else expr
+
+
 ALIASES = {
     "study_id": ("study id", "study identifier", "id"),
     "title": ("official title and acronym", "study title", "title"),
@@ -235,6 +280,23 @@ ALIASES = {
         "data source s",
         "data source name",
         "data source names",
+    ),
+    "conditions": ("medicinal condition to be studied", "medical condition", "conditions"),
+    "outcomes": ("outcomes", "outcome"),
+    "exposures": (
+        "study drug international non proprietary name inn or common name",
+        "medicinal product name",
+        "inn",
+    ),
+    "objective": ("main study objective", "objective"),
+}
+# Secondary columns appended to the role fields when present.
+ROLE_EXTRA_COLUMNS = {
+    "conditions": ("additional medical condition s",),
+    "exposures": (
+        "medicinal product name",
+        "medicinal product name other",
+        "anatomical therapeutic chemical atc code",
     ),
 }
 
@@ -290,6 +352,10 @@ def import_csv(
     selected.update(column_map or {})
     if any(key not in ALIASES or value not in fieldnames for key, value in (column_map or {}).items()):
         raise RWEError("CSV_SCHEMA_ERROR", "column-map must map known internal fields to existing headers.")
+    role_columns = {
+        key: [c for c in [selected.get(key), *(headers.get(h) for h in ROLE_EXTRA_COLUMNS.get(key, ()))] if c]
+        for key in ("conditions", "outcomes", "exposures", "objective")
+    }
     if any(
         not selected.get(key) or selected[key] not in fieldnames
         for key in ("study_id", "title", "study_type")
@@ -319,6 +385,14 @@ def import_csv(
             raise RWEError("CSV_SCHEMA_ERROR", f"Invalid or duplicate Study ID/title at CSV record {lineno}.")
         for key in ("countries", "data_source_types", "catalogue_data_sources", "study_designs"):
             v[key] = [x.strip() for x in re.split(r"[|;\n]+", v.get(key, "")) if x.strip()]
+        for key, columns in role_columns.items():
+            texts = [(row.get(c) or "").strip() for c in columns]
+            if key in ("conditions", "exposures"):
+                v[key] = list(
+                    dict.fromkeys(x.strip() for t in texts for x in re.split(r"[|;\n]+", t) if x.strip())
+                )
+            else:
+                v[key] = "\n".join(t for t in texts if t)
         if other_sources_column:
             v["catalogue_data_sources"] += [
                 x.strip() for x in re.split(r"[|;\n]+", row.get(other_sources_column, "") or "") if x.strip()

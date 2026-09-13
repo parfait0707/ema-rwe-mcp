@@ -14,6 +14,12 @@ def default_db_path() -> Path:
     return user_data_path("ema-rwe-mcp") / "ema.sqlite3"
 
 
+def default_terminology_path() -> Path | None:
+    """The committed Japanese/English concept dictionary at <checkout>/data/terminology.json, if present."""
+    path = REPO_ROOT / "data" / "terminology.json"
+    return path if (REPO_ROOT / "pyproject.toml").is_file() and path.is_file() else None
+
+
 @dataclass
 class Settings:
     db_path: Path = field(default_factory=lambda: Path(os.getenv("EMA_DB_PATH") or default_db_path()))
@@ -32,6 +38,9 @@ class Settings:
     max_comparison_studies: int = field(
         default_factory=lambda: int(os.getenv("EMA_MAX_COMPARISON_STUDIES", "5"))
     )
+    max_listed_candidates: int = field(
+        default_factory=lambda: int(os.getenv("EMA_MAX_LISTED_CANDIDATES", "50"))
+    )
     user_agent: str = field(default_factory=lambda: os.getenv("EMA_USER_AGENT", "ema-rwe-mcp/0.1"))
     llm_base_url: str = field(default_factory=lambda: os.getenv("LLM_BASE_URL", ""))
     llm_api_key: str = field(default_factory=lambda: os.getenv("LLM_API_KEY", ""))
@@ -49,7 +58,7 @@ class Settings:
     )
 
     def __post_init__(self):
-        for name in ("max_screening_studies", "max_comparison_studies"):
+        for name in ("max_screening_studies", "max_comparison_studies", "max_listed_candidates"):
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 1000:
                 raise ValueError(f"{name} must be an integer from 1 to 1000.")
