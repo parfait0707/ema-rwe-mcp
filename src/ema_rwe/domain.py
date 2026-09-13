@@ -36,6 +36,11 @@ class Study(Model):
     data_source_types_source: str | None = None
     data_source_types_checked_at: str | None = None
     catalogue_data_sources: list[str] = Field(default_factory=list)
+    # Role-specific catalogue text from the Studies export; empty when the snapshot lacks the column.
+    conditions: list[str] = Field(default_factory=list)
+    outcomes: str = ""
+    exposures: list[str] = Field(default_factory=list)
+    objective: str = ""
     source_url: str
     metadata_source: str = ""
     retrieved_at: str = Field(default_factory=now)

@@ -15,11 +15,24 @@ from .exploration import Explorer
 from .http import EMAClient
 from .llm import EXTRACTION_PROMPT, complete_json, configured, extract_with_provider
 from .pdf import extract_pages, sections, validate_evidence
-from .selection import TYPED_SOURCES, SearchFilters, selection
+from .selection import TYPED_SOURCES, SearchFilters, compact, selection
 from .source_types import preference_for
 from .storage import Repository, import_csv
 from .terminology import proposed_codes
 from .vocabulary import expand
+
+
+def expansion_summary(expansion: dict) -> dict:
+    """The parts of a query expansion a caller acts on; plan_study_search returns the full form."""
+    clinical = expansion["clinical"]
+    return {
+        "synonyms": expansion["synonyms"],
+        "english_terms": clinical["english_terms"],
+        "related_terms": clinical["related_terms"],
+        "codes": [f"{c['system']}:{c['code']}" for c in clinical["code_candidates"]],
+        "drug_terms": clinical["drugs"]["english_terms"],
+        "drugs_need_refresh": clinical["drugs"]["needs_refresh"],
+    }
 
 
 def source_type_from_filename(filename: str) -> str | None:
@@ -145,11 +158,15 @@ class Service:
         synonyms: list[str] | None = None,
         codes: list[CodeCandidate] | None = None,
         filters: SearchFilters | None = None,
+        role: str = "any",
+        detail: str = "compact",
     ):
         if not 1 <= limit <= 20:
             raise RWEError("INVALID_INPUT", "limit must be 1..20; preview also obeys max_comparison_studies.")
+        if detail not in ("compact", "full"):
+            raise RWEError("INVALID_INPUT", "detail must be compact or full.")
         candidates = self.repo.search(
-            query, None, darwin_only, status, analyzed_only, synonyms, codes, filters
+            query, None, darwin_only, status, analyzed_only, synonyms, codes, filters, role
         )
         results = candidates[: min(limit, self.settings.max_comparison_studies)]
         for result in results:
@@ -158,29 +175,50 @@ class Service:
                 {k: r.get(k) for k in ("protocol_id", "local_filename", "version", "document_url")}
                 for r in self.archive.list(result["study_id"])
             ]
-        catalogue = self.catalogue_status()
+        if detail == "compact":
+            results = [
+                {
+                    **compact(r),
+                    **{k: r[k] for k in ("protocol_id", "local_protocols", "protocol_data_sources")},
+                }
+                for r in results
+            ]
+        expansion = expand(query, synonyms, codes)
         return {
             "query": query,
-            **selection(candidates, self.settings.max_screening_studies),
+            "role": role,
+            **self._selection(candidates),
             "max_comparison_studies": self.settings.max_comparison_studies,
             "returned_count": len(results),
             "results_are_preview": len(results) < len(candidates),
+            "detail": detail,
             "filters": (filters or SearchFilters()).model_dump(),
             "results": results,
-            "query_expansion": expand(query, synonyms, codes),
-            "search_mode": "local_fts_bm25",
+            "query_expansion": expansion if detail == "full" else expansion_summary(expansion),
+            "search_mode": "local_fts_near_bm25",
             "network_requests": 0,
-            "catalogue": catalogue,
+            **self._catalogue_summary(bool(candidates)),
+            "note": "Protocol fields are not_analyzed until analyze_protocol and extraction are completed. "
+            "detail=full returns descriptions, provenance and the full query expansion.",
+        }
+
+    def _selection(self, candidates):
+        return selection(candidates, self.settings.max_screening_studies, self.settings.max_listed_candidates)
+
+    def _catalogue_summary(self, has_candidates: bool):
+        """Only the catalogue facts a search caller acts on; catalogue_status has the rest."""
+        catalogue = self.catalogue_status()
+        return {
+            "catalogue": {
+                k: catalogue[k] for k in ("status", "source_type_imports", "browser_refresh_recommended")
+            },
             "catalogue_action": (
                 "none"
-                if candidates
+                if has_candidates
                 else "browser_export_then_import"
                 if catalogue["browser_refresh_recommended"]
                 else "refine_queries_or_request_fresh_export"
             ),
-            "note": "Protocol fields are not_analyzed until analyze_protocol and extraction are completed. "
-            "Use analyzed_only=true for previously extracted protocols. Latest is as-of protocol_source; "
-            "call analyze_protocol to check for updates. Inspect query_expansion and add synonyms or call plan_study_search.",
         }
 
     async def compare_protocols(
@@ -192,6 +230,8 @@ class Service:
         synonyms=None,
         codes=None,
         source_preference: SourcePreference | None = None,
+        role: str = "any",
+        study_ids: list[str] | None = None,
     ):
         if (
             not question.strip()
@@ -203,27 +243,36 @@ class Service:
         preference = preference_for(filters, source_preference)
         unique = {}
         for query in queries:
-            for row in self.repo.search(query, None, darwin_only, None, False, synonyms, codes, filters):
+            for row in self.repo.search(
+                query, None, darwin_only, None, False, synonyms, codes, filters, role
+            ):
                 unique.setdefault(row["study_id"], row)
         candidates = list(unique.values())
-        catalogue = self.catalogue_status()
+        if study_ids is not None:
+            # An explicit user choice among the listed candidates; never a silent top N.
+            if (
+                not study_ids
+                or len(study_ids) != len(set(study_ids))
+                or len(study_ids) > self.settings.max_screening_studies
+                or not set(study_ids) <= set(unique)
+            ):
+                raise RWEError(
+                    "INVALID_INPUT",
+                    "study_ids must be unique candidate Study IDs from this search, within max_screening_studies.",
+                )
+            candidates = [unique[sid] for sid in study_ids]
         search = {
-            **selection(candidates, self.settings.max_screening_studies),
+            **self._selection(candidates),
             "max_comparison_studies": self.settings.max_comparison_studies,
             "source_preference": preference.model_dump() if preference else None,
             "queries": queries,
+            "role": role,
+            "selected_study_ids": study_ids,
             "filters": (filters or SearchFilters()).model_dump(),
-            "query_expansions": [expand(q, synonyms, codes) for q in queries],
+            "query_expansions": [expansion_summary(expand(q, synonyms, codes)) for q in queries],
             "darwin_only": darwin_only,
             "search_scope": "local catalogue metadata and saved analysis only",
-            "catalogue": catalogue,
-            "catalogue_action": (
-                "none"
-                if candidates
-                else "browser_export_then_import"
-                if catalogue["browser_refresh_recommended"]
-                else "refine_queries_or_request_fresh_export"
-            ),
+            **self._catalogue_summary(bool(candidates)),
         }
         if not 1 <= len(candidates) <= self.settings.max_screening_studies:
             return {**search, "network_requests": 0, "rows": [], "pdf_downloads": 0}

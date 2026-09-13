@@ -9,6 +9,7 @@ from pathlib import Path
 
 from pydantic import Field, ValidationError
 
+from .config import default_terminology_path
 from .domain import CodeCandidate, Model, RWEError
 from .vocabulary import canonical, contains
 
@@ -108,7 +109,7 @@ def clinical_expansion(query: str, codes: list[CodeCandidate] | None = None) -> 
     from .drugs import drug_expansion
 
     concepts, revision = [ILD], "clinical-v1"
-    path = os.getenv("EMA_TERMINOLOGY_PATH")
+    path = os.getenv("EMA_TERMINOLOGY_PATH") or default_terminology_path()
     if path:
         try:
             stat = Path(path).stat()
@@ -177,6 +178,22 @@ def clinical_expansion(query: str, codes: list[CodeCandidate] | None = None) -> 
 
 def search_units(query: str, expansion: dict) -> list[str]:
     """English phrases + whole code strings; never search the '9' from J84.9 alone."""
+    words, code_terms = _content_words(query, expansion)
+    return list(
+        dict.fromkeys(
+            [
+                *words,
+                *expansion["synonyms"],
+                *expansion["clinical"]["english_terms"],
+                *expansion["clinical"]["related_terms"],
+                *code_terms,
+            ]
+        )
+    )[:350]
+
+
+def _content_words(query: str, expansion: dict) -> tuple[list[str], list[str]]:
+    """Query words minus codes, code-system names and stop words, plus the whole code strings."""
     remainder = query
     code_terms = [v for c in expansion["clinical"]["code_candidates"] for v in c["search_variants"]]
     for term in sorted(code_terms, key=len, reverse=True):
@@ -208,17 +225,25 @@ def search_units(query: str, expansion: dict) -> list[str]:
     }
     # Do not partially extract ASCII from a non-English word.
     words = [t for t in re.findall(r"\w+", remainder) if t.isascii() and t.casefold() not in stop]
-    return list(
-        dict.fromkeys(
-            [
-                *words,
-                *expansion["synonyms"],
-                *expansion["clinical"]["english_terms"],
-                *expansion["clinical"]["related_terms"],
-                *code_terms,
-            ]
-        )
-    )[:350]
+    return words, code_terms
+
+
+def search_phrases(query: str, expansion: dict) -> list[list[str]]:
+    """Word groups for the catalogue index: words in a group must co-occur (NEAR); groups are OR-ed.
+
+    The query itself is one group when it has at most four content words. Longer free text falls
+    back to single words so that a sentence-style question still retrieves candidates.
+    """
+    words, code_terms = _content_words(query, expansion)
+    groups = [words] if 0 < len(words) <= 4 else [[w] for w in words]
+    for term in [
+        *expansion["synonyms"],
+        *expansion["clinical"]["english_terms"],
+        *expansion["clinical"]["related_terms"],
+        *code_terms,
+    ]:
+        groups.append(re.findall(r"\w+", term))
+    return [g for g in groups if g][:350]
 
 
 def proposed_codes(raw: list[dict]) -> list[CodeCandidate]:

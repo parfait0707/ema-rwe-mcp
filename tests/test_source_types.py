@@ -12,7 +12,7 @@ from ema_rwe.config import Settings
 from ema_rwe.domain import Extraction, ProtocolAnswer, RWEError, SourceAssessment, SourcePreference
 from ema_rwe.selection import SearchFilters
 from ema_rwe.source_types import assess_row, select_rows
-from ema_rwe.storage import Repository, import_csv
+from ema_rwe.storage import SCHEMA_VERSION, Repository, import_csv
 
 QUOTE = "The study will use Example Primary Care Database electronic health records to define the cohort."
 
@@ -326,7 +326,7 @@ def test_version_two_database_and_new_limits(settings, monkeypatch):
         db.execute("PRAGMA user_version=2")
     repo = Repository(settings.db_path)
     with repo.connection() as db:
-        assert db.execute("PRAGMA user_version").fetchone()[0] == 3
+        assert db.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
     monkeypatch.setenv("EMA_MAX_SCREENING_STUDIES", "12")
     monkeypatch.setenv("EMA_MAX_COMPARISON_STUDIES", "4")
     assert Settings().max_screening_studies == 12 and Settings().max_comparison_studies == 4

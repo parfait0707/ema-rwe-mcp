@@ -7,6 +7,8 @@ __pycache__/
 # data/: only the committed catalogue DB and the empty import folders are tracked.
 data/*
 !data/ema.sqlite3
+!data/ema-medicines.json
+!data/terminology.json
 !data/imports/
 data/imports/*
 !data/imports/studies/
