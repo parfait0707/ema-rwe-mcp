@@ -58,7 +58,15 @@ def parser():
         "--source-role", default="any", choices=["any", "cohort", "outcome", "exposure", "covariate", "other"]
     )
     compare.add_argument("--source-mode", default="prefer", choices=["prefer", "only"])
+    search.add_argument("--detail", choices=["compact", "full"], default="compact")
+    compare.add_argument("--study-id", action="append", dest="study_ids", help="Explicit candidate choice")
     for cmd in (search, compare):
+        cmd.add_argument(
+            "--role",
+            choices=["any", "outcome", "condition", "exposure"],
+            default="any",
+            help="Restrict matching to the catalogue columns for this role (plus title).",
+        )
         cmd.add_argument("--country", action="append", default=[])
         cmd.add_argument(
             "--source-type",
@@ -155,6 +163,8 @@ async def run(args):
                     args.synonym,
                     args.code,
                     filters,
+                    args.role,
+                    args.detail,
                 )
             case "compare":
                 if (
@@ -175,6 +185,8 @@ async def run(args):
                     )
                     if args.prefer_source_type
                     else None,
+                    args.role,
+                    args.study_ids,
                 )
             case "comparison":
                 return await service.get_protocol_comparison(args.comparison_id, args.study_id)

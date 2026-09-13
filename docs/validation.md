@@ -109,6 +109,15 @@ v0.1時点で`pytest`全46件、`ruff check src tests`、sdistとwheelのビル�
 - `uv run pytest -q`: 148 passed（種別タグ取込・ファイル名解析・others絞り込み・既定DBパスの回帰テストを追加）。`ruff check`／`ruff format --check`とも合格。
 - 未検証: Windows側`.codex/config.toml`の絶対パスでの実起動、MCPクライアントからの`needs_narrowing`→質問→`filters`再実行の実会話。
 
+## 2026-09-14 近傍一致・役割別検索・候補一覧・辞書同梱
+
+- DBをスキーマv4で再構築（`uv run ema-rwe import-all`、3,312件、種別タグ1,799件）。役割列の充足率はCSV実測でOutcomes 81%、Medicinal condition 78%、INN 41%、ATC 46%、Main study objective 98%。
+- 実DBの件数: 「liver injury」旧OR一致1,999件→NEAR 50件→同梱辞書の関連語込み103件、`--role outcome`92件。「肝障害」（日本語）103件、`--role outcome --source-type claims --country Japan`で1件（46425）。この1件は実走でPDFから肝障害定義を確認した研究と一致。
+- `search_studies`応答サイズ: 5件表示で約22 KB（`detail=full`）→約10 KB（既定compact）。
+- 医薬品辞書: `refresh-drugs --force`で2,244レコード（公式2,734件中、人用）を取得し`data/ema-medicines.json`（約6.7 MB）としてコミット。
+- `uv run pytest -q`: 157 passed（`tests/test_screening.py`を追加: NEAR、役割列、compact/full、候補一覧上限、conditions facet、`study_ids`、既定辞書、役割列の取込）。`ruff check`／`ruff format --check`合格。stdio MCPテスト（`tests/test_mcp.py`）合格。
+- 未検証: NEARの距離3は経験則で、離れた語順の表記を見逃す可能性がある。辞書のコードはWHO ICD-10 2019の分類見出しに限定し、人手確認は未実施（`verification=unverified`）。
+
 ## 未検証事項（継続）
 
 - 外部LLM API呼出しの実認証検証は未実施。キーなしの呼出元LLM方式は合成PDFで保存・再利用まで検証。

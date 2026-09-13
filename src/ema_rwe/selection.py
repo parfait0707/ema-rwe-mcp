@@ -87,24 +87,54 @@ def filter_rows(rows, filters):
     ]
 
 
-def selection(rows, max_screening_studies=5):
+COMPACT_KEYS = (
+    "study_id",
+    "title",
+    "status",
+    "countries",
+    "data_source_types",
+    "study_designs",
+    "conditions",
+    "score",
+    "analysis_available",
+    "protocol_data_sources_status",
+)
+
+
+def compact(row):
+    """Screening view of a candidate: enough to choose, without descriptions or provenance fields."""
+    return {key: row.get(key) for key in COMPACT_KEYS if key in row}
+
+
+def selection(rows, max_screening_studies=5, max_listed_candidates=50):
     counts = {key: Counter() for key in ("countries", "data_source_types", "study_designs")}
     unknown = dict.fromkeys(counts, 0)
+    conditions = Counter()
     for row in rows:
         for key, values in attributes(row).items():
             counts[key].update(values)
             unknown[key] += not values
         unknown["data_source_types"] += not row["data_source_types"]
+        conditions.update(canonical(c) for c in row.get("conditions", []))
     total = len(rows)
+    listed = total <= max_listed_candidates
     return {
         "total_matches": total,
         "status": "needs_narrowing" if total > max_screening_studies else "ready" if total else "no_matches",
         "max_screening_studies": max_screening_studies,
-        "facets": {key: dict(values) for key, values in counts.items()},
+        "facets": {
+            **{key: dict(values) for key, values in counts.items()},
+            "conditions": dict(conditions.most_common(max_listed_candidates)),
+        },
         "unknown_metadata_counts": unknown,
+        # Listing lets the user pick study_ids; above the limit only facets are returned.
+        "candidates": [compact(r) for r in rows] if listed else [],
+        "candidates_listed": listed,
+        "max_listed_candidates": max_listed_candidates,
         "next_action": "Ask the user for a catalogue source type (claims, ehr, registry, others) AND study "
-        "countries, showing the facets counts; study design or clinical conditions may narrow further. "
-        "Pass the answers as filters. Do not silently select a subset."
+        "countries, showing the facets counts; conditions, study design or a narrower role-scoped query "
+        "may narrow further. Pass the answers as filters. When candidates are listed, the user may instead "
+        "pick study_ids within max_screening_studies. Do not silently select a subset."
         if total > max_screening_studies
         else "Process ALL matching studies using compare_protocols; do not pick one representative."
         if total

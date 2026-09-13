@@ -2,7 +2,7 @@
 
 EMA Catalogueの **Non-interventional study** を検索し、Study documentsの最新プロトコルPDFから、研究デザイン・疾患定義・データソースを出典付きで抽出・再利用するPython MCPサーバーです。Core、CLI、MCPを分離しています。
 
-`docs/spec/v0.1.md` と追加要件に基づくv0.6実装です。追加探索の仕様は [docs/spec/v0.2.md](docs/spec/v0.2.md)、種別タグ付きカタログと絞り込み質問は [docs/spec/v0.3.md](docs/spec/v0.3.md)、医薬品・コード検索は [docs/clinical-search.md](docs/clinical-search.md)、複数研究の比較は [docs/comparisons.md](docs/comparisons.md) を参照してください。通常検索はSQLite FTS5/BM25だけで実行し、PDFは選択した研究についてのみ取得します。
+`docs/spec/v0.1.md` と追加要件に基づくv0.6実装です。追加探索の仕様は [docs/spec/v0.2.md](docs/spec/v0.2.md)、種別タグ付きカタログと絞り込み質問は [docs/spec/v0.3.md](docs/spec/v0.3.md)、近傍一致・役割別検索・候補一覧・同梱辞書は [docs/spec/v0.4.md](docs/spec/v0.4.md)、呼出元向けの手順書は [docs/mcp-workflow.md](docs/mcp-workflow.md)、医薬品・コード検索は [docs/clinical-search.md](docs/clinical-search.md)、複数研究の比較は [docs/comparisons.md](docs/comparisons.md) を参照してください。通常検索はSQLite FTS5/BM25だけで実行し、PDFは選択した研究についてのみ取得します。
 
 ## セットアップ
 
@@ -23,7 +23,7 @@ $env:EMA_IMPORT_DIR = "E:/codex/rwd-catalogue-mcp/data/imports"
 
 別の場所にcloneした場合はパスを置き換えてください。Windows以外では `.venv/bin/ema-rwe` を使用します。`EMA_DB_PATH`未設定時はチェックアウト内の`data/ema.sqlite3`（Git管理のカタログDB）を使い、wheelとして導入した場合だけOSのユーザーデータディレクトリへ退避します。キャッシュ等はOSのユーザーキャッシュディレクトリが既定です。`.env.example` は設定例で、自動読込はしません。
 
-`data/ema.sqlite3`にはNon-interventional study全件と、claims／ehr／registryのData source typeタグを取り込んだ状態でコミットしてあります。cloneした直後から検索と絞り込みが使えます。再構築する場合は後述の`ema-rwe import-all`を実行します。
+`data/ema.sqlite3`にはNon-interventional study全件と、claims／ehr／registryのData source typeタグ、役割別の検索列（Medicinal condition、Outcomes、INN／製品名／ATC、Main study objective）を取り込んだ状態でコミットしてあります。日本語疾患名の辞書`data/terminology.json`とEMA公式医薬品辞書`data/ema-medicines.json`も同梱し、cloneした直後から日本語の質問で検索と絞り込みが使えます。再構築する場合は後述の`ema-rwe import-all`と`ema-rwe refresh-drugs`を実行します。
 
 ## 1. 公式CSVで検索対象を登録
 
@@ -192,16 +192,16 @@ PDF保存は「サイト全体のPDFを収集する」処理ではありませ�
 
 ## MCP接続
 
-stdioで17個のToolを公開します。初期抽出の5個、[追加探索の7個](docs/exploration.md)、`refresh_drug_dictionary`、比較用の2個、CSV snapshot確認・取込用の2個です。
+stdioで17個のToolを公開します。初期抽出の5個、[追加探索の7個](docs/exploration.md)、`refresh_drug_dictionary`、比較用の2個、CSV snapshot確認・取込用の2個です。MCPの`instructions`は手順の要点だけに短縮し、完全な手順と応答形式は [docs/mcp-workflow.md](docs/mcp-workflow.md) に置いています。検索応答は既定でcompact（説明文・由来を省略）、`catalogue`は状態と取込済み種別だけを返します。
 
 | Tool | 主な引数・動作 |
 |---|---|
-| `search_studies` | `query`, `limit=5`, `darwin_only=true`, `status`, `analyzed_only=false`, `filters`。通信なし。表示は比較上限（既定5件）まで、`total_matches`は打切り前の総数。`filters.data_source_types`はclaims／ehr／registry／othersの種別タグで絞る。互換性のためlimitは20まで受理 |
+| `search_studies` | `query`, `limit=5`, `darwin_only=true`, `status`, `analyzed_only=false`, `filters`, `role=any`, `detail=compact`。通信なし。複数語は同一列内3語以内の近傍一致。`role`（outcome／condition／exposure）でカタログの役割別列に限定。`detail=full`で説明文・由来・完全な展開を返す。`filters.data_source_types`はclaims／ehr／registry／othersの種別タグで絞る |
 | `get_study` | `study_id`, `refresh=false`。研究種別とData source typeを各タブで確認 |
 | `get_protocol` | `study_id`, `version="latest"`, `download=true`, `refresh=false` |
 | `analyze_protocol` | `study_id`, `force_refresh=false`, `offset=0`, `max_chars=30000` |
 | `cache_protocol_analysis` | `study_id`, `fingerprint`, `analysis`, `coverage_complete=true` |
-| `compare_protocols` | `question`, `queries`, `filters`, `source_preference`, `darwin_only=false`, `synonyms`, `codes`。一次判定上限以内なら全PDFと下書きJSONを保存。上限超過時は`next_action`で種別と実施国の質問を指示。`source_preference`はPDF判定後に優先／限定 |
+| `compare_protocols` | `question`, `queries`, `filters`, `source_preference`, `darwin_only=false`, `synonyms`, `codes`。`role`, `study_ids`。一次判定上限以内なら全PDFと下書きJSONを保存。上限超過時は`facets`（国・種別・デザイン・Medicinal condition）と、`EMA_MAX_LISTED_CANDIDATES`以内なら`candidates`一覧を返し、`next_action`で種別と実施国の質問を指示。ユーザーが一覧から選んだ`study_ids`を渡すと、その研究だけを一次判定に進める。`source_preference`はPDF判定後に優先／限定 |
 | `get_protocol_comparison` | `comparison_id`, `selected_study_ids`（ユーザーが選択した場合）。全件の保存済み抽出・質問別回答を集め、JSONと比較表を更新 |
 | `catalogue_status` | CSV snapshotの有無・最終取込時刻・期限・`studies`／`source_type`出力先・取込済み種別（`source_type_imports`）を返す。通信なし |
 | `import_catalogue_csv` | `EMA_IMPORT_DIR/studies`または`source_type`直下の公式CSVを検証し、Non-interventional studyだけを登録。`source_type/`のファイルは名前の種別でタグ付け |
@@ -281,6 +281,8 @@ macOS/Linuxではコマンドを配置先の `.venv/bin/python` にし、DB等�
 |---|---:|---|
 | `EMA_MAX_SCREENING_STUDIES` | 5 | PDF取得・全件解析に進める最大研究数 |
 | `EMA_MAX_COMPARISON_STUDIES` | 5 | 比較表へ掲載する最大研究数 |
+| `EMA_MAX_LISTED_CANDIDATES` | 50 | 上限超過時に候補一覧（ID・タイトル・国・種別・デザイン・疾患）を返す最大件数。超えると facets のみ |
+| `EMA_TERMINOLOGY_PATH` | `data/terminology.json` | 日本語疾患名→英語名・ICD-10分類コードの辞書。チェックアウト内では同梱辞書が既定 |
 
 このチェックアウトでは[.codex/config.toml](.codex/config.toml)の`mcp_servers.ema-rwe.env`でそれぞれ変更できます。MCPを再起動した後の新しい比較から適用します。`.env.example`は自動読込しません。
 
