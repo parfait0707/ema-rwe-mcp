@@ -11,8 +11,17 @@ from ema_rwe.config import Settings
 from ema_rwe.domain import Document, Extraction, RWEError
 from ema_rwe.ema import BASE, is_non_interventional, parse_date, parse_documents, select_protocol
 from ema_rwe.pdf import Page, extract_pages, sections, validate_evidence
-from ema_rwe.service import Service
+from ema_rwe.selection import SearchFilters
+from ema_rwe.service import Service, source_type_from_filename
 from ema_rwe.storage import Repository, import_csv
+
+
+def test_default_db_is_the_committed_checkout_catalogue(monkeypatch):
+    monkeypatch.delenv("EMA_DB_PATH", raising=False)
+    repo_root = Path(__file__).resolve().parents[1]
+    assert Settings.__dataclass_fields__["db_path"].default_factory() == repo_root / "data" / "ema.sqlite3"
+    monkeypatch.setenv("EMA_DB_PATH", "elsewhere.sqlite3")
+    assert Settings.__dataclass_fields__["db_path"].default_factory() == Path("elsewhere.sqlite3")
 
 
 def test_default_cache_ttls_are_30_days(monkeypatch, tmp_path):
@@ -102,7 +111,7 @@ def test_import_actual_export_columns_and_safe_clinical_search(settings, tmp_pat
 
     assert result["imported"] == 1
     assert result["schema_warnings"] == [
-        "CSV has no Data source type column; detail-page enrichment is required."
+        "CSV has no Data source type column; import filtered exports from source_type/ to tag studies."
     ]
     study = repo.get("2468")
     assert study.title == 'A "quoted" safety study'
@@ -141,6 +150,55 @@ def test_catalogue_download_inbox_status_and_import(settings, csv_file):
         old = (datetime.now(UTC) - timedelta(seconds=settings.catalogue_ttl + 1)).isoformat()
         db.execute("UPDATE imports SET imported_at=?", (old,))
     assert service.catalogue_status()["status"] == "stale"
+
+
+@pytest.mark.parametrize(
+    "filename,expected",
+    [
+        ("20260913_claims_export-data.csv", "claims"),
+        ("20260913_EHR_export-data.csv", "ehr"),
+        ("registry-export.csv", "registry"),
+        ("20260913_all_export-data.csv", None),
+        ("claims_and_ehr.csv", None),
+    ],
+)
+def test_source_type_is_read_from_filename(filename, expected):
+    assert source_type_from_filename(filename) == expected
+
+
+def test_typed_exports_tag_studies_and_survive_full_reimport(settings, csv_file):
+    service = Service(settings)
+    studies = service.study_import_dir
+    typed = service.source_type_import_dir
+    studies.mkdir(parents=True)
+    typed.mkdir(parents=True)
+    # Filtered exports share the plain schema; drop the column so tags can only come from the file name.
+    rows = list(csv.reader(io.StringIO(csv_file.read_text(encoding="utf-8-sig"))))
+    column = rows[0].index("Data sources (types)")
+    untyped = "\n".join(",".join(f'"{c}"' for i, c in enumerate(r) if i != column) for r in rows)
+    (studies / "20260913_all_export-data.csv").write_text(untyped, encoding="utf-8")
+    (typed / "20260913_claims_export-data.csv").write_text(untyped, encoding="utf-8")
+    (typed / "20260913_ehr_export-data.csv").write_text(
+        "\n".join(line for line in untyped.splitlines() if not line.startswith('"456"')), encoding="utf-8"
+    )
+    (typed / "20260913_mystery_export-data.csv").write_text(untyped, encoding="utf-8")
+    with pytest.raises(RWEError, match="claims|ehr|registry"):
+        service.import_catalogue_csv("20260913_mystery_export-data.csv")
+    (typed / "20260913_mystery_export-data.csv").unlink()
+    results = service.import_all()
+    assert [r["source_type"] for r in results] == [None, "claims", "ehr"]
+    assert results[0]["schema_warnings"][0].startswith("CSV has no Data source type column")
+    assert service.repo.get("123").data_source_types == ["claims", "ehr"]
+    assert service.repo.get("456").data_source_types == ["claims"]
+    assert service.repo.get("123").data_source_types_source.startswith("filtered export 20260913_ehr")
+    assert service.catalogue_status()["source_type_imports"] == ["claims", "ehr"]
+    # A later full export without the column keeps the tags.
+    service.import_catalogue_csv("20260913_all_export-data.csv")
+    assert service.repo.get("123").data_source_types == ["claims", "ehr"]
+    found = service.search_studies("", darwin_only=False, filters=SearchFilters(data_source_types=["ehr"]))
+    assert [r["study_id"] for r in found["results"]] == ["123"]
+    assert found["facets"]["data_source_types"] == {"claims": 1, "ehr": 1}
+    assert found["unknown_metadata_counts"]["data_source_types"] == 0
 
 
 @pytest.mark.parametrize(

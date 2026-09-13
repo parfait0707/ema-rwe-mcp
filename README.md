@@ -21,7 +21,9 @@ $env:EMA_IMPORT_DIR = "E:/codex/rwd-catalogue-mcp/data/imports"
 .venv/Scripts/ema-rwe --help
 ```
 
-別の場所にcloneした場合はパスを置き換えてください。Windows以外では `.venv/bin/ema-rwe` を使用します。環境変数未設定時はOSのユーザーデータ／キャッシュディレクトリを利用するので、MCP起動時の作業ディレクトリに依存しません。`.env.example` は設定例で、自動読込はしません。
+別の場所にcloneした場合はパスを置き換えてください。Windows以外では `.venv/bin/ema-rwe` を使用します。`EMA_DB_PATH`未設定時はチェックアウト内の`data/ema.sqlite3`（Git管理のカタログDB）を使い、wheelとして導入した場合だけOSのユーザーデータディレクトリへ退避します。キャッシュ等はOSのユーザーキャッシュディレクトリが既定です。`.env.example` は設定例で、自動読込はしません。
+
+`data/ema.sqlite3`にはNon-interventional study全件と、claims／ehr／registryのData source typeタグを取り込んだ状態でコミットしてあります。cloneした直後から検索と絞り込みが使えます。再構築する場合は後述の`ema-rwe import-all`を実行します。
 
 ## 1. 公式CSVで検索対象を登録
 
@@ -94,12 +96,21 @@ flowchart TD
 
 CSVが有効期間内なのに0件なら、先に英訳・同義語・ICD-10/ATC・絞込条件を見直します。同じsnapshotを再取得しても候補は増えないためです。既知のStudy IDはCSVなしでも `get_study` / `analyze_protocol` で直接登録できます。
 
-`EMA_IMPORT_DIR`はCSV importのルートです。Studies exportは`studies/`へ保存します。Data Sources exportは不要です。Playwright MCPのStudies用ダウンロード先は`EMA_IMPORT_DIR/studies`と同じ絶対パスにします。`import_catalogue_csv(filename)`は`studies/`直下のCSVファイル名だけを受け付け、移行用にルート直下も読みます。任意パスは受け付けません。50 MiB上限、必須列、UTF-8、Study ID重複、研究種別を検証し、原本・SHA256・取込日時を保存します。
+`EMA_IMPORT_DIR`はCSV importのルートです（既定は`EMA_DB_PATH`と同じ`data/`配下の`imports/`）。Non-interventional study全件のStudies exportは`studies/`へ、検索画面でData source typeをclaims／EHR／registryに限定したexportは`source_type/`へ保存します。Studies exportにはData source type列がないため、`source_type/`のファイル名に埋め込んだ種別だけがタグの根拠です。ファイル名は`<日付>_<claims|ehr|registry>_export-data.csv`とし、種別トークンが1つだけ含まれる必要があります。Data Sources exportは不要です。
+
+`import_catalogue_csv(filename)`は`studies/`と`source_type/`直下のCSVファイル名だけを受け付け、移行用にルート直下も読みます。任意パスは受け付けません。50 MiB上限、必須列、UTF-8、Study ID重複、研究種別を検証し、原本・SHA256・取込日時を保存します。`source_type/`のファイルは各研究の`data_source_types`に種別を追加し（複数種別は累積）、その後に全件exportを再取込してもタグは保持されます。CLIの`ema-rwe import-all`は`studies/`、`source_type/`の順に全CSVを取り込みます。
 
 ```text
-data/imports/
-└── studies/       # Non-interventional Studies export
+data/
+├── ema.sqlite3                          # Git管理のカタログDB（clone直後から検索可能）
+└── imports/
+    ├── studies/     20260913_all_export-data.csv        # Non-interventional 全件（Git管理外）
+    └── source_type/ 20260913_claims_export-data.csv     # Data source type = claims で絞ったexport
+                     20260913_ehr_export-data.csv
+                     20260913_registry_export-data.csv
 ```
+
+CSV本体はGit管理外で、空フォルダだけを`.gitkeep`で保持します。
 
 このリポジトリの [`.codex/config.toml`](.codex/config.toml) には、2026-09-12時点のPlaywright MCP `0.0.80`を、表示ありのMicrosoft Edgeと `data/imports/studies` 出力先で登録しています。初回は`npx`がパッケージを取得するためネット接続が必要です。バージョンを固定しているため、更新はrelease内容を確認して明示的に行います。別環境用のCodex設定例:
 
@@ -162,7 +173,7 @@ PDF保存は「サイト全体のPDFを収集する」処理ではありませ�
 
 | キー | 内容 |
 |---|---|
-| `data_source_types` | カタログのData source type。取得できない場合は空配列 |
+| `data_source_types` | カタログのData source type。種別限定exportから付与した`claims`／`ehr`／`registry`タグ、または詳細ページの分類。どちらもなければ空配列（絞り込みでは`others`） |
 | `data_source_types_status` | `available` / `not_provided` |
 | `catalogue_data_sources` | カタログ上の名称。プロトコル本文由来と混同しないため別欄 |
 | `protocol_data_sources` | プロトコル本文由来の名称・使用区分・引用・ページ |
@@ -188,7 +199,7 @@ stdioで17個のToolを公開します。初期抽出の5個、[追加探索の7
 | `compare_protocols` | `question`, `queries`, `filters`, `source_preference`, `darwin_only=false`, `synonyms`, `codes`。一次判定上限以内なら全PDFと下書きJSONを保存。typeはPDF判定後に優先／限定 |
 | `get_protocol_comparison` | `comparison_id`, `selected_study_ids`（ユーザーが選択した場合）。全件の保存済み抽出・質問別回答を集め、JSONと比較表を更新 |
 | `catalogue_status` | CSV snapshotの有無・最終取込時刻・期限・ブラウザ出力先を返す。通信なし |
-| `import_catalogue_csv` | `EMA_IMPORT_DIR/studies`直下の公式CSVを検証し、Non-interventional studyだけを登録 |
+| `import_catalogue_csv` | `EMA_IMPORT_DIR/studies`または`source_type`直下の公式CSVを検証し、Non-interventional studyだけを登録。`source_type/`のファイルは名前の種別でタグ付け |
 
 ### Claude Codeで使う
 
@@ -265,9 +276,9 @@ macOS/Linuxではコマンドを配置先の `.venv/bin/python` にし、DB等�
 
 ## 複数プロトコルの比較・保存
 
-`compare_protocols`は全検索式の候補を重複除去して数えます。一次判定上限以内なら全件のPDFを保存し、共通抽出・質問別探索を完了してJSONを作ります。上限を超えたら国・研究デザインなどの追加条件を求めます。候補数はローカル索引の一致数で、EMA全体や未取得PDF本文の網羅検索ではありません。
+`compare_protocols`は全検索式の候補を重複除去して数えます。一次判定上限以内なら全件のPDFを保存し、共通抽出・質問別探索を完了してJSONを作ります。上限を超えたら、`facets`の件数を示しながらデータソース種別（claims／ehr／registry／others）と実施国の両方をユーザーに尋ね、回答を`filters`に渡して再実行します。研究デザインや臨床条件でさらに絞ることもできます。候補数はローカル索引の一致数で、EMA全体や未取得PDF本文の網羅検索ではありません。
 
-データタイプは`source_preference={"types":["claims"],"role":"cohort","mode":"prefer"}`のように指定します。既定のpreferは希望タイプを優先し、他タイプを補足として残します。onlyは明示的な限定要求用です。type未判定の研究は検索時に除外せず、PDFの質問に該当する定義・用途から判定します。旧`filters.data_source_types`はPDF判定後のonly指定です。国・研究デザインは従来どおりメタデータで絞ります。
+データタイプは`source_preference={"types":["claims"],"role":"cohort","mode":"prefer"}`のように指定します。既定のpreferは希望タイプを優先し、他タイプを補足として残します。onlyは明示的な限定要求用です。PDF判定はカタログのタグとは別に行います。`filters.data_source_types`（`claims`／`ehr`／`registry`／`others`）はカタログのタグでローカル候補を絞る条件で、`others`は3種別のexportいずれにも含まれない研究です。国・研究デザインも同様にメタデータで絞ります。
 
 | 環境変数 | 既定値 | 内容 |
 |---|---:|---|

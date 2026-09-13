@@ -4,14 +4,19 @@ from pathlib import Path
 
 from platformdirs import user_cache_path, user_data_path
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def default_db_path() -> Path:
+    """The committed catalogue at <checkout>/data/ema.sqlite3; user data dir for wheel installs."""
+    if (REPO_ROOT / "pyproject.toml").is_file():
+        return REPO_ROOT / "data" / "ema.sqlite3"
+    return user_data_path("ema-rwe-mcp") / "ema.sqlite3"
+
 
 @dataclass
 class Settings:
-    db_path: Path = field(
-        default_factory=lambda: Path(
-            os.getenv("EMA_DB_PATH", str(user_data_path("ema-rwe-mcp") / "ema.sqlite3"))
-        )
-    )
+    db_path: Path = field(default_factory=lambda: Path(os.getenv("EMA_DB_PATH") or default_db_path()))
     cache_dir: Path = field(
         default_factory=lambda: Path(os.getenv("EMA_CACHE_DIR", str(user_cache_path("ema-rwe-mcp") / "http")))
     )

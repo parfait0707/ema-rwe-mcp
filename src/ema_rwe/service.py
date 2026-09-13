@@ -15,11 +15,18 @@ from .exploration import Explorer
 from .http import EMAClient
 from .llm import EXTRACTION_PROMPT, complete_json, configured, extract_with_provider
 from .pdf import extract_pages, sections, validate_evidence
-from .selection import SearchFilters, selection
+from .selection import TYPED_SOURCES, SearchFilters, selection
 from .source_types import preference_for
 from .storage import Repository, import_csv
 from .terminology import proposed_codes
 from .vocabulary import expand
+
+
+def source_type_from_filename(filename: str) -> str | None:
+    """<date>_<claims|ehr|registry>_export-data.csv -> the export's Data source type filter."""
+    tokens = re.split(r"[_\-. ]+", filename.casefold())
+    found = [t for t in TYPED_SOURCES if t in tokens]
+    return found[0] if len(found) == 1 else None
 
 
 class Service:
@@ -40,6 +47,10 @@ class Service:
     @property
     def study_import_dir(self):
         return self.import_dir / "studies"
+
+    @property
+    def source_type_import_dir(self):
+        return self.import_dir / "source_type"
 
     async def close(self):
         await self.client.close()
@@ -63,6 +74,10 @@ class Service:
             "refresh_after_seconds": self.settings.catalogue_ttl,
             "import_directory": str(self.import_dir.resolve()),
             "study_import_directory": str(self.study_import_dir.resolve()),
+            "source_type_import_directory": str(self.source_type_import_dir.resolve()),
+            "source_type_imports": sorted(
+                {t for s in snapshots if (t := source_type_from_filename(s["filename"] or ""))}
+            ),
             "max_screening_studies": self.settings.max_screening_studies,
             "max_comparison_studies": self.settings.max_comparison_studies,
             "browser_refresh_recommended": state != "current",
@@ -71,7 +86,9 @@ class Service:
                 "When refresh is needed, use a visible user-initiated browser session to open the EMA Search "
                 "page, select Studies/Non-interventional as appropriate, click Export Results once, save the "
                 "CSV in study_import_directory, then call import_catalogue_csv. Wait on the same batch page; do not "
-                "crawl result pages, start background synchronization, or create duplicate exports."
+                "crawl result pages, start background synchronization, or create duplicate exports. "
+                "Catalogue source types come only from exports filtered by Data source type and saved as "
+                "<date>_<claims|ehr|registry>_export-data.csv in source_type_import_directory."
             ),
         }
 
@@ -87,20 +104,36 @@ class Service:
             )
         root = self.import_dir.resolve()
         study_folder = self.study_import_dir.resolve()
-        candidates = [(study_folder / filename).resolve(), (root / filename).resolve()]
-        if any(path.parent not in {study_folder, root} for path in candidates):
+        typed_folder = self.source_type_import_dir.resolve()
+        candidates = [(f / filename).resolve() for f in (study_folder, typed_folder, root)]
+        if any(path.parent not in {study_folder, typed_folder, root} for path in candidates):
             raise RWEError("INVALID_INPUT", "CSV path escaped the configured import directory.")
         path = next((candidate for candidate in candidates if candidate.is_file()), None)
         if path is None:
             raise RWEError("CSV_NOT_FOUND", "CSV was not found in the Studies import directory.")
+        source_type = source_type_from_filename(filename) if path.parent == typed_folder else None
+        if path.parent == typed_folder and not source_type:
+            raise RWEError(
+                "INVALID_INPUT",
+                "Files in source_type/ must embed the export's Data source type: "
+                "<date>_<claims|ehr|registry>_export-data.csv.",
+            )
         try:
             size = path.stat().st_size
         except OSError as exc:
             raise RWEError("CACHE_ERROR", "Could not inspect the CSV download.") from exc
         if not 0 < size <= 50 * 1024 * 1024:
             raise RWEError("CSV_SCHEMA_ERROR", "CSV must be non-empty and at most 50 MiB.")
-        result = import_csv(self.repo, path, column_map)
+        result = import_csv(self.repo, path, column_map, source_type)
         return {**result, "source_path": str(path), "catalogue": self.catalogue_status()}
+
+    def import_all(self):
+        """Rebuild tags from every export on disk: full Studies export(s) first, then the typed exports."""
+        folders = (self.study_import_dir, self.source_type_import_dir)
+        files = [p for folder in folders if folder.is_dir() for p in sorted(folder.glob("*.csv"))]
+        if not files:
+            raise RWEError("CSV_NOT_FOUND", "No CSV found under studies/ or source_type/.")
+        return [self.import_catalogue_csv(p.name) for p in files]
 
     def search_studies(
         self,
@@ -130,7 +163,6 @@ class Service:
             "query": query,
             **selection(candidates, self.settings.max_screening_studies),
             "max_comparison_studies": self.settings.max_comparison_studies,
-            "source_filter_deferred": bool(filters and filters.data_source_types),
             "returned_count": len(results),
             "results_are_preview": len(results) < len(candidates),
             "filters": (filters or SearchFilters()).model_dump(),
@@ -179,7 +211,6 @@ class Service:
             **selection(candidates, self.settings.max_screening_studies),
             "max_comparison_studies": self.settings.max_comparison_studies,
             "source_preference": preference.model_dump() if preference else None,
-            "source_filter_deferred": bool(preference),
             "queries": queries,
             "filters": (filters or SearchFilters()).model_dump(),
             "query_expansions": [expand(q, synonyms, codes) for q in queries],

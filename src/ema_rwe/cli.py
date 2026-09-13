@@ -32,6 +32,7 @@ def parser():
     inbox = commands.add_parser("import-download")
     inbox.add_argument("filename")
     inbox.add_argument("--column-map", type=Path)
+    commands.add_parser("import-all", help="Import every CSV under studies/ then source_type/")
     commands.add_parser("catalogue-status")
     search = commands.add_parser("search")
     search.add_argument("query")
@@ -62,9 +63,9 @@ def parser():
         cmd.add_argument(
             "--source-type",
             action="append",
-            choices=["claims", "registry", "ehr", "drug_dispensing_prescription"],
+            choices=["claims", "ehr", "registry", "others"],
             default=[],
-            help="Legacy strict source request, deferred until PDF assessment; prefer --prefer-source-type for comparison.",
+            help="Catalogue narrowing by tagged source type; --prefer-source-type ranks PDF evidence.",
         )
         cmd.add_argument(
             "--study-design",
@@ -142,6 +143,8 @@ async def run(args):
             case "import-download":
                 mapping = json.loads(args.column_map.read_text(encoding="utf-8")) if args.column_map else None
                 return service.import_catalogue_csv(args.filename, mapping)
+            case "import-all":
+                return service.import_all()
             case "search":
                 return service.search_studies(
                     args.query,
