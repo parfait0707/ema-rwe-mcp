@@ -23,7 +23,7 @@ $env:EMA_IMPORT_DIR = "E:/codex/rwd-catalogue-mcp/data/imports"
 
 別の場所にcloneした場合はパスを置き換えてください。Windows以外では `.venv/bin/ema-rwe` を使用します。`EMA_DB_PATH`未設定時はチェックアウト内の`data/ema.sqlite3`（Git管理のカタログDB）を使い、wheelとして導入した場合だけOSのユーザーデータディレクトリへ退避します。キャッシュ等はOSのユーザーキャッシュディレクトリが既定です。`.env.example` は設定例で、自動読込はしません。
 
-`data/ema.sqlite3`にはNon-interventional study全件と、claims／ehr／registryのData source typeタグ、役割別の検索列（Medicinal condition、Outcomes、INN／製品名／ATC、Main study objective）を取り込んだ状態でコミットしてあります。日本語疾患名の辞書`data/terminology.json`とEMA公式医薬品辞書`data/ema-medicines.json`も同梱し、cloneした直後から日本語の質問で検索と絞り込みが使えます。再構築する場合は後述の`ema-rwe import-all`と`ema-rwe refresh-drugs`を実行します。
+`data/ema.sqlite3`にはNon-interventional study全件と、claims／ehr／registryのData source typeタグ、役割別の検索列（Medicinal condition、Outcomes、INN／製品名／ATC、Main study objective）を取り込んだ状態でコミットしてあります。日本語疾患名の辞書`data/terminology.json`（48概念。関連語はカタログ本文から`scripts/mine_terminology.py`で導出し、判定記録を`data/terminology_decisions.json`に保持）とEMA公式医薬品辞書`data/ema-medicines.json`も同梱し、cloneした直後から日本語の質問で検索と絞り込みが使えます。再構築する場合は後述の`ema-rwe import-all`と`ema-rwe refresh-drugs`を実行します。
 
 ## 1. 公式CSVで検索対象を登録
 
