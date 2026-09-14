@@ -34,7 +34,7 @@ PDF検索にはさらに`protocol_id`を指定します。CLIも`--code "ICD-10:
 
 `plan_study_search(use_llm=true)`は設定済みLLMに英訳・関連語・コード候補の提案を依頼します。`research_protocol`の内部探索も検索アクションにコードを指定できます。LiteLLMの設定は[追加探索ガイド](exploration.md)を参照してください。LLMが提案するコードは常に`origin=llm, verification=unverified`です。コード候補のJSONには体系・版・ラベル・関係・出典URL・由来・確認状態・検索表記を残します。これは検索用メタデータで、PDFから抽出した根拠とは別です。
 
-チェックアウト内では同梱の`data/terminology.json`（約45概念。日本語疾患名→英語名・関連語・WHO ICD-10 2019の分類コード、出典URL付き）が既定で読み込まれます。コードは検索用の候補であり`verification=unverified`のままです。`EMA_TERMINOLOGY_PATH`にUTF-8 JSONファイルの絶対パスを設定すると、対象データに合わせた辞書へ差し替えられます。例：
+チェックアウト内では同梱の`data/terminology.json`（48概念。日本語疾患名→英語名・関連語・WHO ICD-10 2019の分類コード、出典URL付き）が既定で読み込まれます。コードは検索用の候補であり`verification=unverified`のままです。`related_terms`のうちカタログ由来の語は、`scripts/mine_terminology.py`がカタログ本文（Outcomes、Medicinal condition、目的、タイトル）から統計的に抽出した候補を、明文化した採否規則と標本確認で判定して追記したものです。判定記録は`data/terminology_decisions.json`、手順と結果は[関連語導出の記録](research/202609140758_terminology_mining.md)を参照してください。`EMA_TERMINOLOGY_PATH`にUTF-8 JSONファイルの絶対パスを設定すると、対象データに合わせた辞書へ差し替えられます。例：
 
 ```json
 [
