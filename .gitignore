@@ -9,6 +9,7 @@ data/*
 !data/ema.sqlite3
 !data/ema-medicines.json
 !data/terminology.json
+!data/terminology_decisions.json
 !data/imports/
 data/imports/*
 !data/imports/studies/
@@ -19,3 +20,7 @@ data/imports/source_type/*
 cache/
 dist/
 *.egg-info/
+
+# Agent intermediate artefacts (not tracked)
+docs/agent_brief/
+docs/agent_report/

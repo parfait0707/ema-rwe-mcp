@@ -109,6 +109,15 @@ v0.1時点で`pytest`全46件、`ruff check src tests`、sdistとwheelのビル�
 - `uv run pytest -q`: 148 passed（種別タグ取込・ファイル名解析・others絞り込み・既定DBパスの回帰テストを追加）。`ruff check`／`ruff format --check`とも合格。
 - 未検証: Windows側`.codex/config.toml`の絶対パスでの実起動、MCPクライアントからの`needs_narrowing`→質問→`filters`再実行の実会話。
 
+## 2026-09-14 関連語のカタログ語彙からの導出（Sonnet 作業／Opus 検証の 5 巡）
+
+- `scripts/mine_terminology.py`: 各研究のタイトル・Outcomes・Medicinal condition・目的から 1〜3 語の n-gram を抽出し、`english_terms` で定義したアンカー研究とそれ以外の出現率をラプラス平滑化した対数オッズ比で比較。閾値は `a>=3`、`a/A>=0.03`、対数オッズ比 `>=log 8`、本番 FTS（NEAR）で新規に一致する研究 `b_new>=1`、上位 60 件。同一トークンを繰り返す n-gram は除外。
+- 採否規則: 同じ臨床実体・直接の発現・測定値・下位型のみ採用。曝露薬・適応症・薬効群・処置・母集団・デザイン語・別概念・疾患横断の一般指標は不採用。3 文字以下の略語は禁止、4〜5 文字は新規一致研究のタイトル確認を必須。採用前に新規一致研究のタイトル最大 10 件を確認し、無関係が 30% 超（確認 3 件以下なら 1 件でも）なら不採用。この標本確認は採用語全件に適用した。`--apply` が候補由来・略語・概念境界・上限を機械検査する。順列重複の n-gram は 1 代表に畳み込む。
+- 結果: 候補 2,839 件から採用 19 語（11 概念）。検索件数の増分は概念あたり 0〜7 件で、`b_new` の合計と 48 概念中 44 概念で完全一致（残り 4 概念は採用語の一致集合の重複、または本番 `expand()` のコード・日本語展開ぶんで差分が下回る）。独立検証で誤検出率 30% 超を実測した第 3〜4 巡の採用語 19 件は除外した。
+- 再現性: HEAD の辞書を入力に再実行すると `generated_at` 以外バイト一致。`--apply` が作業ツリーの辞書をバイト単位で再生する。
+- テスト: `tests/test_terminology_mining.py` 30 件（3 閾値の境界、`b_new==0` 除外、`--apply` の不変条件・機械検査、重複トークン除外、順列畳み込み、`reason_codes`）。全体 187 passed、ruff 合格。判定記録 `data/terminology_decisions.json`（約 0.33 MB）はコミット対象。
+- 限界: `thromboembolic events`（VTE）のように新規一致は多いが対数オッズ比が低い一般語は上位 60 件に届かない。`b_new` を加味した順位づけは未導入。`haemorrhage`／`bleeding` が英語名にある 3 概念は互いの研究を共有する。
+
 ## 2026-09-14 近傍一致・役割別検索・候補一覧・辞書同梱
 
 - DBをスキーマv4で再構築（`uv run ema-rwe import-all`、3,312件、種別タグ1,799件）。役割列の充足率はCSV実測でOutcomes 81%、Medicinal condition 78%、INN 41%、ATC 46%、Main study objective 98%。
