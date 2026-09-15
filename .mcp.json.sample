@@ -1,0 +1,14 @@
+{
+    "mcpServers": {
+        "ema-rwe": {
+            "type": "stdio",
+            "command": "uvx",
+            "args": [
+                "--from",
+                "git+https://github.com/parfait0707/rwd-catalogue-mcp",
+                "ema-rwe-mcp"
+            ],
+            "env": {}
+        }
+    }
+}

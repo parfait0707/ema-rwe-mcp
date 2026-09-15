@@ -25,7 +25,7 @@ uvだけあれば、MCPクライアントの設定に次を書くだけで使え
 }
 ```
 
-`git+https://...@v0.7.0` のようにタグを付けると版を固定できます。リポジトリが非公開の間は`gh auth login`等でGitHubの資格情報が必要です。複製済みのDBは`ema-rwe import-all`や`refresh-drugs`で上書き更新でき、パッケージ更新では上書きされません。このリポジトリのcheckout内で起動した場合は従来どおり`data/`直下を使います。
+同じ内容を[`.mcp.json.sample`](.mcp.json.sample)に置いています。Claude Codeならプロジェクト直下へ`.mcp.json`としてコピーするだけで登録されます。`git+https://...@v0.7.0` のようにタグを付けると版を固定できます。リポジトリが非公開の間は`gh auth login`等でGitHubの資格情報が必要です。複製済みのDBは`ema-rwe import-all`や`refresh-drugs`で上書き更新でき、パッケージ更新では上書きされません。このリポジトリのcheckout内で起動した場合は従来どおり`data/`直下を使います。
 
 ### 開発用セットアップ（checkout）
 
