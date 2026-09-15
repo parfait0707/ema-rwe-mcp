@@ -25,3 +25,8 @@
 - `b_new` を加味した候補の順位づけ（`thromboembolic events` のような一般語の扱い）は未導入。
 - 出血系 3 概念（intracranial／gastrointestinal／major bleeding）は英語名の広さから互いの研究を共有する。概念設計の見直し候補。
 - 辞書コードの臨床専門家による確認は未実施。
+
+## 追記（2026-09-15）: 未収録語のログ
+
+- 日本語を含み辞書・語彙グループ・医薬品辞書のいずれにも一致しない質問・検索語を `data/terminology_unmatched.json` に記録（`service.record_unmatched`）。`plan_study_search`／`search_studies`／`compare_protocols` の 3 経路。`catalogue_status.unmatched_terms` に上位 20 件。`EMA_UNMATCHED_LOG_PATH` で変更可、Git 管理外。
+- テスト `tests/test_unmatched.py` 3 件。全体 190 passed。

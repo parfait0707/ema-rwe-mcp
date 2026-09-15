@@ -283,6 +283,7 @@ macOS/Linuxではコマンドを配置先の `.venv/bin/python` にし、DB等�
 | `EMA_MAX_COMPARISON_STUDIES` | 5 | 比較表へ掲載する最大研究数 |
 | `EMA_MAX_LISTED_CANDIDATES` | 50 | 上限超過時に候補一覧（ID・タイトル・国・種別・デザイン・疾患）を返す最大件数。超えると facets のみ |
 | `EMA_TERMINOLOGY_PATH` | `data/terminology.json` | 日本語疾患名→英語名・ICD-10分類コードの辞書。チェックアウト内では同梱辞書が既定 |
+| `EMA_UNMATCHED_LOG_PATH` | `data/terminology_unmatched.json` | 辞書に一致しなかった日本語の質問・検索語のログ。`catalogue_status.unmatched_terms`で上位を確認 |
 
 このチェックアウトでは[.codex/config.toml](.codex/config.toml)の`mcp_servers.ema-rwe.env`でそれぞれ変更できます。MCPを再起動した後の新しい比較から適用します。`.env.example`は自動読込しません。
 

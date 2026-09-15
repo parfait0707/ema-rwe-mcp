@@ -53,6 +53,11 @@ class Settings:
             Path(os.environ["EMA_PROTOCOL_DIR"]) if os.getenv("EMA_PROTOCOL_DIR") else None
         )
     )
+    unmatched_log_path: Path | None = field(
+        default_factory=lambda: (
+            Path(os.environ["EMA_UNMATCHED_LOG_PATH"]) if os.getenv("EMA_UNMATCHED_LOG_PATH") else None
+        )
+    )
     import_dir: Path | None = field(
         default_factory=lambda: Path(os.environ["EMA_IMPORT_DIR"]) if os.getenv("EMA_IMPORT_DIR") else None
     )

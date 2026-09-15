@@ -14,7 +14,9 @@ the model that drives the tools; the rest of `docs/` is in Japanese.
   (`data/terminology.json`) and the EMA medicines dictionary. It returns `queries`, `english_terms`,
   `related_terms` and typed `code_candidates`. Dictionary codes are retrieval hints with
   `verification=unverified`; confirm vocabulary, version and role in the PDF.
-- If `status=needs_client_translation`, translate yourself and pass `synonyms` / `codes`.
+- If `status=needs_client_translation`, translate yourself and pass `synonyms` / `codes`. The
+  unrecognised Japanese text is logged (`unmatched_logged=true`); `catalogue_status.unmatched_terms`
+  lists the most frequent ones so the dictionary can be extended later.
 - Medicines: expand product names to INN/common names and ATC codes; never equate a class with a
   member or a combination with one ingredient.
 
