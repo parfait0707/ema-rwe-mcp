@@ -1,23 +1,36 @@
 import os
+import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from platformdirs import user_cache_path, user_data_path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+BUNDLED_DATA = Path(__file__).resolve().parent / "data"
+SEEDED_FILES = ("ema.sqlite3", "ema-medicines.json", "terminology.json")
+
+
+def default_data_dir() -> Path:
+    """<checkout>/data inside a checkout; otherwise the user data dir, seeded once from the wheel's bundled copy."""
+    if (REPO_ROOT / "pyproject.toml").is_file():
+        return REPO_ROOT / "data"
+    target = user_data_path("ema-rwe-mcp")
+    target.mkdir(parents=True, exist_ok=True)
+    for name in SEEDED_FILES:
+        source, destination = BUNDLED_DATA / name, target / name
+        if source.is_file() and not destination.exists():
+            shutil.copyfile(source, destination)
+    return target
 
 
 def default_db_path() -> Path:
-    """The committed catalogue at <checkout>/data/ema.sqlite3; user data dir for wheel installs."""
-    if (REPO_ROOT / "pyproject.toml").is_file():
-        return REPO_ROOT / "data" / "ema.sqlite3"
-    return user_data_path("ema-rwe-mcp") / "ema.sqlite3"
+    return default_data_dir() / "ema.sqlite3"
 
 
 def default_terminology_path() -> Path | None:
-    """The committed Japanese/English concept dictionary at <checkout>/data/terminology.json, if present."""
-    path = REPO_ROOT / "data" / "terminology.json"
-    return path if (REPO_ROOT / "pyproject.toml").is_file() and path.is_file() else None
+    """The Japanese/English concept dictionary next to the catalogue, if present."""
+    path = default_data_dir() / "terminology.json"
+    return path if path.is_file() else None
 
 
 @dataclass

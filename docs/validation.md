@@ -132,6 +132,13 @@ v0.1時点で`pytest`全46件、`ruff check src tests`、sdistとwheelのビル�
 - `uv run pytest -q`: 157 passed（`tests/test_screening.py`を追加: NEAR、役割列、compact/full、候補一覧上限、conditions facet、`study_ids`、既定辞書、役割列の取込）。`ruff check`／`ruff format --check`合格。stdio MCPテスト（`tests/test_mcp.py`）合格。
 - 未検証: NEARの距離3は経験則で、離れた語順の表記を見逃す可能性がある。辞書のコードはWHO ICD-10 2019の分類見出しに限定し、人手確認は未実施（`verification=unverified`）。
 
+## 2026-09-16 clone不要の配布（wheelへのデータ同梱）
+
+- `pyproject.toml`の`force-include`で`data/ema.sqlite3`・`ema-medicines.json`・`terminology.json`をwheelの`ema_rwe/data/`へ同梱（wheel約13.6 MB圧縮、展開後約50 MB）。`config.default_data_dir()`はcheckout外ではユーザーデータディレクトリへ同梱データを初回複製し、既存ファイルは上書きしない。
+- 実検証: `uv build --wheel`で0.7.0のwheelを生成し、checkout外の使い捨てvenvへ導入。`PYTHONPATH`（devcontainerが`/workspace/src`を設定）を外し、`XDG_DATA_HOME`を一時ディレクトリに向けて`ema-rwe catalogue-status`（status current、snapshot 4件）と`ema-rwe search diabetes --all-studies`（310件、needs_narrowing）が動作。複製先に3ファイルが生成されたことを確認。
+- `uv run pytest -q`: 192 passed, 1 skipped（`tests/test_distribution.py`を追加: force-include網羅、checkout時の既定パス、wheel導入時の初回複製と非上書き）。`ruff check`／`ruff format --check`合格。`uv lock --check`合格。
+- 未検証: `uvx --from git+https://github.com/parfait0707/rwd-catalogue-mcp ema-rwe-mcp`の実行はリポジトリが非公開のため未実施（ローカルwheel導入で同等経路を検証）。Windowsの`%LOCALAPPDATA%`への複製は未実施。
+
 ## 未検証事項（継続）
 
 - 外部LLM API呼出しの実認証検証は未実施。キーなしの呼出元LLM方式は合成PDFで保存・再利用まで検証。
