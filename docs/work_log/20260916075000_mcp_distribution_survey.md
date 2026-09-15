@@ -14,6 +14,7 @@
 - `README.md`: 「cloneせずに使う（uvx）」節を追加。`docs/validation.md`: 実検証結果を追記。
 
 ## 次のアクション・懸念
+- `.mcp.json.sample`（uvx git 直接起動の既定設定）を追加済み。開発用 `.mcp.json` は checkout 直起動のまま。
 - public 化時: `.gitignore` の見直し（`.claude/`, `.devcontainer/`, `.mcp.json`, `.codex/config.toml` の絶対パス等を公開対象から除外するか判断）、タグ `v0.7.0` の付与、README の `gh auth` 注記の削除。
 - `uvx --from git+https://...` の実行は非公開のため未検証。ローカル wheel 導入で同等経路を検証済み。
 - wheel は約 13.6 MB。カタログ更新のたびにパッケージ版を上げる運用になる。肥大化したら GitHub Release からの取得（D2）へ移行。
