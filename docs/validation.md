@@ -109,6 +109,11 @@ v0.1時点で`pytest`全46件、`ruff check src tests`、sdistとwheelのビル�
 - `uv run pytest -q`: 148 passed（種別タグ取込・ファイル名解析・others絞り込み・既定DBパスの回帰テストを追加）。`ruff check`／`ruff format --check`とも合格。
 - 未検証: Windows側`.codex/config.toml`の絶対パスでの実起動、MCPクライアントからの`needs_narrowing`→質問→`filters`再実行の実会話。
 
+## 2026-09-15 未収録語のログ
+
+- 日本語を含み、概念辞書・語彙グループ・医薬品辞書のいずれにも一致しない質問・検索語を `data/terminology_unmatched.json` に記録。`plan_study_search`、`search_studies`、`compare_protocols` の 3 経路から同じ関数で記録し、`catalogue_status.unmatched_terms` に上位 20 件を返す。
+- テスト `tests/test_unmatched.py`: 未収録の日本語は記録・件数加算、収録済み（肝障害）と英語は記録しない、壊れたログファイルは無視して再作成、`catalogue_status` に反映。
+
 ## 2026-09-14 関連語のカタログ語彙からの導出（Sonnet 作業／Opus 検証の 5 巡）
 
 - `scripts/mine_terminology.py`: 各研究のタイトル・Outcomes・Medicinal condition・目的から 1〜3 語の n-gram を抽出し、`english_terms` で定義したアンカー研究とそれ以外の出現率をラプラス平滑化した対数オッズ比で比較。閾値は `a>=3`、`a/A>=0.03`、対数オッズ比 `>=log 8`、本番 FTS（NEAR）で新規に一致する研究 `b_new>=1`、上位 60 件。同一トークンを繰り返す n-gram は除外。
