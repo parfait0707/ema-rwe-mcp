@@ -2,13 +2,32 @@
 
 EMA Catalogueの **Non-interventional study** を検索し、Study documentsの最新プロトコルPDFから、研究デザイン・疾患定義・データソースを出典付きで抽出・再利用するPython MCPサーバーです。Core、CLI、MCPを分離しています。
 
-`docs/spec/v0.1.md` と追加要件に基づくv0.6実装です。追加探索の仕様は [docs/spec/v0.2.md](docs/spec/v0.2.md)、種別タグ付きカタログと絞り込み質問は [docs/spec/v0.3.md](docs/spec/v0.3.md)、近傍一致・役割別検索・候補一覧・同梱辞書は [docs/spec/v0.4.md](docs/spec/v0.4.md)、呼出元向けの手順書は [docs/mcp-workflow.md](docs/mcp-workflow.md)、医薬品・コード検索は [docs/clinical-search.md](docs/clinical-search.md)、複数研究の比較は [docs/comparisons.md](docs/comparisons.md) を参照してください。通常検索はSQLite FTS5/BM25だけで実行し、PDFは選択した研究についてのみ取得します。
+`docs/spec/v0.1.md` と追加要件に基づくv0.7実装です。追加探索の仕様は [docs/spec/v0.2.md](docs/spec/v0.2.md)、種別タグ付きカタログと絞り込み質問は [docs/spec/v0.3.md](docs/spec/v0.3.md)、近傍一致・役割別検索・候補一覧・同梱辞書は [docs/spec/v0.4.md](docs/spec/v0.4.md)、呼出元向けの手順書は [docs/mcp-workflow.md](docs/mcp-workflow.md)、医薬品・コード検索は [docs/clinical-search.md](docs/clinical-search.md)、複数研究の比較は [docs/comparisons.md](docs/comparisons.md) を参照してください。通常検索はSQLite FTS5/BM25だけで実行し、PDFは選択した研究についてのみ取得します。
 
 ## セットアップ
 
 このチェックアウト用のCodex MCP設定は [`.codex/config.toml`](.codex/config.toml)、開発ルールは [`AGENTS.md`](AGENTS.md) です。[Codex設定ガイド](docs/codex-setup.md)を参照してください。
 
 日本語の疾患名から英語の関連語・医療コードへ検索を広げる機能を追加しています。`J84.9`／`J849`などの表記揺れ、呼出元が指定するコード、独自辞書、LLMによる候補提案に対応します。具体例と網羅性の制約は [臨床概念・医療コード検索](docs/clinical-search.md) を参照してください。
+
+### cloneせずに使う（uvx）
+
+uvだけあれば、MCPクライアントの設定に次を書くだけで使えます。カタログDB・医薬品辞書・日本語辞書はwheelに同梱され、初回起動時にOSのユーザーデータディレクトリ（例: Linux `~/.local/share/ema-rwe-mcp/`、Windows `%LOCALAPPDATA%\ema-rwe-mcp\`）へ複製されます。`EMA_DB_PATH`などの環境変数は不要です。
+
+```json
+{
+  "mcpServers": {
+    "ema-rwe": {
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/parfait0707/rwd-catalogue-mcp", "ema-rwe-mcp"]
+    }
+  }
+}
+```
+
+`git+https://...@v0.7.0` のようにタグを付けると版を固定できます。リポジトリが非公開の間は`gh auth login`等でGitHubの資格情報が必要です。複製済みのDBは`ema-rwe import-all`や`refresh-drugs`で上書き更新でき、パッケージ更新では上書きされません。このリポジトリのcheckout内で起動した場合は従来どおり`data/`直下を使います。
+
+### 開発用セットアップ（checkout）
 
 Python 3.12以上とuvを利用します。
 
@@ -21,7 +40,7 @@ $env:EMA_IMPORT_DIR = "E:/codex/rwd-catalogue-mcp/data/imports"
 .venv/Scripts/ema-rwe --help
 ```
 
-別の場所にcloneした場合はパスを置き換えてください。Windows以外では `.venv/bin/ema-rwe` を使用します。`EMA_DB_PATH`未設定時はチェックアウト内の`data/ema.sqlite3`（Git管理のカタログDB）を使い、wheelとして導入した場合だけOSのユーザーデータディレクトリへ退避します。キャッシュ等はOSのユーザーキャッシュディレクトリが既定です。`.env.example` は設定例で、自動読込はしません。
+別の場所にcloneした場合はパスを置き換えてください。Windows以外では `.venv/bin/ema-rwe` を使用します。`EMA_DB_PATH`未設定時はチェックアウト内の`data/ema.sqlite3`（Git管理のカタログDB）を使い、wheelとして導入した場合はOSのユーザーデータディレクトリへ同梱データを初回複製して使います。キャッシュ等はOSのユーザーキャッシュディレクトリが既定です。`.env.example` は設定例で、自動読込はしません。
 
 `data/ema.sqlite3`にはNon-interventional study全件と、claims／ehr／registryのData source typeタグ、役割別の検索列（Medicinal condition、Outcomes、INN／製品名／ATC、Main study objective）を取り込んだ状態でコミットしてあります。日本語疾患名の辞書`data/terminology.json`（48概念。関連語はカタログ本文から`scripts/mine_terminology.py`で導出し、判定記録を`data/terminology_decisions.json`に保持）とEMA公式医薬品辞書`data/ema-medicines.json`も同梱し、cloneした直後から日本語の質問で検索と絞り込みが使えます。再構築する場合は後述の`ema-rwe import-all`と`ema-rwe refresh-drugs`を実行します。
 
