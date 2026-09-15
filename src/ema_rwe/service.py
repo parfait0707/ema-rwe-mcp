@@ -22,6 +22,53 @@ from .terminology import proposed_codes
 from .vocabulary import expand
 
 
+def record_unmatched(path: Path, text: str, tool: str, expansion: dict) -> bool:
+    """Log a non-English query that neither the concept dictionary nor the drug dictionary recognised.
+
+    The log lives beside the database (not inside it, which is committed) and is the evidence for
+    deciding which concepts to add to data/terminology.json. English-only queries are not logged:
+    the index is English, so they need no translation.
+    """
+    text = " ".join(text.split())[:200]
+    clinical = expansion["clinical"]
+    if (
+        not text
+        or text.isascii()
+        or expansion["concepts"]
+        or clinical["concepts"]
+        or clinical["drugs"]["total_matches"]
+    ):
+        return False
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        log = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    except (OSError, ValueError):
+        log = {}
+    entry = log.setdefault(text, {"count": 0, "first_seen": now(), "tools": []})
+    entry["count"] += 1
+    entry["last_seen"] = now()
+    if tool not in entry["tools"]:
+        entry["tools"].append(tool)
+    path.write_text(json.dumps(log, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+    return True
+
+
+def unmatched_summary(path: Path, limit: int = 20) -> dict:
+    """Most frequent unrecognised queries, for deciding whether the dictionary needs new concepts."""
+    try:
+        log = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    except (OSError, ValueError):
+        log = {}
+    ranked = sorted(log.items(), key=lambda kv: (-kv[1]["count"], kv[1].get("last_seen", "")))
+    return {
+        "path": str(path),
+        "distinct": len(log),
+        "top": [{"text": text, **entry} for text, entry in ranked[:limit]],
+        "note": "Japanese queries that matched no concept or medicine. Add frequent ones to "
+        "data/terminology.json, then derive related terms with scripts/mine_terminology.py.",
+    }
+
+
 def expansion_summary(expansion: dict) -> dict:
     """The parts of a query expansion a caller acts on; plan_study_search returns the full form."""
     clinical = expansion["clinical"]
@@ -65,6 +112,10 @@ class Service:
     def source_type_import_dir(self):
         return self.import_dir / "source_type"
 
+    @property
+    def unmatched_log_path(self):
+        return self.settings.unmatched_log_path or self.settings.db_path.parent / "terminology_unmatched.json"
+
     async def close(self):
         await self.client.close()
 
@@ -93,6 +144,7 @@ class Service:
             ),
             "max_screening_studies": self.settings.max_screening_studies,
             "max_comparison_studies": self.settings.max_comparison_studies,
+            "unmatched_terms": unmatched_summary(self.unmatched_log_path),
             "browser_refresh_recommended": state != "current",
             "discovery_scope": "Only imported studies and individually retrieved Study IDs are searchable.",
             "browser_instruction": (
@@ -184,6 +236,7 @@ class Service:
                 for r in results
             ]
         expansion = expand(query, synonyms, codes)
+        record_unmatched(self.unmatched_log_path, query, "search_studies", expansion)
         return {
             "query": query,
             "role": role,
@@ -248,6 +301,10 @@ class Service:
             ):
                 unique.setdefault(row["study_id"], row)
         candidates = list(unique.values())
+        for query in queries:
+            record_unmatched(
+                self.unmatched_log_path, query, "compare_protocols", expand(query, synonyms, codes)
+            )
         if study_ids is not None:
             # An explicit user choice among the listed candidates; never a silent top N.
             if (
@@ -448,6 +505,7 @@ class Service:
     async def plan_study_search(self, question: str, use_llm: bool = False):
         expansion = expand(question)
         clinical = expansion["clinical"]
+        logged = record_unmatched(self.unmatched_log_path, question, "plan_study_search", expansion)
         queries = list(
             dict.fromkeys(
                 clinical["english_terms"]
@@ -465,6 +523,7 @@ class Service:
             if "アウトカム" in question or "outcome" in question.lower()
             else "unspecified",
             "status": "planned" if queries else "needs_client_translation",
+            "unmatched_logged": logged,
             "code_systems_to_check": clinical["systems_to_check"],
             "instruction": "Search English names, related names and codes independently. Then inspect outcome/exposure definitions, "
             "code lists and appendices in the selected PDFs. Check the source database, vocabulary/version, "
