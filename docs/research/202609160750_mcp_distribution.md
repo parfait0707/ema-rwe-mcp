@@ -108,3 +108,37 @@ ema-rwe が clone を要求する原因は 2 つある。
 2. `config.py`: `default_db_path()` / `default_terminology_path()` / `drugs.py` の既定を「checkout → 同梱資産をユーザーデータ dir へ初回コピー → そのパス」に変更
 3. GitHub Actions で tag push 時に `uv build` → PyPI Trusted Publishing
 4. README の「セットアップ」に uvx 1 行の手順を追加、`.mcp.json` は開発用（checkout 直起動）のまま維持
+
+## 追記（2026-09-16）: 利用状況・満足度の収集
+
+### `.mcp.json` の扱い
+
+`uvx --from git+https://github.com/parfait0707/rwd-catalogue-mcp ema-rwe --help` はこのコンテナでも動作した
+（`gh auth git-credential` が private リポの認証を肩代わり）。ただし `.mcp.json` は開発用 checkout の設定であり、
+git 直接起動に変えると **push 済みの main** が起動され、作業ツリーの未コミット変更を MCP 経由で試せなくなる
+（uvx は git ref のビルドをキャッシュし、`--refresh` まで更新しない）。開発用は `uv run --directory` のまま維持し、
+利用者向け設定は README の uvx 行を正とする。
+
+### git 直接起動（stdio）で見えるもの・見えないもの
+
+MCP サーバーは自分に届いた **ツール呼出の入力と自分が返した出力** しか観測できない。ユーザーの元の質問文、
+LLM の最終回答、ユーザーが満足したか・言い直したかは **クライアント（Claude Code / Codex / ChatGPT）側にしかない**。
+2026-07-28 版仕様にも満足度・評価のプリミティブは無い（MRTR による elicitation で「役に立ちましたか」を聞くことは可能だが、
+毎回聞くと体験を損なう）。stdio の git 配布ではサーバー運営者側に何も届かない。
+
+### 収集手段の比較
+
+| 手段 | 取れるもの | 前提 | 参考 |
+|---|---|---|---|
+| **① リモート MCP（Streamable HTTP + OAuth）でホスト** | 全ツール呼出のログ（入力・出力・遅延・エラー・ユーザー ID）をサーバー側で確実に記録。2026-07-28 版は stateless 化・ヘッダでのメソッド/ツール名ルーティングで計測しやすい | ホスティング、PDF 保存のマルチテナント化、利用規約・同意 | MCP 2026-07-28 |
+| **② stdio のまま opt-in テレメトリ** | ツール名・所要時間・エラー・匿名 ID。`mcp-use` は PostHog/Scarf へ送信し `MCP_USE_ANONYMIZED_TELEMETRY=false` で停止 | 初回起動時の明示同意（研究者向けでは特に）。質問文や PDF 内容を送らない設計 | mcp-use, PostHog |
+| **③ PostHog MCP Analytics で計装** | `$mcp_tool_call`（ツール名・クライアント・遅延・エラー・セッション）、**agent intent**（エージェントが「何をしようとしたか」をテーマ別に集約）、`get_more_tools` 仮想ツールで「欲しかったが無かった機能」を収集 | `@posthog/mcp` SDK（0.x）。Python 版は自前で同等イベントを送る | PostHog MCP Analytics |
+| **④ `submit_feedback` ツール + instructions** | 「ユーザーが満足・不満・言い直しをしたら呼べ」と MCP instructions に書き、呼出元 LLM に判定させて送信 | 呼出元依存で取りこぼす。①②と併用する補助手段 | PostHog の agent intent と同型 |
+| **⑤ MCP Apps（server-rendered UI）で 👍/👎** | 比較表をウィジェットとして描画し、その中に評価ボタンを置く。ChatGPT / Claude / VS Code / Goose が対応 | 公式 extension 初期段階。表示側の実装が必要 | MCP Apps 2026-01-26 |
+| **⑥ クライアント側テレメトリの利用（自組織限定）** | Claude Code は `CLAUDE_CODE_ENABLE_TELEMETRY=1` で OTel 経由に tool 呼出・MCP 活動・プロンプトイベント・権限判断を送出。組織内展開ならユーザーの質問と再質問の流れまで追える | 自組織のユーザーにしか適用できず、外部配布には使えない | Claude Code Monitoring docs |
+
+### 推奨
+
+外部配布で「質問→回答→満足/言い直し」を取るなら **①リモート MCP** が唯一確実。ただし本 MCP は PDF をローカル蓄積する
+設計なので、まず **②（opt-in・匿名・ツール名と結果メタデータのみ）+ ④（`submit_feedback`）** を stdio 版に足し、
+需要が見えたら①へ移す。⑤は比較表 UI が欲しくなった時点で検討。
