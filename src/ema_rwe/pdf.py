@@ -322,8 +322,8 @@ def prune_unverifiable(extraction: Extraction, pages: list[Page]) -> tuple[Extra
     data = extraction.model_dump()
     dropped = 0
 
-    def verifies(name, fact, evidence, is_list) -> bool:
-        single = dict(fact, evidence=[evidence])
+    def verifies(name, fact, evidence_items, is_list) -> bool:
+        single = dict(fact, evidence=evidence_items)
         try:
             validate_evidence(
                 Extraction.model_validate({name: [single] if is_list else single}), pages, chunks
@@ -337,7 +337,7 @@ def prune_unverifiable(extraction: Extraction, pages: list[Page]) -> tuple[Extra
         quote but present on the page -> add a short verbatim window containing the name."""
         quote = normalize_quote(evidence["quote"])
         for page in (evidence["page"] - 1, evidence["page"] + 1):
-            if quote in page_map.get(page, "") and verifies(name, fact, dict(evidence, page=page), is_list):
+            if quote in page_map.get(page, "") and verifies(name, fact, [dict(evidence, page=page)], is_list):
                 return [dict(evidence, page=page)]
         if name in {"data_sources", "source_assessments"} and quote in page_map.get(evidence["page"], ""):
             text = normalize_quote(next(p.text for p in pages if p.page == evidence["page"]))
@@ -348,8 +348,11 @@ def prune_unverifiable(extraction: Extraction, pages: list[Page]) -> tuple[Extra
                     "section": None,
                     "quote": text[max(0, at - 40) : at + 120],
                 }
-                if verifies(name, fact, window, is_list):
-                    return [evidence, window]
+                # Keep the original quote only if the pair passes every rule (it may have failed
+                # the section check as well as the name check); otherwise the window alone.
+                for candidate in ([evidence, window], [window]):
+                    if verifies(name, fact, candidate, is_list):
+                        return candidate
         return []
 
     for name, value in list(data.items()):
@@ -360,7 +363,7 @@ def prune_unverifiable(extraction: Extraction, pages: list[Page]) -> tuple[Extra
         for fact in value if is_list else [value]:
             good = []
             for evidence in fact["evidence"]:
-                if verifies(name, fact, evidence, is_list):
+                if verifies(name, fact, [evidence], is_list):
                     good.append(evidence)
                 elif fixed := repaired(name, fact, evidence, is_list):
                     good.extend(fixed)

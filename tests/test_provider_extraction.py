@@ -149,3 +149,40 @@ def test_prune_repairs_neighbour_page_and_source_name(pdf_bytes):
     assert dropped == 0
     assert pruned.outcomes[0].evidence[0].page == 1
     assert any("epcd" in e.quote.lower() for e in pruned.data_sources[0].evidence)
+
+
+async def test_research_protocol_answers_from_full_text_in_one_pass(service, monkeypatch):
+    from test_exploration import answer
+
+    pid = (await service.get_protocol("123"))["protocol"]["protocol_id"]
+    service.settings.llm_backend, service.settings.llm_model = "litellm", "test"
+    calls = []
+
+    async def respond(settings, messages):
+        calls.append(json.loads(messages[1]["content"]))
+        bad = {"value": "not in pdf", "evidence": [{"page": 1, "quote": "this quote is fabricated text"}]}
+        return {**answer().model_dump(), "answers": answer().model_dump()["answers"] + [bad]}
+
+    monkeypatch.setattr("ema_rwe.exploration.complete_json", respond)
+    result = await service.research_protocol(pid, "Which adjustment method?")
+    assert result["status"] == "answered" and len(calls) == 1
+    assert calls[0]["of"] == 1 and "sections" in calls[0] and "question" in calls[0]
+    assert result["trace"][0]["mode"] == "provider_full_text" and result["trace"][0]["dropped"] == 1
+    assert [a["value"] for a in result["answer"]["answers"]] == [answer().answers[0].value]
+    assert any("dropped" in m for m in result["answer"]["missing_information"])
+    assert (await service.research_protocol(pid, "Which adjustment method?"))["cached"]
+
+
+def test_prune_drops_original_quote_when_only_the_window_verifies(pdf_bytes):
+    pages = extract_pages(pdf_bytes)
+    analysis = sample_analysis()
+    source = analysis.data_sources[0]
+    # Wrong section label on the original quote and a value that is not inside the quote's text.
+    source.evidence[0].section = "9.9 Wrong section"
+    source.value = "EPCD"
+    pruned, _ = prune_unverifiable(analysis, pages)
+    kept = pruned.data_sources[0].evidence
+    assert all(e.section != "9.9 Wrong section" for e in kept) and kept
+    from ema_rwe.pdf import validate_evidence
+
+    validate_evidence(pruned, pages)
