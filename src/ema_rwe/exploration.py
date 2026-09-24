@@ -30,8 +30,10 @@ FULL_TEXT_PROMPT = (
     + "You receive the protocol's relevant sections (one batch of possibly several). Answer the question from "
     "these sections only and return one JSON object matching the schema. Each quote is one contiguous span copied "
     "character for character (keep bullet markers and punctuation; never join items with ';' or abridge); prefer "
-    "one sentence of at most 300 characters and several quotes over one stitched quote. Report in "
-    "missing_information only what this batch should contain but does not. "
+    "one sentence of at most 300 characters and several quotes over one stitched quote. Leave evidence.section "
+    "null; the server derives it. Write value and definition in telegraphic form (codes, thresholds, windows, "
+    "counts, names; no full sentences, no restatement of the quote); never omit a fact to save space. Emit "
+    "minified JSON. Report in missing_information only what this batch should contain but does not. "
     + SOURCE_ASSESSMENT_PROMPT
     + " Return source_assessments only for definitions relevant to this question. Inspect their actual data "
     "inputs even when source type is not explicitly asked. Do not substitute another outcome's or another "

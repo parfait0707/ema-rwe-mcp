@@ -30,7 +30,10 @@ Only explicitly stated facts: absent information must be null/empty and explaine
 For every fact supply exact verbatim quotes with physical PDF page numbers (1-based, not printed page labels).
 Each quote is one contiguous span copied character for character (keep bullet markers, brackets and
 punctuation; never join list items with ';' or abridge); prefer one sentence of at most 300 characters and
-add several quotes rather than one stitched quote. Use returned section labels exactly or null. Do not invent codes, definitions, comparators or confidence scores.
+add several quotes rather than one stitched quote. Leave evidence.section null; the server derives it.
+Write value and definition in telegraphic form: codes, thresholds, windows, counts and names, no full
+sentences, no restatement of the quote, no commentary. Never omit a fact, code or condition to save space.
+Emit minified JSON without indentation or line breaks. Do not invent codes, definitions, comparators or confidence scores.
 Data source values must be exact names appearing in evidence; distinguish used, planned, candidate, unclear.
 Do not treat organisations, investigators, software, OMOP CDM, cited prior studies or abbreviations alone as
 proof of an actually used database. Include all participating data sources stated in the relevant sections.
