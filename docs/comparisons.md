@@ -34,7 +34,7 @@
 
 戻り値の `pending_tools` を全件実行する。
 
-- `analyze_protocol`：共通抽出。`needs_client_extraction` なら `next_offset` がなくなるまで全バッチを読み、`cache_protocol_analysis` に根拠付きJSONと `coverage_complete=true` を渡す。
+- `analyze_protocol`：共通抽出。`extracting` ならサーバー側抽出中なので同じ呼出を繰り返して結果を受け取る。`needs_client_extraction` なら `next_offset` がなくなるまで全バッチを読み、バッチごとに `cache_protocol_analysis(batch_offset=offset)` で途中保存し、最後に `coverage_complete=true` を渡す。
 - `research_protocol`：質問別の追加探索。`needs_client_exploration` なら `get_protocol_outline`、`search_protocol_text`、`read_protocol_text` で方法・定義・隣接章・コード付録を確認し、`cache_protocol_answer` に保存する。
 - 最後に `get_protocol_comparison(comparison_id)`：保存済み解析と質問別回答を全件集約してJSON/Markdownを更新する。未処理が残れば繰り返す。
 

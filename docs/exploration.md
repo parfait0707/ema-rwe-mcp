@@ -108,7 +108,8 @@ MCP設定の `env` に入れる共通設定例（モデルIDは利用可能な�
 | Gemini | `gemini/<model-id>` | `LLM_API_KEY` または `GEMINI_API_KEY` |
 | Anthropic | `anthropic/<model-id>` | `LLM_API_KEY` または `ANTHROPIC_API_KEY` |
 | OpenAI | `openai/<model-id>` | `LLM_API_KEY` または `OPENAI_API_KEY` |
-| Azure OpenAI | `azure/<deployment-name>` | `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_API_VERSION`。または `AZURE_API_KEY`, `AZURE_API_BASE`, `AZURE_API_VERSION` |
+| Azure OpenAI（従来のdeployments API） | `azure/<deployment-name>` | `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_API_VERSION`。または `AZURE_API_KEY`, `AZURE_API_BASE`, `AZURE_API_VERSION` |
+| Azure OpenAI（v1 API、`.../openai/v1`） | `openai/<deployment-name>` | `LLM_API_KEY`, `LLM_BASE_URL=https://<resource>.openai.azure.com/openai/v1`。`LLM_API_VERSION` は空。reasoningモデルは `LLM_REASONING_EFFORT`、上限は `LLM_MAX_TOKENS` |
 | Amazon Bedrock | `bedrock/<model-or-inference-profile-id>` | AWS認証チェーン（プロファイル、ロール、アクセスキー等）と `AWS_REGION_NAME`。IAM認証では `LLM_API_KEY` を設定しない |
 
 LiteLLMの接続仕様は [基本ドキュメント](https://docs.litellm.ai/)、[Gemini](https://docs.litellm.ai/docs/providers/gemini)、[Azure](https://docs.litellm.ai/docs/providers/azure)、[Bedrock](https://docs.litellm.ai/docs/providers/bedrock) を参照。Azureはモデル名ではなくデプロイ名を指定する。LLM_MODELに使うモデル／リージョン／API版の利用可否は契約先による。

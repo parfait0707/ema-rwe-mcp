@@ -183,9 +183,9 @@ PDF保存は「サイト全体のPDFを収集する」処理ではありませ�
 
 抽出は2つの方式を提供します。
 
-**追加APIキーなし（既定）**: `analyze_protocol` が関連セクション・物理PDFページ番号・抽出JSON Schema・fingerprintを返します。呼び出し元のClaude Code/Codexが全バッチを読み、`cache_protocol_analysis` で構造化結果を保存します。`next_offset` がある間は `analyze_protocol(offset=next_offset)` を繰り返します。保存済みの場合は `analyze_protocol` が即座に解析結果を返します。
+**追加APIキーなし（既定）**: `analyze_protocol` が関連セクション・物理PDFページ番号・抽出JSON Schema・fingerprintを返します。呼び出し元のClaude Code/Codexが全バッチを読み、`cache_protocol_analysis` で構造化結果を保存します。`next_offset` がある間は `analyze_protocol(offset=next_offset)` を繰り返し、バッチごとに `cache_protocol_analysis(batch_offset=offset)` で途中保存すると、呼出元の文脈が圧縮されても既読分を再読せずに済みます（`cached_batch_offsets` に保存済みのoffsetが返ります）。最後のバッチで `coverage_complete=true` を渡すとサーバーが全バッチを統合して保存します。保存済みの場合は `analyze_protocol` が即座に解析結果を返します。この経路はPDF本文が呼出元の文脈に積まれるため、242頁のプロトコルでは1問あたり100 turn超・$20超になります（`docs/research/202609241300_pdf_reading_cost.md`）。Claude Codeなど安価なサブエージェントを起動できるクライアントでは、MCPの`instructions`に従い研究ごとの読み取りをサブエージェントへ委譲してください。
 
-**内部LLM**: `LLM_BACKEND=compatible`では`LLM_BASE_URL`（`/v1`等まで）、`LLM_MODEL`、必要なら`LLM_API_KEY`を設定し、Chat Completions互換APIを呼びます。`LLM_BACKEND=litellm`ならGemini・Anthropic・OpenAI・Azure OpenAI・Amazon Bedrockへ接続できます。[設定例と追加探索](docs/exploration.md)を参照してください。compatible方式は`response_format: json_object`対応モデルが必要です。LiteLLM方式ではJSON生成を指示し、返却後にスキーマを検証します。関連セクションを45,000文字以下のバッチに分割して抽出し、検証後に保存します。プロトコルの関連テキストは設定先プロバイダに送信されます。外部APIはキー未設定のため今回の実API検証は未実施です。
+**内部LLM**: `LLM_BACKEND=compatible`では`LLM_BASE_URL`（`/v1`等まで）、`LLM_MODEL`、必要なら`LLM_API_KEY`を設定し、Chat Completions互換APIを呼びます。`LLM_BACKEND=litellm`ならGemini・Anthropic・OpenAI・Azure OpenAI・Amazon Bedrockへ接続できます。[設定例と追加探索](docs/exploration.md)を参照してください。compatible方式は`response_format: json_object`対応モデルが必要です。LiteLLM方式ではJSON生成を指示し、返却後にスキーマを検証します。関連セクションを `LLM_BATCH_CHARS`（既定300,000文字）以下のバッチに分割し、`LLM_CONCURRENCY`（既定4）並列で抽出して統合します。引用が原文と一致しない証拠は落として `missing_information` に件数を記録し、残りを検証後に保存します。抽出が `LLM_WAIT_SECONDS`（既定120秒）を超えるときは `status=extracting` と進捗を返すので、呼出元は同じ `analyze_protocol` を再度呼んで結果を受け取ります。`LLM_REASONING_EFFORT`（例: `high`）はLiteLLMの `reasoning_effort` に、`LLM_MAX_TOKENS` は `max_completion_tokens` に渡します（0ならLiteLLMのモデル表を参照）。Azure OpenAIのv1エンドポイント（`https://<resource>.openai.azure.com/openai/v1`）はOpenAI互換なので `LLM_MODEL=openai/<deployment>` とし `LLM_API_VERSION` は空にします。プロトコルの関連テキストは設定先プロバイダに送信されます。実測（Azure OpenAI経由のreasoningモデル、effort=high）: 67頁のプロトコルが1バッチ116秒、242頁が2バッチ並列116秒で、呼出元抽出の1/30以下のコストでした。
 
 保存対象は、研究デザイン、対象集団、曝露、比較群、アウトカム、統計解析、疾患定義、データソース、補足事項です。疾患定義には、記載されていればコード体系・コード・観察期間・判定アルゴリズムを残します。OMOPへの自動変換や記載のないコードの補完は行いません。
 
@@ -219,7 +219,7 @@ stdioで17個のToolを公開します。初期抽出の5個、[追加探索の7
 | `get_study` | `study_id`, `refresh=false`。研究種別とData source typeを各タブで確認 |
 | `get_protocol` | `study_id`, `version="latest"`, `download=true`, `refresh=false` |
 | `analyze_protocol` | `study_id`, `force_refresh=false`, `offset=0`, `max_chars=30000` |
-| `cache_protocol_analysis` | `study_id`, `fingerprint`, `analysis`, `coverage_complete=true` |
+| `cache_protocol_analysis` | `study_id`, `fingerprint`, `analysis`, `coverage_complete=true`。バッチ途中保存は `batch_offset=<offset>`（`coverage_complete=false`） |
 | `compare_protocols` | `question`, `queries`, `filters`, `source_preference`, `darwin_only=false`, `synonyms`, `codes`。`role`, `study_ids`。一次判定上限以内なら全PDFと下書きJSONを保存。上限超過時は`facets`（国・種別・デザイン・Medicinal condition）と、`EMA_MAX_LISTED_CANDIDATES`以内なら`candidates`一覧を返し、`next_action`で種別と実施国の質問を指示。ユーザーが一覧から選んだ`study_ids`を渡すと、その研究だけを一次判定に進める。`source_preference`はPDF判定後に優先／限定 |
 | `get_protocol_comparison` | `comparison_id`, `selected_study_ids`（ユーザーが選択した場合）。全件の保存済み抽出・質問別回答を集め、JSONと比較表を更新 |
 | `catalogue_status` | CSV snapshotの有無・最終取込時刻・期限・`studies`／`source_type`出力先・取込済み種別（`source_type_imports`）を返す。通信なし |
@@ -336,7 +336,7 @@ macOS/Linuxではコマンドを配置先の `.venv/bin/python` にし、DB等�
 | 情報の送信先 | 返されたPDF本文・質問は呼出元LLMの提供元へ送られる | PDF抜粋・質問が設定先プロバイダへ送られる。回答は呼出元にも返る |
 | 品質・再利用 | モデル・読み方に依存。引用検証、PDF保存、JSON Schema、DB再利用は共通 | 同左。内部APIを使えば精度・再現性が必ず上がるとは限らない |
 
-通常の共通抽出は、両方式とも章構造・同義語に基づいて選択した関連章を読みます。内部方式は45,000文字以下のバッチ抽出で、この段階自体は自律探索ではありません。質問に応じた `research_protocol` が追加探索を担います。内部方式に渡るのはツールに指定した質問とPDF情報であり、呼出元との会話履歴全体は自動では渡りません。既知の条件は質問に含めてください。
+通常の共通抽出は、両方式とも章構造・同義語に基づいて選択した関連章を読みます。内部方式は `LLM_BATCH_CHARS` 以下のバッチを並列抽出して統合するもので、この段階自体は自律探索ではありません。質問に応じた `research_protocol` が追加探索を担います。内部方式に渡るのはツールに指定した質問とPDF情報であり、呼出元との会話履歴全体は自動では渡りません。既知の条件は質問に含めてください。
 
 内部LLMを使うには `uv sync --extra dev --extra llm` を実行し、MCPプロセスに `LLM_BACKEND=litellm`、`LLM_MODEL` と接続先の認証設定を渡します。APIキー単独では有効になりません。BedrockのIAM認証など、内部方式でもAPIキー文字列を使わない接続があります。ここでいう「追加APIキーなし」はMCP内のLLM接続を未設定にする方式です。[各プロバイダの設定例](docs/exploration.md#litellm経由の内部探索)
 
