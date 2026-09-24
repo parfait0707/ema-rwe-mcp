@@ -53,6 +53,13 @@ filters. Never pick a subset yourself.
 
 - Every row has `pending_tools`. Run all of them: `analyze_protocol` (read every `next_offset`
   batch), `cache_protocol_analysis`, `research_protocol`, `cache_protocol_answer`.
+- `analyze_protocol` may return `status=extracting` (server-side provider extraction running):
+  call it again for the same study until it returns the analysis; do not extract client-side.
+- With `needs_client_extraction`, cache each batch via `cache_protocol_analysis(batch_offset=offset)`
+  so progress survives context compaction; skip offsets listed in `cached_batch_offsets`; finish with
+  `coverage_complete=true`. If your client can run a cheaper subagent (Claude Code: `Agent` with
+  model sonnet), delegate one study's batch reading and caching to it and keep only results in
+  the main context.
 - Quotes must be verbatim; pages are physical PDF pages; keep `usage` honest
   (`used`/`planned`/`candidate`/`unclear`). A planned source is never "used".
 - `source_preference` (types, definition role, `mode=prefer` by default) ranks PDF evidence after

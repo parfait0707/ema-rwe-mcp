@@ -139,6 +139,25 @@ v0.1時点で`pytest`全46件、`ruff check src tests`、sdistとwheelのビル�
 - `uv run pytest -q`: 192 passed, 1 skipped（`tests/test_distribution.py`を追加: force-include網羅、checkout時の既定パス、wheel導入時の初回複製と非上書き）。`ruff check`／`ruff format --check`合格。`uv lock --check`合格。
 - 未検証: `uvx --from git+https://github.com/parfait0707/rwd-catalogue-mcp ema-rwe-mcp`の実行はリポジトリが非公開のため未実施（ローカルwheel導入で同等経路を検証）。Windowsの`%LOCALAPPDATA%`への複製は未実施。
 
+## 2026-09-24 サーバー側抽出（Azure OpenAI）と呼出元抽出の圧縮対策
+
+- 接続: Azure OpenAI v1 エンドポイント（`/openai/v1`）は OpenAI 互換のため `LLM_MODEL=openai/<deployment>` + Bearer で疎通。`reasoning_effort=high`、`max_completion_tokens` 上限 128,000（エラー応答から取得）。`azure/` プロバイダ指定は 404。
+- 単体の抽出（gpt-5.6, effort=high）: 49733（67 頁、関連 94k 字）1 バッチ 116 秒。19786（242 頁、488k 字）2 バッチ並列 116 秒、`status=extracting` を 1 回返してから完了。証拠の脱落は 49733 で 94 件中 29 件（省略引用 19、ページずれ 6→自動修復、データソース名 11→窓引用で一部修復）。
+- q1「日本のレセプトでの膵炎アウトカム定義」を headless Claude Code（`claude -p`、`--strict-mcp-config`、ファイル系ツール禁止）で実行:
+
+| モード | turn | 所要 | コスト | 結果 |
+|---|---|---|---|---|
+| 呼出元抽出（改修前、9/24 05:20） | 98〜113 | 24 分 | $22〜30 | 利用制限で中断、回答なし |
+| サーバー側抽出（修正前コード） | 66 | 42 分 | $8.3 | 完走。`research_protocol` の内部探索が全件 `exploration_limit_reached` |
+| サーバー側抽出（修正後） | 37 | 22 分 | $6.1 | 完走。`research_protocol` は全文一括回答 |
+| フォールバック（LLM 未設定、Sonnet サブエージェントへ委譲） | 5（メイン） | 約 30 分 | $22.0 | 完走。サブエージェント 14 本（うち 4 本が研究担当、`batch_offset` で途中保存） |
+
+- 修正で直した不具合: (a) 抽出後の最終検証で `EVIDENCE_INVALID`（section 不一致）— データソース名の窓引用を足す修復で、落ちた元の引用を残していた。修復後の証拠一式で再検証するよう変更。(b) 内部探索の 8 ステップが 1.2 万字の読み取りで尽きる — 関連セクション全体を一括で渡す方式へ変更。
+- `uv run pytest -q`: 206 passed。`ruff check` / `ruff format --check` 合格。
+- headless 実行の注意: サブエージェントを待つ `claude -p` は既定 600 秒で打ち切られる。`CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0` で回避。2 本同時実行はセッション利用制限に達しやすい。
+- 盲検採点（q1、n=1、両出力を一次資料と照合）: サーバー側抽出モード優位、確信度は中。フォールバック側に件数表記の誤りと未処理研究の開示漏れがあった。報告は `docs/agent_report/202609242030_blind_judge_q1_provider_vs_fallback.md`（Git 管理外）。
+- 未検証: q2〜q6 は未実行。Codex 側の `tool_timeout_sec=180` に対し `research_protocol` の一括回答（約 2 分）はポーリング化していない。
+
 ## 未検証事項（継続）
 
 - 外部LLM API呼出しの実認証検証は未実施。キーなしの呼出元LLM方式は合成PDFで保存・再利用まで検証。

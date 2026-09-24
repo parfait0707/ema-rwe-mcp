@@ -13,8 +13,8 @@ from .drugs import refresh_dictionary
 from .ema import BASE, is_non_interventional, parse_documents, parse_study, select_protocol
 from .exploration import Explorer
 from .http import EMAClient
-from .llm import EXTRACTION_PROMPT, complete_json, configured, extract_with_provider
-from .pdf import extract_pages, sections, validate_evidence
+from .llm import EXTRACTION_PROMPT, complete_json, configured, extract_with_provider, merge_extractions
+from .pdf import extract_pages, prune_unverifiable, sections, validate_evidence
 from .selection import TYPED_SOURCES, SearchFilters, compact, selection
 from .source_types import preference_for
 from .storage import Repository, import_csv
@@ -99,6 +99,10 @@ class Service:
         )
         self.explorer = Explorer(self.settings, self.archive, self.repo)
         self.comparisons = Comparisons(self)
+        # ponytail: in-process registry of running provider extractions; a server restart loses them
+        # and the next analyze_protocol simply starts over (add DB checkpoints if that ever matters).
+        self._extractions: dict[str, tuple[asyncio.Task, dict]] = {}
+        self._partials: dict[tuple[str, str], dict[int, Extraction]] = {}
 
     @property
     def import_dir(self):
@@ -466,14 +470,12 @@ class Service:
             )
             self.repo.save_analysis(self.repo.get(study_id), old)
             return dict(old, cached=True)
+        if configured(self.settings):
+            return await self._provider_extraction(study_id, pdf, source)
         pages = await asyncio.to_thread(extract_pages, pdf)
         chunks = [c for c in sections(pages) if c["relevant"]]
         if not chunks:
             raise RWEError("SECTION_PARSE_FAILED", "No relevant protocol sections found.")
-        if configured(self.settings):
-            analysis = await extract_with_provider(self.settings, chunks)
-            validate_evidence(analysis, pages)
-            return self._save(study_id, analysis, source, "configured_provider")
         selected, size = [], 0
         for chunk in chunks[offset:]:
             if selected and size + len(chunk["text"]) > max_chars:
@@ -485,8 +487,11 @@ class Service:
             "status": "needs_client_extraction",
             "source": source,
             "cached": False,
-            "instruction": EXTRACTION_PROMPT + " Read every batch using next_offset; then call "
-            "cache_protocol_analysis with fingerprint, analysis and coverage_complete=true.",
+            "instruction": EXTRACTION_PROMPT + " Read every batch using next_offset. After each batch call "
+            "cache_protocol_analysis with fingerprint, that batch's analysis and batch_offset=offset so "
+            "progress survives context compaction (skip offsets already in cached_batch_offsets); after the "
+            "last batch call it with coverage_complete=true to merge and save.",
+            "cached_batch_offsets": sorted(self._partials.get((study_id, source["fingerprint"]), {})),
             "analysis_schema": Extraction.model_json_schema(),
             "sections": selected,
             "offset": offset,
@@ -622,18 +627,73 @@ class Service:
         return await asyncio.to_thread(self.explorer.save, protocol_id, question, answer)
 
     async def cache_protocol_analysis(
-        self, study_id: str, fingerprint: str, analysis: Extraction, coverage_complete: bool = False
+        self,
+        study_id: str,
+        fingerprint: str,
+        analysis: Extraction,
+        coverage_complete: bool = False,
+        batch_offset: int | None = None,
     ):
-        if not coverage_complete:
+        """Save a caller extraction. With batch_offset the batch is held server-side until the final
+        coverage_complete call merges every cached batch, so context compaction cannot lose progress."""
+        if not coverage_complete and batch_offset is None:
             raise RWEError(
-                "INCOMPLETE_EXTRACTION", "Read all returned section batches before caching an analysis."
+                "INCOMPLETE_EXTRACTION",
+                "Read all section batches before caching, or cache each batch with batch_offset first.",
             )
         pdf, source = await self._context(study_id)
         if source["fingerprint"] != fingerprint:
             raise RWEError("PROTOCOL_CHANGED", "Protocol/extractor changed; analyze current protocol again.")
         pages = await asyncio.to_thread(extract_pages, pdf)
         validate_evidence(analysis, pages)
+        key = (study_id, fingerprint)
+        if not coverage_complete:
+            self._partials.setdefault(key, {})[batch_offset] = analysis
+            return {
+                "status": "batch_cached",
+                "study_id": study_id,
+                "cached_batch_offsets": sorted(self._partials[key]),
+            }
+        partials = self._partials.pop(key, {})
+        if partials:
+            analysis = merge_extractions([*partials.values(), analysis])
         return self._save(study_id, analysis, source, "client_assisted")
+
+    async def _provider_extraction(self, study_id: str, pdf: bytes, source: dict) -> dict:
+        """Run (or keep running) the server-side extraction; return status=extracting when it outlasts the wait."""
+        entry = self._extractions.get(study_id)
+        if entry is None or (entry[0].done() and entry[0].exception() is not None):
+            progress: dict = {}
+            task = asyncio.create_task(self._extract_and_save(study_id, pdf, source, progress))
+            entry = self._extractions[study_id] = (task, progress)
+        task, progress = entry
+        done, _ = await asyncio.wait({task}, timeout=self.settings.llm_wait_seconds)
+        if task in done:
+            self._extractions.pop(study_id, None)
+            return task.result()
+        return {
+            "status": "extracting",
+            "study_id": study_id,
+            "source": source,
+            "cached": False,
+            "progress": dict(progress),
+            "instruction": "Server-side extraction is still running; call analyze_protocol again for this "
+            "study to collect the cached result. Do not extract client-side.",
+        }
+
+    async def _extract_and_save(self, study_id: str, pdf: bytes, source: dict, progress: dict) -> dict:
+        pages = await asyncio.to_thread(extract_pages, pdf)
+        chunks = [c for c in sections(pages) if c["relevant"]]
+        if not chunks:
+            raise RWEError("SECTION_PARSE_FAILED", "No relevant protocol sections found.")
+        analysis = await extract_with_provider(self.settings, chunks, progress)
+        analysis, dropped = await asyncio.to_thread(prune_unverifiable, analysis, pages)
+        if dropped:
+            analysis.missing_information = analysis.missing_information[:29] + [
+                f"{dropped} provider evidence item(s) failed verbatim/page verification and were dropped."
+            ]
+        validate_evidence(analysis, pages)
+        return self._save(study_id, analysis, source, "configured_provider")
 
     def _save(self, study_id, analysis, source, method):
         result = {
