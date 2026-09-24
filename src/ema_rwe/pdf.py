@@ -355,6 +355,18 @@ def prune_unverifiable(extraction: Extraction, pages: list[Page]) -> tuple[Extra
                         return candidate
         return []
 
+    def with_section(evidence: dict) -> dict:
+        """Fill a missing section label from the unique chunk on that page containing the quote."""
+        if evidence.get("section") is not None:
+            return evidence
+        quote = normalize_quote(evidence["quote"])
+        labels = {
+            c["section"]
+            for c in chunks
+            if c["page"] == evidence["page"] and c["section"] and quote in normalize_quote(c["text"])
+        }
+        return dict(evidence, section=labels.pop()) if len(labels) == 1 else evidence
+
     for name, value in list(data.items()):
         if name in {"schema_version", "missing_information"} or value is None:
             continue
@@ -362,7 +374,7 @@ def prune_unverifiable(extraction: Extraction, pages: list[Page]) -> tuple[Extra
         kept = []
         for fact in value if is_list else [value]:
             good = []
-            for evidence in fact["evidence"]:
+            for evidence in map(with_section, fact["evidence"]):
                 if verifies(name, fact, [evidence], is_list):
                     good.append(evidence)
                 elif fixed := repaired(name, fact, evidence, is_list):

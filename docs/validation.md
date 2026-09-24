@@ -156,6 +156,10 @@ v0.1時点で`pytest`全46件、`ruff check src tests`、sdistとwheelのビル�
 - `uv run pytest -q`: 206 passed。`ruff check` / `ruff format --check` 合格。
 - headless 実行の注意: サブエージェントを待つ `claude -p` は既定 600 秒で打ち切られる。`CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0` で回避。2 本同時実行はセッション利用制限に達しやすい。
 - 盲検採点（q1、n=1、両出力を一次資料と照合）: サーバー側抽出モード優位、確信度は中。フォールバック側に件数表記の誤りと未処理研究の開示漏れがあった。報告は `docs/agent_report/202609242030_blind_judge_q1_provider_vs_fallback.md`（Git 管理外）。
+- 出力量の制御（2026-09-24 夜）: 抽出プロンプトを「節ラベルは null（サーバーが引用位置から導出）、value/definition は電報体、JSON は最小化、事実・コード・条件の省略禁止」に変更。19786（effort=high）の可視出力 61,858→34,469 字（-40%）、出力トークン 29.3k→22.9k（-22%、reasoning 分は不変）、バッチ 1 の所要 116→84 秒。検証後の証拠件数は 145→186、49733 は 92→92 で減少なし。主要アウトカム定義のコード・時間窓・感度特異度は保持。節ラベルは 65 件中 59 件をサーバーが補完。
+- effort 比較（19786 / 49733）: medium は所要 44 秒（high の約 2.5 分の 1）だが証拠件数が 113 / 50（high 145 / 92）に減る。reasoning トークンは high 4〜6k、medium 0.3k で、差は書き出し量。抽出は high を維持。
+- retry の確認: LiteLLM は `num_retries=0`、内部の OpenAI SDK は既定 2 回。SDK ロガーを DEBUG にした 19786 抽出で `Retrying request` 0 件、所要 127 秒（再試行なしの所要と一致）。MCP ログの `429` はタイムスタンプの部分一致。
+- モデル上限: gpt-5.6 Luna は文脈 1,050,000 / 最大出力 128,000 トークン。`LLM_MAX_TOKENS=128000` は上限値そのもの（実測の最大出力は 17k）。`LLM_BATCH_CHARS=300000`（約 105k トークン）は 272k トークンの課金段階と 128k 超での精度低下報告を避ける設定。
 - 未検証: q2〜q6 は未実行。Codex 側の `tool_timeout_sec=180` に対し `research_protocol` の一括回答（約 2 分）はポーリング化していない。
 
 ## 未検証事項（継続）

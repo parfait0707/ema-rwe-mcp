@@ -186,3 +186,15 @@ def test_prune_drops_original_quote_when_only_the_window_verifies(pdf_bytes):
     from ema_rwe.pdf import validate_evidence
 
     validate_evidence(pruned, pages)
+
+
+def test_prune_fills_missing_section_label_from_the_quote_location(pdf_bytes):
+    pages = extract_pages(pdf_bytes)
+    analysis = sample_analysis()
+    for fact in (analysis.study_design, *analysis.data_sources, *analysis.disease_definitions):
+        for evidence in fact.evidence:
+            evidence.section = None
+    pruned, dropped = prune_unverifiable(analysis, pages)
+    assert dropped == 0
+    assert pruned.study_design.evidence[0].section == "8.1 Study design"
+    assert pruned.data_sources[0].evidence[0].section == "8.2 Data sources"
