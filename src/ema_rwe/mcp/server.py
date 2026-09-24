@@ -31,7 +31,10 @@ def create_server(service: Service | None = None):
             "(claims/ehr/registry/others) AND countries using facets, or let them pick study_ids from candidates, "
             "then rerun; 4) within max_screening_studies process every pending tool, cache all extractions and "
             "answers, then get_protocol_comparison. Never choose a subset silently, never call planned data "
-            "sources used, cite PDF pages. Full procedure and field semantics: docs/mcp-workflow.md."
+            "sources used, cite PDF pages. When analyze_protocol returns needs_client_extraction and your "
+            "client can run a cheaper subagent (e.g. Claude Code Agent with model sonnet), delegate that "
+            "study's batch reading and caching to it and keep only cached results in the main context. "
+            "Full procedure and field semantics: docs/mcp-workflow.md."
         ),
     )
 
@@ -146,15 +149,21 @@ def create_server(service: Service | None = None):
         offset: Annotated[int, Field(ge=0)] = 0,
         max_chars: Annotated[int, Field(ge=6000, le=60000)] = 30000,
     ) -> dict:
-        """Return the cached extraction, or paginated PDF sections to extract from (follow next_offset)."""
+        """Return the cached extraction; status=extracting means call again later; else paginated sections to extract (follow next_offset)."""
         return await call("analyze_protocol", study_id, force_refresh, offset, max_chars)
 
     @server.tool()
     async def cache_protocol_analysis(
-        study_id: str, fingerprint: str, analysis: Extraction, coverage_complete: bool = False
+        study_id: str,
+        fingerprint: str,
+        analysis: Extraction,
+        coverage_complete: bool = False,
+        batch_offset: int | None = None,
     ) -> dict:
-        """Save a caller extraction; fingerprint and verbatim quotes are verified before caching."""
-        return await call("cache_protocol_analysis", study_id, fingerprint, analysis, coverage_complete)
+        """Save a caller extraction (verbatim quotes verified). Pass batch_offset per batch; finish with coverage_complete=true."""
+        return await call(
+            "cache_protocol_analysis", study_id, fingerprint, analysis, coverage_complete, batch_offset
+        )
 
     @server.tool()
     async def plan_study_search(question: str, use_llm: bool = False) -> dict:
@@ -206,7 +215,21 @@ def create_server(service: Service | None = None):
         """Validate and save a caller's question-specific answer with exact quotes/pages/sections."""
         return await call("cache_protocol_answer", protocol_id, question, answer)
 
+    for tool in server._tool_manager._tools.values():
+        tool.parameters = strip_titles(tool.parameters)
     return server
+
+
+def strip_titles(node):
+    """Drop Pydantic's auto-generated "title" keys from advertised tool schemas (about 18% of their size)."""
+    if isinstance(node, dict):
+        node.pop("title", None)
+        for value in node.values():
+            strip_titles(value)
+    elif isinstance(node, list):
+        for value in node:
+            strip_titles(value)
+    return node
 
 
 def main():

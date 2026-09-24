@@ -260,9 +260,9 @@ def normalize_quote(text: str) -> str:
     return re.sub(r"\s+", " ", text.replace("\u00ad", "")).strip().casefold()
 
 
-def validate_evidence(extraction: Extraction, pages: list[Page]):
+def validate_evidence(extraction: Extraction, pages: list[Page], chunks: list[dict] | None = None):
     page_map = {p.page: normalize_quote(p.text) for p in pages}
-    chunks = sections(pages)
+    chunks = sections(pages) if chunks is None else chunks
 
     def validate_fact(fact, is_source=False, require_methods=False):
         for evidence in fact.evidence:
@@ -309,3 +309,67 @@ def validate_evidence(extraction: Extraction, pages: list[Page]):
             continue
         for fact in value if isinstance(value, list) else [value]:
             validate_fact(fact, name in {"data_sources", "source_assessments"}, name != "key_notes")
+
+
+def prune_unverifiable(extraction: Extraction, pages: list[Page]) -> tuple[Extraction, int]:
+    """Server-side extractions: keep evidence that passes validate_evidence, drop facts left without any.
+
+    Returns the pruned extraction and the number of dropped evidence items/facts, so one bad quote
+    from the provider does not reject the whole study the way a caller-submitted extraction would.
+    """
+    chunks = sections(pages)
+    page_map = {p.page: normalize_quote(p.text) for p in pages}
+    data = extraction.model_dump()
+    dropped = 0
+
+    def verifies(name, fact, evidence_items, is_list) -> bool:
+        single = dict(fact, evidence=evidence_items)
+        try:
+            validate_evidence(
+                Extraction.model_validate({name: [single] if is_list else single}), pages, chunks
+            )
+            return True
+        except RWEError:
+            return False
+
+    def repaired(name, fact, evidence, is_list) -> list[dict]:
+        """Verbatim quote on a neighbouring page -> fix the page; data source name missing from the
+        quote but present on the page -> add a short verbatim window containing the name."""
+        quote = normalize_quote(evidence["quote"])
+        for page in (evidence["page"] - 1, evidence["page"] + 1):
+            if quote in page_map.get(page, "") and verifies(name, fact, [dict(evidence, page=page)], is_list):
+                return [dict(evidence, page=page)]
+        if name in {"data_sources", "source_assessments"} and quote in page_map.get(evidence["page"], ""):
+            text = normalize_quote(next(p.text for p in pages if p.page == evidence["page"]))
+            at = text.find(normalize_quote(fact["value"]))
+            if at >= 0:
+                window = {
+                    "page": evidence["page"],
+                    "section": None,
+                    "quote": text[max(0, at - 40) : at + 120],
+                }
+                # Keep the original quote only if the pair passes every rule (it may have failed
+                # the section check as well as the name check); otherwise the window alone.
+                for candidate in ([evidence, window], [window]):
+                    if verifies(name, fact, candidate, is_list):
+                        return candidate
+        return []
+
+    for name, value in list(data.items()):
+        if name in {"schema_version", "missing_information"} or value is None:
+            continue
+        is_list = isinstance(value, list)
+        kept = []
+        for fact in value if is_list else [value]:
+            good = []
+            for evidence in fact["evidence"]:
+                if verifies(name, fact, [evidence], is_list):
+                    good.append(evidence)
+                elif fixed := repaired(name, fact, evidence, is_list):
+                    good.extend(fixed)
+                else:
+                    dropped += 1
+            if good:
+                kept.append(dict(fact, evidence=good[:8]))
+        data[name] = kept if is_list else (kept[0] if kept else None)
+    return Extraction.model_validate(data), dropped

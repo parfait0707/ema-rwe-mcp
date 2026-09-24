@@ -162,6 +162,7 @@ async def test_autonomous_search_read_finish_and_cached_replay(service, monkeypa
     service.settings.llm_model = "anthropic/test"
     decisions = iter(
         [
+            {"answers": [], "source_assessments": []},  # full-text pass finds nothing -> bounded loop
             {"action": "search", "query": "adjustment", "synonyms": ["propensity score"]},
             {"action": "read", "start_page": 1},
             {"action": "finish", "answer": answer().model_dump()},
