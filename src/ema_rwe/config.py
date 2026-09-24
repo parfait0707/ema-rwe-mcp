@@ -61,6 +61,14 @@ class Settings:
     llm_backend: str = field(default_factory=lambda: os.getenv("LLM_BACKEND", "compatible"))
     llm_api_version: str = field(default_factory=lambda: os.getenv("LLM_API_VERSION", ""))
     llm_max_steps: int = field(default_factory=lambda: int(os.getenv("LLM_MAX_STEPS", "8")))
+    llm_reasoning_effort: str = field(default_factory=lambda: os.getenv("LLM_REASONING_EFFORT", ""))
+    # Completion-token ceiling of the configured model; 0 = ask LiteLLM's model table, else a safe default.
+    llm_max_tokens: int = field(default_factory=lambda: int(os.getenv("LLM_MAX_TOKENS", "0")))
+    # Server-side extraction: characters of protocol text per provider call, parallel calls, and how long
+    # analyze_protocol waits before returning status=extracting for the caller to poll.
+    llm_batch_chars: int = field(default_factory=lambda: int(os.getenv("LLM_BATCH_CHARS", "300000")))
+    llm_concurrency: int = field(default_factory=lambda: int(os.getenv("LLM_CONCURRENCY", "4")))
+    llm_wait_seconds: float = field(default_factory=lambda: float(os.getenv("LLM_WAIT_SECONDS", "120")))
     protocol_dir: Path | None = field(
         default_factory=lambda: (
             Path(os.environ["EMA_PROTOCOL_DIR"]) if os.getenv("EMA_PROTOCOL_DIR") else None
