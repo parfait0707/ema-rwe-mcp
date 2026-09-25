@@ -44,6 +44,8 @@
 
 ## 出力
 
+比較表（`comparison.md`）の列は、国・Data source type・希望タイプへの適合性・PDF由来のタイプ・PDF記載データソース・Study design・対象集団・**コホート定義（組入・除外・インデックス日・ベースライン・追跡）**・**設計図（ページ・時間窓）**・疾患定義・問い合わせへの回答・根拠ページ・未記載事項。コホート定義と設計図は抽出スキーマv0.3の`cohort`ブロックから作られ、図そのものは読まず本文の時間窓記述を載せる。
+
 ```text
 <EMA_PROTOCOL_DIR>/pdf_<Study ID>_<SHA256>.pdf
 <DBの親フォルダ>/comparisons/cmp_<ID>/

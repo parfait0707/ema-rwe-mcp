@@ -41,6 +41,10 @@ Check section role, parent and neighbours; do not extract this study's methods f
 or template/checklist questions. Report contradictory methods rather than silently reconciling them.
 Disease definitions should preserve diagnostic codes, code systems, lookback, inclusion/exclusion and
 algorithm details where stated. Separate study design, population, exposure, comparator, outcomes and analysis.
+Fill cohort with how the analysis cohort is built: every inclusion and exclusion criterion as its own fact,
+index_date (what event defines it), baseline_period (continuous enrolment / lookback length), follow_up
+(start, end, censoring events), and design_schema: the physical pages of the study-design figure, and the
+time-window statements in the text (washout, baseline, risk window, follow-up) that the figure depicts.
 Preserve code systems/editions as stated (ICD national modifications, SNOMED, Read/CTV3, MedDRA, OMOP, ATC,
 RxNorm, LOINC, local vocabularies). A numeric OMOP concept_id is not a SNOMED code. Do not substitute a search
 candidate code for the protocol's actual code set; distinguish outcome definitions from exposures/comorbidities.
@@ -77,8 +81,12 @@ def drop_invalid_evidence(raw: dict) -> dict:
         return fact if fact["evidence"] else None
 
     for name, value in list(raw.items()):
-        if isinstance(value, list) and name != "missing_information":
+        if name in {"missing_information", "figure_pages"}:
+            continue
+        if isinstance(value, list):
             raw[name] = [f for f in (clean(item) for item in value) if f]
+        elif isinstance(value, dict) and "evidence" not in value:
+            raw[name] = drop_invalid_evidence(value)  # nested block such as cohort / design_schema
         elif isinstance(value, dict):
             raw[name] = clean(value)
     return raw
@@ -207,26 +215,38 @@ def merge_extractions(outputs: list[Extraction]) -> Extraction:
     """Union list fields and concatenate differing single facts, within the Extraction schema limits."""
     merged = Extraction()
     for output in outputs:
-        for name in Extraction.model_fields:
-            if name == "schema_version":
-                continue
-            value, existing = getattr(output, name), getattr(merged, name)
-            if isinstance(value, list):
-                for item in value:
-                    if item not in existing:
-                        existing.append(item)
-                if _MAX_ITEMS.get(name):
-                    del existing[_MAX_ITEMS[name] :]
-            elif value:
-                if existing and existing.value != value.value:
-                    # Preserve evidence from multiple sections instead of silently taking the first,
-                    # within the Fact limits (value 4000 chars, 8 evidence items).
-                    existing.value = (existing.value + "\n" + value.value)[:4000]
-                    existing.evidence.extend(e for e in value.evidence if e not in existing.evidence)
-                    del existing.evidence[8:]
-                else:
-                    setattr(merged, name, value)
+        merge_into(merged, output)
     try:
         return Extraction.model_validate(merged.model_dump())
     except ValidationError as exc:
         raise RWEError("SCHEMA_VALIDATION_FAILED", "Merged extraction exceeds schema limits.") from exc
+
+
+def merge_into(merged, output) -> None:
+    """Merge one model into another field by field; nested blocks (cohort, design_schema) recurse."""
+    limits = {n: p.get("maxItems") for n, p in type(merged).model_json_schema()["properties"].items()}
+    for name in type(merged).model_fields:
+        if name == "schema_version":
+            continue
+        value, existing = getattr(output, name), getattr(merged, name)
+        if isinstance(value, list):
+            for item in value:
+                if item not in existing:
+                    existing.append(item)
+            if limits.get(name):
+                del existing[limits[name] :]
+        elif value is None:
+            continue
+        elif not hasattr(value, "evidence"):  # nested block
+            if existing is None:
+                setattr(merged, name, value)
+            else:
+                merge_into(existing, value)
+        elif existing and existing.value != value.value:
+            # Preserve evidence from multiple sections instead of silently taking the first,
+            # within the Fact limits (value 4000 chars, 8 evidence items).
+            existing.value = (existing.value + "\n" + value.value)[:4000]
+            existing.evidence.extend(e for e in value.evidence if e not in existing.evidence)
+            del existing.evidence[8:]
+        elif not existing:
+            setattr(merged, name, value)

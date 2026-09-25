@@ -283,7 +283,7 @@ async def test_old_analysis_preserved_during_schema_upgrade(service):
     saved["source"]["fingerprint"] = "legacy-fingerprint"
     service.repo.save_analysis(service.repo.get("123"), saved)
     current = await service.analyze_protocol("123")
-    assert current["status"] == "needs_client_extraction" and current["source"]["schema_version"] == "0.2"
+    assert current["status"] == "needs_client_extraction" and current["source"]["schema_version"] == "0.3"
     assert service.repo.analysis("123") is None
     with service.repo.connection() as db:
         history = db.execute(
