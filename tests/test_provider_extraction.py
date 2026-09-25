@@ -116,9 +116,11 @@ async def test_batch_caching_merges_partials_on_completion(service):
     assert (await service.analyze_protocol("123"))["cached_batch_offsets"] == [0]
     final = Extraction(study_design=batch.study_design)
     done = await service.cache_protocol_analysis("123", fingerprint, final, coverage_complete=True)
-    assert done["status"] == "analyzed"
-    assert done["analysis"]["data_sources"][0]["value"] == batch.data_sources[0].value
-    assert done["analysis"]["study_design"]["value"] == batch.study_design.value
+    assert done["status"] == "analyzed" and "analysis" not in done  # summary by default
+    assert done["analysis_summary"]["data_sources"] == 1 and done["data_sources"][0]["usage"] == "planned"
+    full = await service.analyze_protocol("123", detail="full")
+    assert full["analysis"]["data_sources"][0]["value"] == batch.data_sources[0].value
+    assert full["analysis"]["study_design"]["value"] == batch.study_design.value
     assert service._partials == {}
 
 
@@ -198,3 +200,27 @@ def test_prune_fills_missing_section_label_from_the_quote_location(pdf_bytes):
     assert dropped == 0
     assert pruned.study_design.evidence[0].section == "8.1 Study design"
     assert pruned.data_sources[0].evidence[0].section == "8.2 Data sources"
+
+
+async def test_client_batches_carry_schema_only_once_and_allow_large_pages(service):
+    first = await service.analyze_protocol("123", max_chars=150000)
+    assert "analysis_schema" in first and "instruction" in first
+    later = await service.analyze_protocol("123", offset=1, max_chars=6000)
+    assert later["status"] == "needs_client_extraction"
+    assert "analysis_schema" not in later and "instruction" not in later
+    with pytest.raises(RWEError, match="max_chars"):
+        await service.analyze_protocol("123", max_chars=200000)
+
+
+async def test_search_and_research_respect_text_budgets(service):
+    pid = (await service.get_protocol("123"))["protocol"]["protocol_id"]
+    hits = await service.search_protocol_text(pid, "cohort", max_chars=1000)
+    assert hits["max_chars"] == 1000 and hits["results"][0]["text"]
+    bundle = await service.research_protocol(pid, "Which cohort design?")
+    assert bundle["status"] == "needs_client_exploration"
+    assert bundle["max_chars"] == service.settings.research_budget_chars
+    assert bundle["results"] and "read them first" in bundle["instruction"]
+    compact = await service.get_protocol_outline(pid)
+    assert set(compact["sections"][0]) == {"section_id", "page", "section", "role"}
+    full = await service.get_protocol_outline(pid, detail="full")
+    assert "parent_section" in full["sections"][0]
