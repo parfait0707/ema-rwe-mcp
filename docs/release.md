@@ -1,4 +1,4 @@
-# 公開リリース手順（v0.1.0）
+# 公開リリース手順（v0.1.1）
 
 ## 公開前チェック（実施済み・要確認）
 
@@ -18,14 +18,14 @@
 ```bash
 git switch main && git pull origin main
 uv run pytest -q && uv run ruff check src tests      # green を確認
-git tag -a v0.1.0 -m "v0.1.0 first public release" && git push origin v0.1.0
-gh release create v0.1.0 --title "v0.1.0" --notes-file CHANGELOG.md
+git tag -a v0.1.1 -m "v0.1.1 first public release" && git push origin v0.1.1
+gh release create v0.1.1 --title "v0.1.1" --notes-file CHANGELOG.md
 gh repo edit parfait0707/rwd-catalogue-mcp --visibility public --accept-visibility-change-consequences
 ```
 
 ## 公開後の確認
 
-1. 資格情報のない環境で `uvx --from git+https://github.com/parfait0707/rwd-catalogue-mcp@v0.1.0 ema-rwe --help` が動く。
+1. 資格情報のない環境で `uvx --from git+https://github.com/parfait0707/rwd-catalogue-mcp@v0.1.1 ema-rwe --help` が動く。
 2. `.mcp.json.sample` をコピーした Claude Code から `catalogue_status` が `status: current` を返す。
 3. README の Issues リンクが開く。Issue テンプレートは必要に応じて追加する。
 

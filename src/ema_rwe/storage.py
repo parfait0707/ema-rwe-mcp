@@ -86,6 +86,10 @@ class Repository:
             row = db.execute("SELECT body FROM studies WHERE id=?", (study_id,)).fetchone()
         return Study.model_validate_json(row[0]) if row else None
 
+    def study_count(self) -> int:
+        with self.connection() as db:
+            return db.execute("SELECT COUNT(*) FROM studies").fetchone()[0]
+
     def imports(self) -> list[dict]:
         with self.connection() as db:
             rows = db.execute(
