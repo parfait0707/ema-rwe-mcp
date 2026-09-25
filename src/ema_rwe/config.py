@@ -69,6 +69,13 @@ class Settings:
     llm_batch_chars: int = field(default_factory=lambda: int(os.getenv("LLM_BATCH_CHARS", "300000")))
     llm_concurrency: int = field(default_factory=lambda: int(os.getenv("LLM_CONCURRENCY", "4")))
     llm_wait_seconds: float = field(default_factory=lambda: float(os.getenv("LLM_WAIT_SECONDS", "120")))
+    # Caller-facing response budgets (characters of section text) for the no-key exploration route.
+    research_budget_chars: int = field(
+        default_factory=lambda: int(os.getenv("EMA_RESEARCH_BUDGET_CHARS", "40000"))
+    )
+    search_budget_chars: int = field(
+        default_factory=lambda: int(os.getenv("EMA_SEARCH_BUDGET_CHARS", "20000"))
+    )
     protocol_dir: Path | None = field(
         default_factory=lambda: (
             Path(os.environ["EMA_PROTOCOL_DIR"]) if os.getenv("EMA_PROTOCOL_DIR") else None
