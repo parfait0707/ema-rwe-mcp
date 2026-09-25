@@ -430,3 +430,12 @@ async def test_force_refresh_allows_following_client_batches(service):
     assert refreshed["status"] == "needs_client_extraction"
     following = await service.analyze_protocol("123", offset=0)
     assert following["status"] == "needs_client_extraction"
+
+
+def test_catalogue_status_reports_total_studies_separately_from_export_counts(service):
+    from test_source_types import seed
+
+    seed(service.repo, 3)
+    status = service.catalogue_status()
+    assert status["studies_total"] == service.repo.study_count() == 3
+    assert status["latest_import"] is None or "note" in status["latest_import"]
