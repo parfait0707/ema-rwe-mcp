@@ -386,6 +386,84 @@ def validate_evidence(extraction: Extraction, pages: list[Page], chunks: list[di
             validate_fact(fact, name in {"data_sources", "source_assessments"}, name != "key_notes")
 
 
+REDACTION = re.compile(r"\b(?:CCI|redacted|commercially confidential)\b", re.IGNORECASE)
+COUNT_CLAIM = re.compile(
+    r"\b(two|three|four|five|2|3|4|5)\s+(?:types?|kinds?|categories|groups)\s+of\s+(outcomes?|endpoints?)",
+    re.IGNORECASE,
+)
+PROPER_TERM = re.compile(
+    r"\b(?:[A-Z][A-Za-z0-9\-]{3,}|[A-Z]{2,}[A-Za-z0-9\-]*|\d+(?:\.\d+)?\s?(?:mg|days?|months?|years?|%))\b"
+)
+
+
+def audit_extraction(
+    extraction: Extraction, pages: list[Page], catalogue_sources: list[str] = ()
+) -> list[str]:
+    """Deterministic self-checks appended to missing_information (never rejecting the extraction).
+
+    - redacted passages (CCI markers) near outcome/endpoint text, and stated outcome-type counts the
+      extraction does not reach;
+    - catalogue-listed data sources absent from the extracted data_sources;
+    - proper names / quantities in fact values that no evidence quote contains.
+    """
+    notes: list[str] = []
+    text_by_page = {p.page: p.text for p in pages}
+    redacted = sorted(
+        p
+        for p, t in text_by_page.items()
+        if REDACTION.search(t) and re.search(r"outcome|endpoint", t, re.IGNORECASE)
+    )
+    if redacted:
+        notes.append(
+            f"Redacted (CCI) content on pages {redacted} near outcome/endpoint text; definitions there are unavailable."
+        )
+    claims = {
+        (m.group(1).lower(), m.group(2).lower(), page)
+        for page, t in text_by_page.items()
+        for m in COUNT_CLAIM.finditer(t)
+    }
+    words = {"two": 2, "three": 3, "four": 4, "five": 5}
+    for count, noun, page in sorted(claims, key=lambda c: c[2]):
+        stated = words.get(count) or int(count)
+        if len(extraction.outcomes) < stated:
+            notes.append(
+                f"Page {page} states {count} {noun}, but {len(extraction.outcomes)} outcome definition(s) were "
+                "extractable; the remainder may be redacted or in an unread section."
+            )
+    extracted = " ".join(d.value for d in extraction.data_sources).casefold()
+    missing = [s for s in catalogue_sources if s and canonical(s) not in canonical(extracted)]
+    if missing:
+        notes.append(f"Catalogue lists data source(s) not found in the extraction: {missing[:8]}.")
+    unquoted: list[str] = []
+    for name in ("study_design", "exposure", "comparator", "population"):
+        fact = getattr(extraction, name)
+        if fact is None:
+            continue
+        quotes = normalize_quote(" ".join(e.quote for e in fact.evidence))
+        terms = {t for t in PROPER_TERM.findall(fact.value) if normalize_quote(t) not in quotes}
+        if terms:
+            unquoted.append(f"{name}: {sorted(terms)[:6]}")
+    if unquoted:
+        notes.append("Value terms without a verbatim quote (verify against the PDF): " + "; ".join(unquoted))
+    return notes
+
+
+def finalize_extraction(
+    extraction: Extraction, pages: list[Page], catalogue_sources: list[str] = ()
+) -> tuple[Extraction, int]:
+    """Prune unverifiable evidence, then append the dropped count and audit notes to missing_information."""
+    pruned, dropped = prune_unverifiable(extraction, pages)
+    notes = []
+    if dropped:
+        notes.append(
+            f"{dropped} provider evidence item(s) failed verbatim/page verification and were dropped."
+        )
+    notes += audit_extraction(pruned, pages, catalogue_sources)
+    if notes:
+        pruned.missing_information = (pruned.missing_information + notes)[-30:]
+    return pruned, dropped
+
+
 _LIST_FIELDS = {
     name for name, prop in Extraction.model_json_schema()["properties"].items() if prop.get("type") == "array"
 }
@@ -438,16 +516,23 @@ def prune_unverifiable(extraction: Extraction, pages: list[Page]) -> tuple[Extra
         return []
 
     def with_section(evidence: dict) -> dict:
-        """Fill a missing section label from the unique chunk on that page containing the quote."""
-        if evidence.get("section") is not None:
-            return evidence
+        """Replace the section label with the one derived from where the quote sits on the page.
+
+        Provider labels are not trusted: a heading carried over from an earlier page passes the
+        containment check while naming the wrong section. No unique chunk -> null.
+        """
         quote = normalize_quote(evidence["quote"])
+        page_text = page_map.get(evidence["page"], "")
         labels = {
             c["section"]
             for c in chunks
-            if c["page"] == evidence["page"] and c["section"] and quote in normalize_quote(c["text"])
+            if c["page"] == evidence["page"]
+            and c["section"]
+            and quote in normalize_quote(c["text"])
+            # A heading carried over from an earlier page is not this page's section.
+            and normalize_quote(c["section"]) in page_text
         }
-        return dict(evidence, section=labels.pop()) if len(labels) == 1 else evidence
+        return dict(evidence, section=labels.pop() if len(labels) == 1 else None)
 
     def prune_block(block: dict, model) -> None:
         nonlocal dropped
