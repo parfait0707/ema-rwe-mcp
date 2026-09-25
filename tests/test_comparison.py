@@ -133,9 +133,18 @@ async def test_every_pdf_and_json_then_validated_answers_survive_restart(service
             assert len(partial["pending_tools"]) == 8
     restarted = Service(service.settings)
     try:
-        completed = await restarted.get_protocol_comparison(result["comparison_id"])
+        completed = await restarted.get_protocol_comparison(result["comparison_id"], detail="full")
+        compact = await restarted.get_protocol_comparison(result["comparison_id"])
     finally:
         await restarted.close()
+    # The default response drops per-row bodies but keeps ids, statuses, markdown and paths.
+    assert (
+        compact["status"] == "complete" and compact["comparison_markdown"] == completed["comparison_markdown"]
+    )
+    assert all("analysis" not in r and "answer" not in r for r in compact["rows"])
+    assert [r["study"]["study_id"] for r in compact["rows"]] == [
+        r["study"]["study_id"] for r in completed["rows"]
+    ]
     assert completed["status"] == "complete"
     assert not completed["pending_tools"]
     assert completed["comparison_markdown"].count("Two ICD-10 E11 diagnoses within 365 days") == 10
@@ -178,9 +187,8 @@ async def test_comparison_does_not_mix_extraction_versions(service):
     seed(service.repo, 1)
     result = await service.compare_protocols("What design?", ["opioid"])
     extraction = await service.analyze_protocol("123")
-    saved = await service.cache_protocol_analysis(
-        "123", extraction["source"]["fingerprint"], sample_analysis(), True
-    )
+    await service.cache_protocol_analysis("123", extraction["source"]["fingerprint"], sample_analysis(), True)
+    saved = service.repo.analysis("123")  # the stored record; the tool response is a summary
     saved["source"]["fingerprint"] = "new-version"
     service.repo.save_analysis(service.repo.get("123"), saved)
     result = await service.get_protocol_comparison(result["comparison_id"])

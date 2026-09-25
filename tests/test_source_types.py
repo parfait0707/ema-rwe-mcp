@@ -143,7 +143,7 @@ async def complete_rows(service, result, include_sources=True):
                 answers=analysis.disease_definitions, source_assessments=analysis.source_assessments
             ),
         )
-    return await service.get_protocol_comparison(result["comparison_id"])
+    return await service.get_protocol_comparison(result["comparison_id"], detail="full")
 
 
 async def test_caller_assessment_cache_reuse_and_separate_official_type(service, website):
@@ -276,9 +276,8 @@ async def test_unknown_source_preferences_cannot_evade_screening_gate(service):
 
 async def test_old_analysis_preserved_during_schema_upgrade(service):
     old = await service.analyze_protocol("123")
-    saved = await service.cache_protocol_analysis(
-        "123", old["source"]["fingerprint"], sample_analysis(), True
-    )
+    await service.cache_protocol_analysis("123", old["source"]["fingerprint"], sample_analysis(), True)
+    saved = service.repo.analysis("123")
     saved["analysis"]["schema_version"] = "0.1"
     saved["analysis"].pop("source_assessments")
     saved["source"]["fingerprint"] = "legacy-fingerprint"
@@ -295,9 +294,8 @@ async def test_old_analysis_preserved_during_schema_upgrade(service):
 
 async def test_freshness_only_reuse_does_not_accumulate_analysis_history(service):
     current = await service.analyze_protocol("123")
-    saved = await service.cache_protocol_analysis(
-        "123", current["source"]["fingerprint"], sample_analysis(), True
-    )
+    await service.cache_protocol_analysis("123", current["source"]["fingerprint"], sample_analysis(), True)
+    saved = service.repo.analysis("123")
     saved["source"]["documents_checked_at"] = "2026-09-13T00:00:00+00:00"
     service.repo.save_analysis(service.repo.get("123"), saved)
     with service.repo.connection() as db:
