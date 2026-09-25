@@ -44,7 +44,7 @@
 - `types`はclaims、ehr、registry、drug_dispensing_prescription、other。分類は重なり得る。未知のタイプをotherへ強制しない。
 - 一つのソース構成要素と一つの定義用途につき一つのassessmentを保存する。claimsによるコホートとEHRによるアウトカムを同じ用途へ混ぜない。
 - `basis=explicit`はタイプ・用途が本文で明示される場合。記述から推定する場合は`inferred`。名称、ICDコード、hospital recordsという語だけからclaims／EHRを断定しない。
-- `requires_linkage=true`は、その定義が別タイプとの連結を必要とする場合。希望タイプを含むだけで単独再現可能とは扱わない。
+- `requires_linkage=true`は、その定義がコホートを抽出したデータソースとは**別のデータソース**が持つデータを必要とする場合に限る。同一データベース／ネットワーク内で既に統合済みの構成要素（例: MID-NETの同一病院ネットワーク内のEMRとレセプト）は連結とみなさず`false`。希望タイプを含むだけで単独再現可能とは扱わない。
 - `usage`はused／planned／candidate／unclear。計画書の使用予定を使用実績へ変換しない。
 - 不明な分類はassessmentを作らず、探索範囲・不足を`missing_information`へ書く。空配列だけでも適合性はunknownになるが、理由の記載を省略しない。
 

@@ -41,6 +41,8 @@ FULL_TEXT_PROMPT = (
     "null; the server derives it. Write value and definition in telegraphic form (codes, thresholds, windows, "
     "counts, names; no full sentences, no restatement of the quote); never omit a fact to save space. Emit "
     "minified JSON. Report in missing_information only what this batch should contain but does not. "
+    "If you answer in a language other than the protocol's, keep quantitative definitions (numerators, "
+    "denominators, censoring rules, time windows) in the original wording in parentheses. "
     + SOURCE_ASSESSMENT_PROMPT
     + " Return source_assessments only for definitions relevant to this question. Inspect their actual data "
     "inputs even when source type is not explicitly asked. Do not substitute another outcome's or another "
