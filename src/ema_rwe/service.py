@@ -14,7 +14,14 @@ from .ema import BASE, is_non_interventional, parse_documents, parse_study, sele
 from .exploration import Explorer
 from .http import EMAClient
 from .llm import EXTRACTION_PROMPT, complete_json, configured, extract_with_provider, merge_extractions
-from .pdf import extract_pages, prune_unverifiable, reading_order, sections, validate_evidence
+from .pdf import (
+    audit_extraction,
+    extract_pages,
+    finalize_extraction,
+    reading_order,
+    sections,
+    validate_evidence,
+)
 from .selection import TYPED_SOURCES, SearchFilters, compact, selection
 from .source_types import preference_for
 from .storage import Repository, import_csv
@@ -683,6 +690,9 @@ class Service:
         partials = self._partials.pop(key, {})
         if partials:
             analysis = merge_extractions([*partials.values(), analysis])
+        notes = audit_extraction(analysis, pages, self.repo.get(study_id).catalogue_data_sources)
+        if notes:
+            analysis.missing_information = (analysis.missing_information + notes)[-30:]
         return self._save(study_id, analysis, source, "client_assisted", detail="summary")
 
     async def _provider_extraction(self, study_id: str, pdf: bytes, source: dict) -> dict:
@@ -713,11 +723,8 @@ class Service:
         if not chunks:
             raise RWEError("SECTION_PARSE_FAILED", "No relevant protocol sections found.")
         analysis = await extract_with_provider(self.settings, chunks, progress)
-        analysis, dropped = await asyncio.to_thread(prune_unverifiable, analysis, pages)
-        if dropped:
-            analysis.missing_information = analysis.missing_information[:29] + [
-                f"{dropped} provider evidence item(s) failed verbatim/page verification and were dropped."
-            ]
+        catalogue_sources = self.repo.get(study_id).catalogue_data_sources
+        analysis, _ = await asyncio.to_thread(finalize_extraction, analysis, pages, catalogue_sources)
         validate_evidence(analysis, pages)
         return self._save(study_id, analysis, source, "configured_provider")
 

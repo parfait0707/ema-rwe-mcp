@@ -14,7 +14,9 @@ use synonyms and structural exploration, not just literal keyword hits. Preserve
 For source_assessments provide one entry per source component and definition role (cohort, outcome,
 exposure, covariate, other, unclear). value is the exact source name from its evidence. types may overlap.
 Do not assign every component of a linked database to every definition. definition explains the algorithm
-and which data supply it. requires_linkage is true when that definition also needs another data type.
+and which data supply it. requires_linkage is true only when the definition needs data held by a different
+data source than the one the cohort is drawn from; components already integrated inside one database or
+network (e.g. EMR and claims within the same hospital network) do not count as linkage.
 Do not infer EHR merely from hospital records, or claims merely from diagnosis codes. Classifications
 inferred from descriptive passages must have basis=inferred; basis=explicit requires clear textual support.
 Unknown types have no assessment: explain the missing/ambiguous information in missing_information.
@@ -49,6 +51,10 @@ Preserve code systems/editions as stated (ICD national modifications, SNOMED, Re
 RxNorm, LOINC, local vocabularies). A numeric OMOP concept_id is not a SNOMED code. Do not substitute a search
 candidate code for the protocol's actual code set; distinguish outcome definitions from exposures/comorbidities.
 Report missing sections and incomplete coverage. Summarize facts; do not reproduce long protocol passages.
+When the text announces a number of outcome types, endpoints or definitions (e.g. "two types of outcomes")
+but fewer are extractable because passages are redacted (CCI) or absent, state the count mismatch and the
+heading in missing_information. List every named database from the abstract, feasibility and data source
+sections in data_sources, not only those in the methods chapter.
 Return only one JSON object matching the schema."""
     + "\n"
     + SOURCE_ASSESSMENT_PROMPT
