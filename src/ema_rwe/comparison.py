@@ -72,6 +72,29 @@ def cell(value):
     )
 
 
+def cohort_cells(cohort: dict | None) -> list[str] | None:
+    """Flatten the cohort block into labelled lines for the comparison table."""
+    if not cohort:
+        return None
+    lines = []
+    for label, key in (("組入", "inclusion_criteria"), ("除外", "exclusion_criteria")):
+        for fact in cohort.get(key) or []:
+            lines.append(
+                f"{label}: {fact['value']} (p. {', '.join(str(e['page']) for e in fact['evidence'])})"
+            )
+    for label, key in (
+        ("インデックス日", "index_date"),
+        ("ベースライン", "baseline_period"),
+        ("追跡", "follow_up"),
+    ):
+        fact = cohort.get(key)
+        if fact:
+            lines.append(
+                f"{label}: {fact['value']} (p. {', '.join(str(e['page']) for e in fact['evidence'])})"
+            )
+    return lines or None
+
+
 def table(rows):
     if not rows:
         return "比較対象は未確定です。screening_summaryとselection_statusを確認してください。"
@@ -100,6 +123,26 @@ def table(rows):
             lambda r: r.get("analysis", {}).get("study_design") or r["study"].get("study_designs"),
         ),
         ("対象集団・年齢", lambda r: r.get("analysis", {}).get("population")),
+        (
+            "コホート定義（組入・除外・インデックス日・ベースライン・追跡）",
+            lambda r: cohort_cells(r.get("analysis", {}).get("cohort")),
+        ),
+        (
+            "設計図（ページ・時間窓）",
+            lambda r: (
+                (
+                    [f"figure p. {', '.join(map(str, ds.get('figure_pages', [])))}"]
+                    if ds.get("figure_pages")
+                    else []
+                )
+                + [
+                    f"{w['value']} (p. {', '.join(str(e['page']) for e in w['evidence'])})"
+                    for w in ds.get("time_windows", [])
+                ]
+                if (ds := ((r.get("analysis", {}).get("cohort") or {}).get("design_schema") or {}))
+                else None
+            ),
+        ),
         ("疾患定義・コード・観察期間・除外条件", lambda r: r.get("analysis", {}).get("disease_definitions")),
         ("問い合わせへの回答", lambda r: r.get("answer", {}).get("answers")),
         (

@@ -97,6 +97,32 @@ def heading_role(heading: str | None) -> str:
 class Page:
     page: int
     text: str
+    # From the PDF bookmark outline when the file has one: the deepest bookmark covering this page
+    # and its top-level ancestor. None when the PDF has no bookmarks (text headings are used instead).
+    chapter: str | None = None
+    chapter_top: str | None = None
+
+
+def apply_bookmarks(pages: list[Page], toc: list) -> None:
+    """Label each page with the bookmark chapter that starts on or before it (pymupdf get_toc rows)."""
+    entries = sorted(
+        ((int(p), int(lvl), str(t).strip()) for lvl, t, p in toc if p and p > 0), key=lambda e: e[0]
+    )
+    if not entries:
+        return
+    ancestors: dict[int, str] = {}
+    i = 0
+    current = None
+    for page in pages:
+        while i < len(entries) and entries[i][0] <= page.page:
+            _, level, title = entries[i]
+            ancestors = {lvl: t for lvl, t in ancestors.items() if lvl < level}
+            ancestors[level] = title
+            current = title
+            i += 1
+        if current is not None:
+            page.chapter = current
+            page.chapter_top = ancestors.get(min(ancestors)) if ancestors else current
 
 
 def extract_pages(data: bytes) -> list[Page]:
@@ -107,6 +133,7 @@ def extract_pages(data: bytes) -> list[Page]:
             if doc.needs_pass or len(doc) > 1500:
                 raise RWEError("PDF_PARSE_FAILED", "Encrypted PDF or page limit exceeded.")
             pages = [Page(i + 1, page.get_text(sort=True)) for i, page in enumerate(doc)]
+            apply_bookmarks(pages, doc.get_toc())
     except RWEError:
         raise
     except Exception as exc:
@@ -121,13 +148,18 @@ def extract_pages(data: bytes) -> list[Page]:
 def sections(pages: list[Page]) -> list[dict]:
     result = []
 
+    chapters = {p.page: (p.chapter, p.chapter_top) for p in pages}
+
     def flush(buffer, page_number, current_heading):
         text = "\n".join(buffer).strip()
         if text:
+            chapter, chapter_top = chapters.get(page_number, (None, None))
             result.append(
                 {
                     "page": page_number,
                     "section": current_heading,
+                    "chapter": chapter,
+                    "chapter_top": chapter_top,
                     "text": text,
                     "relevant": bool(RELEVANT.search((current_heading or "") + " " + text)),
                 }
@@ -181,6 +213,11 @@ def sections(pages: list[Page]) -> list[dict]:
         match = re.match(r"^(\d+(?:\.\d+)*)\.?\s", heading or "")
         number = tuple(int(x) for x in match.group(1).split(".")) if match else ()
         role = heading_role(heading)
+        if role == "unknown" and chunk.get("chapter"):
+            # Bookmark outline beats a missed text heading; the top-level chapter supplies the context.
+            role = heading_role(chunk["chapter"])
+            if role == "unknown":
+                role = heading_role(chunk.get("chapter_top"))
         warnings = []
         if number and previous_number and number < previous_number and heading != result[i - 1]["section"]:
             warnings.append("section_number_regression; verify heading against outline")
@@ -232,6 +269,39 @@ def sections(pages: list[Page]) -> list[dict]:
     return result
 
 
+APPENDIX_REF = re.compile(r"\b(?:annex|appendix)\s+([IVX]+|[A-Za-z]?\d{1,3}[A-Za-z]?|[A-Z])\b", re.IGNORECASE)
+CODE_LIST_TITLE = re.compile(
+    r"code|list|atc|icd|snomed|read code|definition|algorithm|variable", re.IGNORECASE
+)
+
+
+def reading_order(chunks: list[dict]) -> list[dict]:
+    """Relevant sections to read for extraction.
+
+    With a bookmark outline: body chapters first, then only the appendices the body refers to
+    ("Annex 3", "Appendix B"), so a 240-page protocol is read at the chapters that define the study
+    plus its code lists. Without bookmarks every relevant section is returned as before.
+    """
+    relevant = [c for c in chunks if c["relevant"]]
+    if not any(c.get("chapter") for c in chunks):
+        return relevant
+    body = [c for c in relevant if c["role"] != "appendix"]
+    referenced = {m.group(1).casefold() for c in body for m in APPENDIX_REF.finditer(c["text"]) if m.group(1)}
+
+    def is_referenced(chunk) -> bool:
+        label = " ".join(filter(None, (chunk.get("chapter"), chunk.get("section"))))
+        chapter = chunk.get("chapter") or ""
+        if "checklist" in chapter.casefold():
+            return False  # ENCePP checklists mimic method headings but are not this study's methods
+        # Code lists and variable definitions are read even without an explicit cross-reference.
+        if CODE_LIST_TITLE.search(chapter):
+            return True
+        return any(m.group(1).casefold() in referenced for m in APPENDIX_REF.finditer(label) if m.group(1))
+
+    appendices = [c for c in relevant if c["role"] == "appendix" and is_referenced(c)]
+    return sorted(body + appendices, key=lambda c: (c["page"], c["section_id"]))
+
+
 def search_sections(
     chunks: list[dict], query: str, limit: int = 10, synonyms: list[str] | None = None, codes=None
 ) -> dict:
@@ -244,6 +314,8 @@ def search_sections(
         matched = [t for t in terms if contains(chunk["text"], t)]
         if matched:
             score = len(matched) + 2 * sum(contains(chunk["section"] or "", t) for t in matched)
+            # A bookmark chapter title naming the concept outranks a body mention.
+            score += 3 * sum(contains(chunk.get("chapter") or "", t) for t in matched)
             if chunk["role"] in {"references", "contents", "background", "administrative", "checklist"}:
                 score *= 0.15
             hits.append(dict(chunk, score=score, matched_terms=matched))
@@ -305,10 +377,18 @@ def validate_evidence(extraction: Extraction, pages: list[Page], chunks: list[di
 
     for name in type(extraction).model_fields:
         value = getattr(extraction, name)
-        if name in {"schema_version", "missing_information"} or value is None:
+        if name in {"schema_version", "missing_information", "figure_pages"} or value is None:
+            continue
+        if not isinstance(value, list) and not hasattr(value, "evidence"):
+            validate_evidence(value, pages, chunks)  # nested block such as cohort / design_schema
             continue
         for fact in value if isinstance(value, list) else [value]:
             validate_fact(fact, name in {"data_sources", "source_assessments"}, name != "key_notes")
+
+
+_LIST_FIELDS = {
+    name for name, prop in Extraction.model_json_schema()["properties"].items() if prop.get("type") == "array"
+}
 
 
 def prune_unverifiable(extraction: Extraction, pages: list[Page]) -> tuple[Extraction, int]:
@@ -324,10 +404,12 @@ def prune_unverifiable(extraction: Extraction, pages: list[Page]) -> tuple[Extra
 
     def verifies(name, fact, evidence_items, is_list) -> bool:
         single = dict(fact, evidence=evidence_items)
+        # Nested block fields (cohort criteria, time windows) are checked under the method rules of
+        # a top-level list field; validation only depends on the field name for source/key-note rules.
+        field = name if name in Extraction.model_fields else "outcomes"
+        payload = {field: [single]} if field in _LIST_FIELDS else {field: single}
         try:
-            validate_evidence(
-                Extraction.model_validate({name: [single] if is_list else single}), pages, chunks
-            )
+            validate_evidence(Extraction.model_validate(payload), pages, chunks)
             return True
         except RWEError:
             return False
@@ -367,21 +449,28 @@ def prune_unverifiable(extraction: Extraction, pages: list[Page]) -> tuple[Extra
         }
         return dict(evidence, section=labels.pop()) if len(labels) == 1 else evidence
 
-    for name, value in list(data.items()):
-        if name in {"schema_version", "missing_information"} or value is None:
-            continue
-        is_list = isinstance(value, list)
-        kept = []
-        for fact in value if is_list else [value]:
-            good = []
-            for evidence in map(with_section, fact["evidence"]):
-                if verifies(name, fact, [evidence], is_list):
-                    good.append(evidence)
-                elif fixed := repaired(name, fact, evidence, is_list):
-                    good.extend(fixed)
-                else:
-                    dropped += 1
-            if good:
-                kept.append(dict(fact, evidence=good[:8]))
-        data[name] = kept if is_list else (kept[0] if kept else None)
-    return Extraction.model_validate(data), dropped
+    def prune_block(block: dict, model) -> None:
+        nonlocal dropped
+        for name, value in list(block.items()):
+            if name in {"schema_version", "missing_information", "figure_pages"} or value is None:
+                continue
+            if isinstance(value, dict) and "evidence" not in value:  # nested block (cohort, design_schema)
+                prune_block(value, model)
+                continue
+            is_list = isinstance(value, list)
+            kept = []
+            for fact in value if is_list else [value]:
+                good = []
+                for evidence in map(with_section, fact["evidence"]):
+                    if verifies(name, fact, [evidence], is_list):
+                        good.append(evidence)
+                    elif fixed := repaired(name, fact, evidence, is_list):
+                        good.extend(fixed)
+                    else:
+                        dropped += 1
+                if good:
+                    kept.append(dict(fact, evidence=good[:8]))
+            block[name] = kept if is_list else (kept[0] if kept else None)
+
+    prune_block(data, type(extraction))
+    return type(extraction).model_validate(data), dropped

@@ -14,7 +14,7 @@ from .ema import BASE, is_non_interventional, parse_documents, parse_study, sele
 from .exploration import Explorer
 from .http import EMAClient
 from .llm import EXTRACTION_PROMPT, complete_json, configured, extract_with_provider, merge_extractions
-from .pdf import extract_pages, prune_unverifiable, sections, validate_evidence
+from .pdf import extract_pages, prune_unverifiable, reading_order, sections, validate_evidence
 from .selection import TYPED_SOURCES, SearchFilters, compact, selection
 from .source_types import preference_for
 from .storage import Repository, import_csv
@@ -428,7 +428,7 @@ class Service:
                     "url": result["protocol"]["document_url"],
                     "sha256": result["download"]["sha256"],
                     "version": result["protocol"]["version"],
-                    "schema": "0.2",
+                    "schema": "0.3",
                     "parser": "structural-v4",
                     "prompt": EXTRACTION_PROMPT,
                     "model": self.settings.llm_model or "client-assisted",
@@ -448,7 +448,7 @@ class Service:
             "fingerprint": fingerprint,
             "selection_reason": result["selection_reason"],
             "extractor": self.settings.llm_model or "client-assisted",
-            "schema_version": "0.2",
+            "schema_version": "0.3",
         }
         previous = self.repo.analysis(study_id)
         if previous and previous["source"]["fingerprint"] != fingerprint:
@@ -482,7 +482,7 @@ class Service:
         if configured(self.settings):
             return analysis_view(await self._provider_extraction(study_id, pdf, source), detail)
         pages = await asyncio.to_thread(extract_pages, pdf)
-        chunks = [c for c in sections(pages) if c["relevant"]]
+        chunks = reading_order(sections(pages))
         if not chunks:
             raise RWEError("SECTION_PARSE_FAILED", "No relevant protocol sections found.")
         selected, size = [], 0
@@ -709,7 +709,7 @@ class Service:
 
     async def _extract_and_save(self, study_id: str, pdf: bytes, source: dict, progress: dict) -> dict:
         pages = await asyncio.to_thread(extract_pages, pdf)
-        chunks = [c for c in sections(pages) if c["relevant"]]
+        chunks = reading_order(sections(pages))
         if not chunks:
             raise RWEError("SECTION_PARSE_FAILED", "No relevant protocol sections found.")
         analysis = await extract_with_provider(self.settings, chunks, progress)
