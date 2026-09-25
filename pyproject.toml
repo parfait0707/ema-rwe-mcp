@@ -4,14 +4,31 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ema-rwe-mcp"
-version = "0.7.0"
+version = "0.1.0"
 description = "Evidence-backed EMA non-interventional protocol search and analysis MCP"
 requires-python = ">=3.12"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "parfait0707" }]
+keywords = ["mcp", "ema", "real-world-data", "pharmacoepidemiology", "protocol"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: Medical Science Apps.",
+]
 dependencies = ["mcp>=1.12,<2", "httpx>=0.28,<1", "beautifulsoup4>=4.12,<5", "pydantic>=2.11,<3", "pymupdf>=1.25,<2", "platformdirs>=4,<5"]
 
 [project.optional-dependencies]
 llm = ["litellm>=1.63,<2"]
 dev = ["pytest>=8,<9", "pytest-asyncio>=0.26,<1", "ruff>=0.11,<1"]
+
+[project.urls]
+Homepage = "https://github.com/parfait0707/rwd-catalogue-mcp"
+Repository = "https://github.com/parfait0707/rwd-catalogue-mcp"
+Issues = "https://github.com/parfait0707/rwd-catalogue-mcp/issues"
 
 [project.scripts]
 ema-rwe = "ema_rwe.cli:main"

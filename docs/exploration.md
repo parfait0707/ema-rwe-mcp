@@ -97,7 +97,7 @@ MCP設定の `env` に入れる共通設定例（モデルIDは利用可能な�
   "LLM_MODEL": "gemini/<model-id>",
   "LLM_API_KEY": "<your-key>",
   "LLM_MAX_STEPS": "8",
-  "EMA_PROTOCOL_DIR": "E:/codex/rwd-catalogue-mcp/data/protocols"
+  "EMA_PROTOCOL_DIR": "<checkout>/data/protocols"
 }
 ```
 
