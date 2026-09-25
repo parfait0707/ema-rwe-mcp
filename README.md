@@ -1,6 +1,6 @@
 # EMA RWE MCP
 
-EMA Catalogueの **Non-interventional study**（介入を伴わない研究として明示的に分類された研究のみ）を検索し、Study documentsの最新プロトコルPDFから、研究デザイン・疾患定義・データソースを出典付き（PDFの物理ページ番号・逐語引用）で抽出・比較するPython MCPサーバーです。検索はローカルSQLite FTSと保存済み解析だけで行い、PDFの取得は選択した研究に限られます。EMAサイトの検索結果ページを無制限にクロールする仕組みではありません。
+**バージョン 0.1.0**。EMA Catalogueの **Non-interventional study**（介入を伴わない研究として明示的に分類された研究のみ）を検索し、Study documentsの最新プロトコルPDFから、研究デザイン・疾患定義・データソースを出典付き（PDFの物理ページ番号・逐語引用）で抽出・比較するPython MCPサーバーです。検索はローカルSQLite FTSと保存済み解析だけで行い、PDFの取得は選択した研究に限られます。EMAサイトの検索結果ページを無制限にクロールする仕組みではありません。
 
 開発者（このMCP自体を改修する人）向けの情報は [README_DEV.md](README_DEV.md) にまとめています。
 
@@ -19,7 +19,9 @@ uvがあれば、cloneせずにMCPクライアントへ登録できます。カ�
 }
 ```
 
-同じ内容を[`.mcp.json.sample`](.mcp.json.sample)に置いています。**このリポジトリが非公開の間は、`gh auth login`等でGitHubの資格情報が必要です。** `git+https://...@v0.7.0`のようにタグを付けると版を固定できます。
+同じ内容を[`.mcp.json.sample`](.mcp.json.sample)に置いています。版を固定するには `git+https://github.com/parfait0707/rwd-catalogue-mcp@v0.1.0` のようにタグを付けてください。
+
+**必要なもの**: [uv](https://docs.astral.sh/uv/) と git。Python 3.12 は uv が自動で用意します。初回起動時にパッケージのビルドと同梱データ（約50 MB）の複製が走るため、数十秒かかることがあります。追加のAPIキーは不要です（サーバー側抽出を使う場合のみ、後述の`LLM_*`を設定します）。
 
 ### Claude Codeで使う
 
@@ -90,6 +92,17 @@ flowchart TD
 - **プロトコルは「最新版」を自動選択します。** Updated protocol > Protocol > Initial protocolの順で、同じ分類内は版番号・文書日付・公開日で選びます。判断根拠は結果の`selection_reason`に残ります。取得結果は30日間キャッシュされるため、最新性が重要な調査では`force_refresh=true`を指定してください。
 - 医薬品辞書（商品名⇄INN/common name⇄ATC）が古い場合は`refresh_drug_dictionary`で更新できます。
 - サーバー側抽出を使う場合、選択したプロトコルの関連本文と質問文が設定先のLLMプロバイダへ送信されます。追加APIキーなしのモードでも、PDF本文は呼出元（Claude Code/Codex）の提供元へ送られます。
+
+## データの出所とプライバシー
+
+- カタログのスナップショットは [EMA Catalogues of RWD studies](https://catalogues.ema.europa.eu/) の公式CSV export（2026-09-13）から作成しています。連絡先の列は取り込まず、索引にも含めていません。研究情報の利用条件はEMAサイトの規約に従ってください。
+- 医薬品辞書はEMA公式の医薬品データ、日本語疾患辞書はこのリポジトリで整備したものです（`data/`）。
+- プロトコルPDFは選択した研究についてのみ、間隔制御・robots確認付きでEMAサイトから取得し、あなたのPCに保存されます。本文はLLM（呼出元のClaude Code/Codex、または設定したサーバー側プロバイダ）へ送信されます。
+- このツールは研究デザインの参考情報を出典付きで整理するもので、出典の確認なしに研究設計へ転用しないでください。
+
+## 不具合報告
+
+[GitHub Issues](https://github.com/parfait0707/rwd-catalogue-mcp/issues) へ、質問文・研究ID・`missing_information`の内容を添えて報告してください。ライセンスは [MIT](LICENSE) です。
 
 ## 詳細ドキュメント
 

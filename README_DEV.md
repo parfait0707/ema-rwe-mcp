@@ -2,7 +2,7 @@
 
 エンドユーザー（このMCPを使って研究を調べる人）向けの使い方は[README.md](README.md)を参照してください。本ファイルはこのMCPサーバー自体を開発・改修する人向けの内部仕様です。
 
-`docs/spec/v0.1.md`〜`v0.4.md`が仕様の正本、[docs/mcp-workflow.md](docs/mcp-workflow.md)が呼出元向け手順の正本、開発ルールは[AGENTS.md](AGENTS.md)です。
+公開版は0.1.0（内部履歴では0.1〜0.7の仕様段階を経ている）。`docs/spec/v0.1.md`〜`v0.4.md`が仕様の正本、[docs/mcp-workflow.md](docs/mcp-workflow.md)が呼出元向け手順の正本、開発ルールは[AGENTS.md](AGENTS.md)です。
 
 ## 開発用セットアップ（checkout）
 
@@ -11,9 +11,9 @@ Python 3.12以上とuvを使います。
 ```powershell
 uv venv --python 3.12
 uv sync --extra dev
-$env:EMA_DB_PATH = "E:/codex/rwd-catalogue-mcp/data/ema.sqlite3"
-$env:EMA_CACHE_DIR = "E:/codex/rwd-catalogue-mcp/cache/http"
-$env:EMA_IMPORT_DIR = "E:/codex/rwd-catalogue-mcp/data/imports"
+$env:EMA_DB_PATH = "<checkout>/data/ema.sqlite3"
+$env:EMA_CACHE_DIR = "<checkout>/cache/http"
+$env:EMA_IMPORT_DIR = "<checkout>/data/imports"
 .venv/Scripts/ema-rwe --help
 ```
 
@@ -66,7 +66,7 @@ uv build
 リポジトリを公開する場合は次を行います。
 
 1. `.gitignore`を再確認する（現状は`data/`配下のうち同梱3ファイルと`imports/`の空フォルダだけを追跡し、他はすべて除外。PDF・DB・キャッシュ・`.env`・`docs/agent_brief/`・`docs/agent_report/`も除外済み）。
-2. リリースタグ（例: `v0.7.0`）を打つ。非公開のままでも`git+https://...@v0.7.0`で版固定できるが、公開後は`gh auth login`等の資格情報なしで`uvx`から取得できるようになる。
+2. リリースタグ（例: `v0.1.0`）を打つ。手順は[docs/release.md](docs/release.md)。
 
 PyPI公開やGitHub Releaseへのwheel添付など他の配布経路の比較検討は[docs/research/202609160750_mcp_distribution.md](docs/research/202609160750_mcp_distribution.md)を参照してください。
 

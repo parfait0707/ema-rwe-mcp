@@ -42,4 +42,4 @@ Never commit API keys, `.env`, downloaded PDFs, local databases or HTTP/terminol
 
 ## Local Codex integration
 
-`.codex/config.toml` registers this checkout's `ema-rwe` stdio MCP server using its venv Python and absolute Windows paths. If the checkout moves, update these paths. Keep user-level Codex settings separate; do not add credential values to this project file. See `docs/codex-setup.md` for setup and verification.
+`.codex/config.toml.sample` is the template for registering this checkout's `ema-rwe` stdio MCP server with Codex; copy it to `.codex/config.toml` (git-ignored) and replace `<checkout>` with the absolute path. Keep user-level Codex settings separate; never commit credential values or machine-specific paths. See `docs/codex-setup.md` for setup and verification.
