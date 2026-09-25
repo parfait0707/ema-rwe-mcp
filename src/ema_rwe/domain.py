@@ -92,9 +92,28 @@ class SourcePreference(Model):
     mode: Literal["prefer", "only"] = "prefer"
 
 
+class DesignSchema(Model):
+    """The study-design figure: where it is, and the time-window statements the text gives for it."""
+
+    figure_pages: list[int] = Field(default_factory=list, max_length=10)
+    time_windows: list[Fact] = Field(default_factory=list, max_length=20)
+
+
+class Cohort(Model):
+    """How the analysis cohort is built: eligibility, index date, baseline and follow-up rules."""
+
+    inclusion_criteria: list[Fact] = Field(default_factory=list, max_length=40)
+    exclusion_criteria: list[Fact] = Field(default_factory=list, max_length=40)
+    index_date: Fact | None = None
+    baseline_period: Fact | None = None
+    follow_up: Fact | None = None
+    design_schema: DesignSchema | None = None
+
+
 class Extraction(Model):
-    schema_version: Literal["0.2"] = "0.2"
+    schema_version: Literal["0.3"] = "0.3"
     study_design: Fact | None = None
+    cohort: Cohort | None = None
     population: Fact | None = None
     exposure: Fact | None = None
     comparator: Fact | None = None
