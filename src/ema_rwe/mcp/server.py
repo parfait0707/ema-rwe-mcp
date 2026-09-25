@@ -125,10 +125,12 @@ def create_server(service: Service | None = None):
 
     @server.tool()
     async def get_protocol_comparison(
-        comparison_id: str, selected_study_ids: list[str] | None = None
+        comparison_id: str,
+        selected_study_ids: list[str] | None = None,
+        detail: Literal["compact", "full"] = "compact",
     ) -> dict:
-        """Rebuild the comparison JSON/Markdown; if needs_selection, pass the user's selected_study_ids."""
-        return await call("get_protocol_comparison", comparison_id, selected_study_ids)
+        """Rebuild the comparison JSON/Markdown (compact rows; detail=full adds analysis/answer bodies); if needs_selection, pass selected_study_ids."""
+        return await call("get_protocol_comparison", comparison_id, selected_study_ids, detail)
 
     @server.tool()
     async def get_study(study_id: str, refresh: bool = False) -> dict:
@@ -147,10 +149,11 @@ def create_server(service: Service | None = None):
         study_id: str,
         force_refresh: bool = False,
         offset: Annotated[int, Field(ge=0)] = 0,
-        max_chars: Annotated[int, Field(ge=6000, le=60000)] = 30000,
+        max_chars: Annotated[int, Field(ge=6000, le=150000)] = 30000,
+        detail: Literal["summary", "full"] = "summary",
     ) -> dict:
-        """Return the cached extraction; status=extracting means call again later; else paginated sections to extract (follow next_offset)."""
-        return await call("analyze_protocol", study_id, force_refresh, offset, max_chars)
+        """Cached extraction summary (detail=full for the whole extraction); status=extracting means call again later; else paginated sections to extract (follow next_offset)."""
+        return await call("analyze_protocol", study_id, force_refresh, offset, max_chars, detail)
 
     @server.tool()
     async def cache_protocol_analysis(
@@ -176,9 +179,11 @@ def create_server(service: Service | None = None):
         return await call("list_local_protocols", study_id)
 
     @server.tool()
-    async def get_protocol_outline(protocol_id: str, offset: int = 0, limit: int = 100) -> dict:
-        """Inspect all PDF section IDs, pages, roles, parents, neighbouring chapters and structural warnings."""
-        return await call("get_protocol_outline", protocol_id, offset, limit)
+    async def get_protocol_outline(
+        protocol_id: str, offset: int = 0, limit: int = 100, detail: Literal["compact", "full"] = "compact"
+    ) -> dict:
+        """List PDF section IDs, pages, titles and roles; detail=full adds parents, neighbours and structural warnings."""
+        return await call("get_protocol_outline", protocol_id, offset, limit, detail)
 
     @server.tool()
     async def search_protocol_text(
@@ -187,9 +192,10 @@ def create_server(service: Service | None = None):
         limit: int = 10,
         synonyms: list[str] | None = None,
         codes: list[CodeCandidate] | None = None,
+        max_chars: Annotated[int, Field(ge=1000)] | None = None,
     ) -> dict:
-        """Search one archived PDF (all sections) with synonym expansion; zero hits do not prove absence."""
-        return await call("search_protocol_text", protocol_id, query, limit, synonyms, codes)
+        """Search one archived PDF (all sections) with synonym expansion; hit text is included up to max_chars in rank order. Zero hits do not prove absence."""
+        return await call("search_protocol_text", protocol_id, query, limit, synonyms, codes, max_chars)
 
     @server.tool()
     async def read_protocol_text(

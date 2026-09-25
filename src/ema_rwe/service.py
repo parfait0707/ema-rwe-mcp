@@ -339,8 +339,10 @@ class Service:
             return {**search, "network_requests": 0, "rows": [], "pdf_downloads": 0}
         return await self.comparisons.prepare(question, candidates, search)
 
-    async def get_protocol_comparison(self, comparison_id: str, selected_study_ids: list[str] | None = None):
-        return await asyncio.to_thread(self.comparisons.collect, comparison_id, selected_study_ids)
+    async def get_protocol_comparison(
+        self, comparison_id: str, selected_study_ids: list[str] | None = None, detail: str = "compact"
+    ):
+        return await asyncio.to_thread(self.comparisons.collect, comparison_id, selected_study_ids, detail)
 
     async def get_study(self, study_id: str, refresh: bool = False):
         if not re.fullmatch(r"\d{1,20}", study_id):
@@ -454,10 +456,17 @@ class Service:
         return pdf, source
 
     async def analyze_protocol(
-        self, study_id: str, force_refresh: bool = False, offset: int = 0, max_chars: int = 30000
+        self,
+        study_id: str,
+        force_refresh: bool = False,
+        offset: int = 0,
+        max_chars: int = 30000,
+        detail: str = "summary",
     ):
-        if offset < 0 or not 6000 <= max_chars <= 60000:
-            raise RWEError("INVALID_INPUT", "offset >= 0; max_chars must be 6000..60000.")
+        if offset < 0 or not 6000 <= max_chars <= 150000:
+            raise RWEError("INVALID_INPUT", "offset >= 0; max_chars must be 6000..150000.")
+        if detail not in {"summary", "full"}:
+            raise RWEError("INVALID_INPUT", "detail must be summary or full.")
         pdf, source = await self._context(study_id, force_refresh)
         old = self.repo.analysis(study_id)
         if old and force_refresh:
@@ -469,9 +478,9 @@ class Service:
                 retrieved_at=source["retrieved_at"], documents_checked_at=source["documents_checked_at"]
             )
             self.repo.save_analysis(self.repo.get(study_id), old)
-            return dict(old, cached=True)
+            return analysis_view(dict(old, cached=True), detail)
         if configured(self.settings):
-            return await self._provider_extraction(study_id, pdf, source)
+            return analysis_view(await self._provider_extraction(study_id, pdf, source), detail)
         pages = await asyncio.to_thread(extract_pages, pdf)
         chunks = [c for c in sections(pages) if c["relevant"]]
         if not chunks:
@@ -483,29 +492,36 @@ class Service:
             selected.append(chunk)
             size += len(chunk["text"])
         next_offset = offset + len(selected)
-        return {
+        result = {
             "status": "needs_client_extraction",
             "source": source,
             "cached": False,
-            "instruction": EXTRACTION_PROMPT + " Read every batch using next_offset. After each batch call "
-            "cache_protocol_analysis with fingerprint, that batch's analysis and batch_offset=offset so "
-            "progress survives context compaction (skip offsets already in cached_batch_offsets); after the "
-            "last batch call it with coverage_complete=true to merge and save.",
             "cached_batch_offsets": sorted(self._partials.get((study_id, source["fingerprint"]), {})),
-            "analysis_schema": Extraction.model_json_schema(),
             "sections": selected,
             "offset": offset,
             "next_offset": next_offset if next_offset < len(chunks) else None,
             "total_sections": len(chunks),
             "total_pdf_pages": len(pages),
-            "selection_coverage": "Keyword/heading selected sections; unselected text may contain additional facts.",
-            "exploration_tools": [
-                "get_protocol_outline",
-                "search_protocol_text",
-                "read_protocol_text",
-                "research_protocol",
-            ],
         }
+        if offset == 0:
+            # The schema and instructions travel once; later batches carry only sections.
+            result.update(
+                instruction=EXTRACTION_PROMPT + " Read every batch using next_offset (with a 200k+ context "
+                "window pass max_chars=120000 to cut round trips). After each batch call "
+                "cache_protocol_analysis with fingerprint, that batch's analysis and batch_offset=offset so "
+                "progress survives context compaction (skip offsets already in cached_batch_offsets); after "
+                "the last batch call it with coverage_complete=true to merge and save. Later batches omit "
+                "this instruction and analysis_schema.",
+                analysis_schema=Extraction.model_json_schema(),
+                selection_coverage="Keyword/heading selected sections; unselected text may contain additional facts.",
+                exploration_tools=[
+                    "get_protocol_outline",
+                    "search_protocol_text",
+                    "read_protocol_text",
+                    "research_protocol",
+                ],
+            )
+        return result
 
     async def plan_study_search(self, question: str, use_llm: bool = False):
         expansion = expand(question)
@@ -599,13 +615,23 @@ class Service:
     async def list_local_protocols(self, study_id: str):
         return {"study_id": study_id, "protocols": self.archive.list(study_id), "network_requests": 0}
 
-    async def get_protocol_outline(self, protocol_id: str, offset: int = 0, limit: int = 100):
-        return await asyncio.to_thread(self.explorer.outline, protocol_id, offset, limit)
+    async def get_protocol_outline(
+        self, protocol_id: str, offset: int = 0, limit: int = 100, detail: str = "compact"
+    ):
+        return await asyncio.to_thread(self.explorer.outline, protocol_id, offset, limit, detail)
 
     async def search_protocol_text(
-        self, protocol_id: str, query: str, limit: int = 10, synonyms=None, codes=None
+        self,
+        protocol_id: str,
+        query: str,
+        limit: int = 10,
+        synonyms=None,
+        codes=None,
+        max_chars: int | None = None,
     ):
-        return await asyncio.to_thread(self.explorer.search, protocol_id, query, limit, synonyms, codes)
+        return await asyncio.to_thread(
+            self.explorer.search, protocol_id, query, limit, synonyms, codes, max_chars
+        )
 
     async def read_protocol_text(
         self,
@@ -657,7 +683,7 @@ class Service:
         partials = self._partials.pop(key, {})
         if partials:
             analysis = merge_extractions([*partials.values(), analysis])
-        return self._save(study_id, analysis, source, "client_assisted")
+        return self._save(study_id, analysis, source, "client_assisted", detail="summary")
 
     async def _provider_extraction(self, study_id: str, pdf: bytes, source: dict) -> dict:
         """Run (or keep running) the server-side extraction; return status=extracting when it outlasts the wait."""
@@ -695,7 +721,7 @@ class Service:
         validate_evidence(analysis, pages)
         return self._save(study_id, analysis, source, "configured_provider")
 
-    def _save(self, study_id, analysis, source, method):
+    def _save(self, study_id, analysis, source, method, detail: str = "full"):
         result = {
             "status": "analyzed",
             "study_id": study_id,
@@ -707,4 +733,26 @@ class Service:
             "cached": False,
         }
         self.repo.save_analysis(self.repo.get(study_id), result)
+        return analysis_view(result, detail)
+
+
+def analysis_view(result: dict, detail: str) -> dict:
+    """Caller-facing view of an analyzed result: counts and data source names by default, the whole
+    extraction only with detail=full (comparisons read the stored JSON, not this response)."""
+    if detail == "full" or result.get("status") != "analyzed":
         return result
+    analysis = result["analysis"]
+    summary = {
+        name: (len(value) if isinstance(value, list) else (1 if value else 0))
+        for name, value in analysis.items()
+        if name != "schema_version"
+    }
+    return {
+        **{k: v for k, v in result.items() if k != "analysis"},
+        "analysis_summary": summary,
+        "data_sources": [
+            {"value": d["value"], "usage": d["usage"]} for d in analysis.get("data_sources", [])
+        ],
+        "missing_information": analysis.get("missing_information", []),
+        "note": "Full extraction: analyze_protocol(detail='full'); comparisons already include it.",
+    }

@@ -8,6 +8,41 @@ import uuid
 from .domain import RWEError, now
 from .source_types import select_rows
 
+ROW_STUDY_KEYS = ("study_id", "title", "eupas_number", "countries", "data_source_types", "status")
+
+
+def compact_view(result: dict) -> dict:
+    """Tool response without the per-row extraction/answer bodies and assessment lists; the stored
+    comparison.json and study_*.json keep everything and comparison_markdown carries the cited table."""
+    rows = []
+    for row in result["rows"]:
+        suitability = row.get("source_suitability") or {}
+        rows.append(
+            {
+                "study": {k: row["study"].get(k) for k in ROW_STUDY_KEYS},
+                "status": row.get("status"),
+                "error": row.get("error"),
+                "source": row.get("source"),
+                "source_suitability": {
+                    k: suitability.get(k)
+                    for k in ("status", "role", "reason", "catalogue_protocol_disjoint", "conflicts")
+                },
+                "data_source_types": row.get("data_source_types"),
+                "data_source_types_status": row.get("data_source_types_status"),
+                "protocol_data_sources": [
+                    {"value": d["value"], "usage": d["usage"]} for d in row.get("protocol_data_sources", [])
+                ],
+                "protocol_data_sources_status": row.get("protocol_data_sources_status"),
+                "pdf_path": row.get("pdf_path"),
+                "json_path": row.get("json_path"),
+            }
+        )
+    return {
+        **{k: v for k, v in result.items() if k != "rows"},
+        "rows": rows,
+        "note": "get_protocol_comparison(detail='full') returns full rows (analysis, answer, assessments).",
+    }
+
 
 def atomic_write(path, text):
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -160,7 +195,11 @@ class Comparisons:
         atomic_write(folder / "comparison.md", result["comparison_markdown"])
         atomic_write(folder / "comparison.json", json.dumps(result, ensure_ascii=False, indent=2))
 
-    def collect(self, cid, selected_study_ids=None):
+    def collect(self, cid, selected_study_ids=None, detail="compact"):
+        result = self._collect(cid, selected_study_ids)
+        return result if detail == "full" else compact_view(result)
+
+    def _collect(self, cid, selected_study_ids=None):
         try:
             result = json.loads(self.path(cid).read_text(encoding="utf-8"))
         except FileNotFoundError as exc:
