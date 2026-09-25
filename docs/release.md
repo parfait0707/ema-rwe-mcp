@@ -11,7 +11,23 @@
 | パッケージ情報 | `pyproject.toml` 0.1.0、readme / license / urls / classifiers |
 | 同梱データ | `data/ema.sqlite3`（42 MB、連絡先列なし）、`data/ema-medicines.json`、`data/terminology.json`、`data/terminology_decisions.json` |
 | ドキュメント | `README.md`（利用者）、`README_DEV.md`（開発者）、`CHANGELOG.md`、`docs/` |
-| Git 履歴 | 公開すると全履歴が見える。`docs/work_log/` の作業ログ（コスト・所要の実測）も含まれる。非公開にしたい場合は公開前に履歴の書き換えが必要（本手順では行わない） |
+| Git 履歴 | 作業ログ（`docs/work_log/`）はツリーから削除し `.gitignore` 済み。**履歴からの除去は下記「履歴の書き換え」を公開前に実行する**（コミットハッシュが変わり、タグは再作成、GitHub の PR ページには旧コミットが残りうる） |
+
+## 履歴の書き換え（作業ログの除去。公開前に 1 回、手元で実行）
+
+```bash
+git switch main && git pull origin main
+git bundle create ../rwd-catalogue-backup.bundle --all          # 復旧用バックアップ
+uvx git-filter-repo --path docs/work_log --invert-paths --force # 全履歴から docs/work_log を除去（origin remote が外れる）
+git remote add origin https://github.com/parfait0707/rwd-catalogue-mcp.git
+git push --force origin main
+git tag -d v0.1.0 v0.1.1 2>/dev/null; git push origin --delete v0.1.0 v0.1.1 2>/dev/null
+git tag -a v0.1.1 -m "v0.1.1 first public release" && git push origin v0.1.1
+```
+
+注意: GitHub は PR の参照（refs/pull/*/head）で旧コミットを保持するため、旧履歴の完全消去には
+リポジトリの再作成か GitHub サポートへの依頼が必要です。確実に消したい場合は新しいリポジトリへ
+書き換え後の履歴だけを push する方法が最も簡単です。
 
 ## 公開手順
 
