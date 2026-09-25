@@ -24,3 +24,12 @@ dist/
 # Agent intermediate artefacts (not tracked)
 docs/agent_brief/
 docs/agent_report/
+
+# Local tool configuration and editor/agent state (never published)
+.codex/config.toml
+.claude/
+.devcontainer/
+.serena/
+.mcp.json
+CLAUDE.md
+.python-version
