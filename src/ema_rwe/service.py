@@ -143,7 +143,12 @@ class Service:
             age, state = None, "not_imported"
         return {
             "status": state,
-            "latest_import": latest,
+            "studies_total": self.repo.study_count(),
+            "latest_import": dict(
+                latest, note="count is the row count of this one export, not the catalogue total"
+            )
+            if latest
+            else None,
             "snapshot_count": len(snapshots),
             "age_seconds": age,
             "refresh_after_seconds": self.settings.catalogue_ttl,
