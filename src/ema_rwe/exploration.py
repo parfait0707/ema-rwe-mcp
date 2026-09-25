@@ -6,7 +6,14 @@ from pydantic import ValidationError
 
 from .domain import Extraction, ProtocolAnswer, RWEError, now
 from .llm import SOURCE_ASSESSMENT_PROMPT, complete_json, configured, drop_invalid_evidence, split_batches
-from .pdf import extract_pages, prune_unverifiable, search_sections, sections, validate_evidence
+from .pdf import (
+    extract_pages,
+    prune_unverifiable,
+    reading_order,
+    search_sections,
+    sections,
+    validate_evidence,
+)
 from .terminology import clinical_expansion, proposed_codes
 
 EXPLORER_VERSION = "source-role-exploration-v6"
@@ -135,7 +142,7 @@ class Explorer:
         Replaces the step-bounded search/read loop, which spent its whole budget on 12k-char reads.
         """
         pages, chunks, _ = self.context(protocol_id)
-        batches = split_batches([c for c in chunks if c["relevant"]], self.settings.llm_batch_chars)
+        batches = split_batches(reading_order(chunks), self.settings.llm_batch_chars)
         semaphore = asyncio.Semaphore(max(1, self.settings.llm_concurrency))
 
         async def run(index: int, batch: list[dict]) -> dict:
