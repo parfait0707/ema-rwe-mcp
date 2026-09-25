@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.1 (2026-09-26)
+
+- `catalogue_status` reports `studies_total` (the whole local catalogue) and labels the per-export `count`,
+  so callers no longer quote a single export's row count as the catalogue size.
+
 ## 0.1.0 (2026-09-26) — first public release
 
 Evidence-backed MCP server for finding EMA Catalogue non-interventional studies and extracting
