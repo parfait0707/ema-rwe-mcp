@@ -18,6 +18,7 @@ data/imports/studies/*
 data/imports/source_type/*
 !data/imports/*/.gitkeep
 cache/
+.cache/
 dist/
 *.egg-info/
 
