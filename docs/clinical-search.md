@@ -36,7 +36,13 @@ PDF検索にはさらに`protocol_id`を指定します。CLIも`--code "ICD-10:
 
 チェックアウト内では同梱の`data/terminology.json`（49概念。日本語疾患名→英語名・関連語・WHO ICD-10 2019の分類コード、出典URL付き）が既定で読み込まれます。コードは検索用の候補であり`verification=unverified`のままです。`related_terms`のうちカタログ由来の語は、`scripts/mine_terminology.py`がカタログ本文（Outcomes、Medicinal condition、目的、タイトル）から統計的に抽出した候補を、明文化した採否規則と標本確認で判定して追記したものです。判定記録は`data/terminology_decisions.json`、手順と結果は[関連語導出の記録](research/202609140758_terminology_mining.md)を参照してください。
 
-疾患・医薬品以外の語は、`vocabulary.py`の同義語グループが英語へ展開します。対象は薬剤疫学プロトコールに頻出する研究デザイン・手法・集団の語です（例：交絡→confounding、インデックス日→index date、症例対照→case control / nested case control、小児→paediatric / pediatric / children、データリンケージ→record linkage）。個別の疾患名や薬効群はここに置かず、概念辞書と医薬品辞書で扱います。
+### 類縁概念と一致語の出所
+
+`analogous_terms`（`{term, relation}`）は、依頼概念とは**別の**臨床概念です。`relation`は`broader`（上位概念）、`sibling`（同じ上位概念に属する別疾患）、`associated`（合併症・関連病態）のいずれかです。通常の検索には含めず、依頼概念の研究が0件のときの`analogous_fallback`と、`match_scope=analogous`での明示的な検索にだけ使います。`related_terms`には同義語・表記揺れ・下位型・検索ヒントだけを置きます（例：1型糖尿病の`diabetes mellitus`は`related_terms`ではなく`analogous_terms`の`broader`）。
+
+検索結果の各行は`match_basis`（`concept`／`analogous`）と`matched_terms`（実際に一致した展開語）を持ちます。類縁概念で見つかった研究の定義は、類縁概念の定義として提示してください。辞書にない疾患は、呼出元が類縁概念を`analogous_terms`引数で渡せます。
+
+疾患・医薬品以外の語は、`vocabulary.py`の同義語グループが英語へ展開します。対象は薬剤疫学プロトコールに頻出する研究デザイン・手法・集団の語です（例：交絡→confounding、インデックス日→index date、症例対照→case control / nested case control、小児→paediatric / pediatric / children、データリンケージ→record linkage）。個別の疾患名や薬効群はここに置かず、概念辞書と医薬品辞書で扱います。広義の臨床語（diabetes、bleeding、cancer）は、辞書概念が既に覆う文字列では発火しません（「1型糖尿病」は diabetes を追加せず、「糖尿病」単独なら追加します）。
 
 国の絞り込み（`filters.countries`）は、同梱カタログで研究数の多い上位30か国について日本語名と一般的な英語の別称を受け付けます（例：ドイツ→Germany、イギリス／UK→United Kingdom、韓国→Korea, Republic of）。それ以外の国名はカタログ表記のまま指定してください。
 
@@ -51,6 +57,7 @@ PDF検索にはさらに`protocol_id`を指定します。CLIも`--code "ICD-10:
     "input_terms": ["間質性肺疾患", "間質性肺炎"],
     "english_terms": ["interstitial lung disease"],
     "related_terms": ["interstitial pneumonia"],
+    "analogous_terms": [{"term": "pulmonary fibrosis", "relation": "sibling"}],
     "code_candidates": [
       {"system": "ICD-10", "code": "J84.9", "vocabulary_version": "WHO 2019",
        "relation": "unspecified_subtype",
