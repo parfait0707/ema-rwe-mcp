@@ -2,10 +2,9 @@
 
 import json
 import re
-import tempfile
 import uuid
 
-from .domain import RWEError, now
+from .domain import RWEError, atomic_write, now
 from .source_types import select_rows
 
 ROW_STUDY_KEYS = ("study_id", "title", "eupas_number", "countries", "data_source_types", "status")
@@ -42,19 +41,6 @@ def compact_view(result: dict) -> dict:
         "rows": rows,
         "note": "get_protocol_comparison(detail='full') returns full rows (analysis, answer, assessments).",
     }
-
-
-def atomic_write(path, text):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = None
-    try:
-        with tempfile.NamedTemporaryFile(dir=path.parent, mode="w", encoding="utf-8", delete=False) as f:
-            temporary = type(path)(f.name)
-            f.write(text)
-        temporary.replace(path)
-    finally:
-        if temporary:
-            temporary.unlink(missing_ok=True)
 
 
 def cell(value):
@@ -273,7 +259,7 @@ class Comparisons:
                     },
                 )
                 continue
-            if analysis and analysis["source"]["fingerprint"] == source["fingerprint"]:
+            if analysis:
                 row["analysis"] = analysis["analysis"]
             else:
                 todo.append({"tool": "analyze_protocol", "arguments": {"study_id": sid}})

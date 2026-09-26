@@ -86,6 +86,10 @@ ROLES = {
 }
 
 
+# Section roles whose text describes something other than this study's methods.
+NON_METHOD_ROLES = {"references", "contents", "background", "administrative", "checklist"}
+
+
 def heading_role(heading: str | None) -> str:
     for role, terms in ROLES.items():
         if heading and any(contains(heading, term) for term in terms):
@@ -259,13 +263,9 @@ def sections(pages: list[Page]) -> list[dict]:
             next_section=result[i + 1]["section"] if i + 1 < len(result) else None,
             structure_warnings=warnings,
         )
-        chunk["relevant"] = role not in {
-            "contents",
-            "references",
-            "administrative",
-            "background",
-            "checklist",
-        } and (role != "unknown" or chunk["relevant"] or bool(expand(chunk["text"][:1900])["concepts"]))
+        chunk["relevant"] = role not in NON_METHOD_ROLES and (
+            role != "unknown" or chunk["relevant"] or bool(expand(chunk["text"][:1900])["concepts"])
+        )
     return result
 
 
@@ -316,7 +316,7 @@ def search_sections(
             score = len(matched) + 2 * sum(contains(chunk["section"] or "", t) for t in matched)
             # A bookmark chapter title naming the concept outranks a body mention.
             score += 3 * sum(contains(chunk.get("chapter") or "", t) for t in matched)
-            if chunk["role"] in {"references", "contents", "background", "administrative", "checklist"}:
+            if chunk["role"] in NON_METHOD_ROLES:
                 score *= 0.15
             hits.append(dict(chunk, score=score, matched_terms=matched))
     hits.sort(key=lambda c: (-c["score"], c["page"], c["section_id"]))
@@ -347,10 +347,7 @@ def validate_evidence(extraction: Extraction, pages: list[Page], chunks: list[di
             if (
                 require_methods
                 and containing_chunks
-                and all(
-                    c["role"] in {"references", "contents", "background", "administrative", "checklist"}
-                    for c in containing_chunks
-                )
+                and all(c["role"] in NON_METHOD_ROLES for c in containing_chunks)
             ):
                 raise RWEError(
                     "EVIDENCE_WRONG_SECTION",
@@ -480,7 +477,7 @@ def prune_unverifiable(extraction: Extraction, pages: list[Page]) -> tuple[Extra
     data = extraction.model_dump()
     dropped = 0
 
-    def verifies(name, fact, evidence_items, is_list) -> bool:
+    def verifies(name, fact, evidence_items) -> bool:
         single = dict(fact, evidence=evidence_items)
         # Nested block fields (cohort criteria, time windows) are checked under the method rules of
         # a top-level list field; validation only depends on the field name for source/key-note rules.
@@ -492,12 +489,12 @@ def prune_unverifiable(extraction: Extraction, pages: list[Page]) -> tuple[Extra
         except RWEError:
             return False
 
-    def repaired(name, fact, evidence, is_list) -> list[dict]:
+    def repaired(name, fact, evidence) -> list[dict]:
         """Verbatim quote on a neighbouring page -> fix the page; data source name missing from the
         quote but present on the page -> add a short verbatim window containing the name."""
         quote = normalize_quote(evidence["quote"])
         for page in (evidence["page"] - 1, evidence["page"] + 1):
-            if quote in page_map.get(page, "") and verifies(name, fact, [dict(evidence, page=page)], is_list):
+            if quote in page_map.get(page, "") and verifies(name, fact, [dict(evidence, page=page)]):
                 return [dict(evidence, page=page)]
         if name in {"data_sources", "source_assessments"} and quote in page_map.get(evidence["page"], ""):
             text = normalize_quote(next(p.text for p in pages if p.page == evidence["page"]))
@@ -511,7 +508,7 @@ def prune_unverifiable(extraction: Extraction, pages: list[Page]) -> tuple[Extra
                 # Keep the original quote only if the pair passes every rule (it may have failed
                 # the section check as well as the name check); otherwise the window alone.
                 for candidate in ([evidence, window], [window]):
-                    if verifies(name, fact, candidate, is_list):
+                    if verifies(name, fact, candidate):
                         return candidate
         return []
 
@@ -534,22 +531,22 @@ def prune_unverifiable(extraction: Extraction, pages: list[Page]) -> tuple[Extra
         }
         return dict(evidence, section=labels.pop() if len(labels) == 1 else None)
 
-    def prune_block(block: dict, model) -> None:
+    def prune_block(block: dict) -> None:
         nonlocal dropped
         for name, value in list(block.items()):
             if name in {"schema_version", "missing_information", "figure_pages"} or value is None:
                 continue
             if isinstance(value, dict) and "evidence" not in value:  # nested block (cohort, design_schema)
-                prune_block(value, model)
+                prune_block(value)
                 continue
             is_list = isinstance(value, list)
             kept = []
             for fact in value if is_list else [value]:
                 good = []
                 for evidence in map(with_section, fact["evidence"]):
-                    if verifies(name, fact, [evidence], is_list):
+                    if verifies(name, fact, [evidence]):
                         good.append(evidence)
-                    elif fixed := repaired(name, fact, evidence, is_list):
+                    elif fixed := repaired(name, fact, evidence):
                         good.extend(fixed)
                     else:
                         dropped += 1
@@ -557,5 +554,5 @@ def prune_unverifiable(extraction: Extraction, pages: list[Page]) -> tuple[Extra
                     kept.append(dict(fact, evidence=good[:8]))
             block[name] = kept if is_list else (kept[0] if kept else None)
 
-    prune_block(data, type(extraction))
+    prune_block(data)
     return type(extraction).model_validate(data), dropped

@@ -125,7 +125,6 @@ def parser():
     submit.add_argument("input", type=Path)
     submit.add_argument("--coverage-complete", action="store_true")
     commands.add_parser("cleanup-cache")
-    commands.add_parser("serve")
     return p
 
 
@@ -230,11 +229,6 @@ async def run(args):
 def main():
     args = parser().parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    if args.command == "serve":
-        from .mcp.server import main as serve
-
-        serve()
-        return
     try:
         result = asyncio.run(run(args))
         print(json.dumps(result, ensure_ascii=False, indent=2))

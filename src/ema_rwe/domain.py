@@ -1,5 +1,7 @@
 import re
+import tempfile
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -7,6 +9,18 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 def now() -> str:
     return datetime.now(UTC).isoformat()
+
+
+def atomic_write(path: Path, data: bytes | str) -> None:
+    """Write via a sibling temporary file and rename, so readers never see a half-written file."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(dir=path.parent, suffix=".tmp", delete=False) as f:
+        temporary = Path(f.name)
+    try:
+        temporary.write_bytes(data.encode() if isinstance(data, str) else data)
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 class RWEError(Exception):
@@ -51,7 +65,7 @@ class Study(Model):
 class Document(Model):
     title: str
     document_url: str
-    kind: Literal["updated", "protocol", "initial"]
+    kind: Literal["updated", "initial"]
     version: str | None = None
     document_date: str | None = None
     published_date: str | None = None

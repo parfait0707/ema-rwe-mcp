@@ -23,10 +23,19 @@ from .pdf import (
     validate_evidence,
 )
 from .selection import TYPED_SOURCES, SearchFilters, compact, selection
-from .source_types import preference_for
 from .storage import Repository, import_csv
 from .terminology import proposed_codes
 from .vocabulary import expand
+
+SCHEMA_VERSION = Extraction.model_fields["schema_version"].default
+
+
+def read_log(path: Path) -> dict:
+    """The unmatched-query log; a missing or unreadable file counts as empty."""
+    try:
+        return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    except (OSError, ValueError):
+        return {}
 
 
 def record_unmatched(path: Path, text: str, tool: str, expansion: dict) -> bool:
@@ -47,10 +56,7 @@ def record_unmatched(path: Path, text: str, tool: str, expansion: dict) -> bool:
     ):
         return False
     path.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        log = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
-    except (OSError, ValueError):
-        log = {}
+    log = read_log(path)
     entry = log.setdefault(text, {"count": 0, "first_seen": now(), "tools": []})
     entry["count"] += 1
     entry["last_seen"] = now()
@@ -62,10 +68,7 @@ def record_unmatched(path: Path, text: str, tool: str, expansion: dict) -> bool:
 
 def unmatched_summary(path: Path, limit: int = 20) -> dict:
     """Most frequent unrecognised queries, for deciding whether the dictionary needs new concepts."""
-    try:
-        log = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
-    except (OSError, ValueError):
-        log = {}
+    log = read_log(path)
     ranked = sorted(log.items(), key=lambda kv: (-kv[1]["count"], kv[1].get("last_seen", "")))
     return {
         "path": str(path),
@@ -309,7 +312,8 @@ class Service:
             or any(not q.strip() for q in queries)
         ):
             raise RWEError("INVALID_INPUT", "A question and 1..20 nonempty search queries are required.")
-        preference = preference_for(filters, source_preference)
+        # filters.data_source_types narrows catalogue candidates; only source_preference ranks PDF evidence.
+        preference = source_preference
         unique = {}
         for query in queries:
             for row in self.repo.search(
@@ -440,7 +444,7 @@ class Service:
                     "url": result["protocol"]["document_url"],
                     "sha256": result["download"]["sha256"],
                     "version": result["protocol"]["version"],
-                    "schema": "0.3",
+                    "schema": SCHEMA_VERSION,
                     "parser": "structural-v4",
                     "prompt": EXTRACTION_PROMPT,
                     "model": self.settings.llm_model or "client-assisted",
@@ -460,7 +464,7 @@ class Service:
             "fingerprint": fingerprint,
             "selection_reason": result["selection_reason"],
             "extractor": self.settings.llm_model or "client-assisted",
-            "schema_version": "0.3",
+            "schema_version": SCHEMA_VERSION,
         }
         previous = self.repo.analysis(study_id)
         if previous and previous["source"]["fingerprint"] != fingerprint:
@@ -485,7 +489,7 @@ class Service:
             # Subsequent client-extraction batches must not fall back to the old cached analysis.
             self.repo.invalidate_analysis(self.repo.get(study_id))
             old = None
-        if old and old["source"]["fingerprint"] == source["fingerprint"] and not force_refresh:
+        if old and old["source"]["fingerprint"] == source["fingerprint"]:
             old["source"].update(
                 retrieved_at=source["retrieved_at"], documents_checked_at=source["documents_checked_at"]
             )

@@ -327,6 +327,11 @@ SEARCH_COLUMNS = (
 )
 
 
+def split_values(text: str) -> list[str]:
+    """Catalogue multi-value cells separate items with |, ; or line breaks."""
+    return [x.strip() for x in re.split(r"[|;\n]+", text or "") if x.strip()]
+
+
 def import_csv(
     repo: Repository, path: Path, column_map: dict[str, str] | None = None, source_type: str | None = None
 ) -> dict:
@@ -388,24 +393,18 @@ def import_csv(
         if not v["title"]:
             raise RWEError("CSV_SCHEMA_ERROR", f"Invalid or duplicate Study ID/title at CSV record {lineno}.")
         for key in ("countries", "data_source_types", "catalogue_data_sources", "study_designs"):
-            v[key] = [x.strip() for x in re.split(r"[|;\n]+", v.get(key, "")) if x.strip()]
+            v[key] = split_values(v.get(key, ""))
         for key, columns in role_columns.items():
             texts = [(row.get(c) or "").strip() for c in columns]
             if key in ("conditions", "exposures"):
-                v[key] = list(
-                    dict.fromkeys(x.strip() for t in texts for x in re.split(r"[|;\n]+", t) if x.strip())
-                )
+                v[key] = list(dict.fromkeys(x for t in texts for x in split_values(t)))
             else:
                 v[key] = "\n".join(t for t in texts if t)
         if other_sources_column:
-            v["catalogue_data_sources"] += [
-                x.strip() for x in re.split(r"[|;\n]+", row.get(other_sources_column, "") or "") if x.strip()
-            ]
+            v["catalogue_data_sources"] += split_values(row.get(other_sources_column))
             v["catalogue_data_sources"] = list(dict.fromkeys(v["catalogue_data_sources"]))
         if other_design_column:
-            v["study_designs"] += [
-                x.strip() for x in re.split(r"[|;\n]+", row.get(other_design_column, "") or "") if x.strip()
-            ]
+            v["study_designs"] += split_values(row.get(other_design_column))
             v["study_designs"] = list(dict.fromkeys(v["study_designs"]))
         v["darwin_eu"] = {"yes": True, "true": True, "1": True, "no": False, "false": False, "0": False}.get(
             v.get("darwin_eu", "").lower()
