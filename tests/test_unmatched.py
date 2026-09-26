@@ -1,8 +1,26 @@
-"""Unrecognised Japanese queries are logged so the dictionary can be extended later."""
+"""Unrecognised Japanese queries are logged, while a dictionary is configured, so it can be extended."""
 
 import json
+from pathlib import Path
+
+import pytest
 
 from ema_rwe.service import Service
+
+EXAMPLE = Path(__file__).resolve().parents[1] / "data" / "terminology.example.json"
+
+
+@pytest.fixture(autouse=True)
+def example_dictionary(monkeypatch):
+    monkeypatch.setenv("EMA_TERMINOLOGY_PATH", str(EXAMPLE))
+
+
+async def test_nothing_is_logged_without_a_dictionary(settings, tmp_path, monkeypatch):
+    monkeypatch.setenv("EMA_TERMINOLOGY_PATH", str(tmp_path))  # an empty dictionary folder
+    service = Service(settings)
+    plan = await service.plan_study_search("線維筋痛症の研究")
+    assert plan["status"] == "needs_client_translation" and plan["unmatched_logged"] is False
+    assert not service.unmatched_log_path.exists()
 
 
 async def test_unmatched_japanese_queries_are_logged_with_counts(settings, csv_file):

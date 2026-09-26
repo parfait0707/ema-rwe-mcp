@@ -9,7 +9,7 @@
 | エージェント・エディタの状態 | `.claude/`, `.devcontainer/`, `.serena/`, `.mcp.json`, `CLAUDE.md`, `.python-version` を `.gitignore` |
 | ライセンス | `LICENSE`（MIT、著作権者 parfait0707）。**別のライセンスにする場合はタグ前に差し替える** |
 | パッケージ情報 | `pyproject.toml` 0.1.0、readme / license / urls / classifiers |
-| 同梱データ | `data/ema.sqlite3`（42 MB、連絡先列なし）、`data/ema-medicines.json`、`data/terminology.json`、`data/terminology_decisions.json` |
+| 同梱データ | `data/ema.sqlite3`（42 MB、連絡先列なし）、`data/ema-medicines.json`（wheel同梱はこの2つ）。記入例`data/terminology.example.json`と`data/terminology_decisions.json`はリポジトリのみ |
 | ドキュメント | `README.md`（利用者）、`README_DEV.md`（開発者）、`CHANGELOG.md`、`docs/` |
 | Git 履歴 | 作業ログ（`docs/work_log/`）はツリーから削除し `.gitignore` 済み。**履歴からの除去は下記「履歴の書き換え」を公開前に実行する**（コミットハッシュが変わり、タグは再作成、GitHub の PR ページには旧コミットが残りうる） |
 

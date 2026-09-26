@@ -242,6 +242,17 @@ PDF 取得先ディレクトリ名から X/Y が推測可能だった（P）、�
 - 独立レビュー（opus サブエージェント）の指摘を修正：(1) 複数クエリ変種で、別変種の依頼概念に一致する研究が類縁として返った → 全変種の概念一致の和集合で除外、(2) 絞り込みで 0 件になっただけなのに「依頼概念の研究はない」と案内した → `concept_filtered_out`、フォールバックに`status`・`analyzed_only`を適用、(3) LLM プロンプトでコード候補の relation 説明が類縁語の直後にあり混同を招いた → 位置を修正、(4) 類縁語の大小文字違いで relation 表示が「不明」になった → 大小無視で統合、(5) 類縁スコープ 0 件時の案内文、(6) CLI の引数不足。修正後の再現シナリオはすべて回帰テスト化した。全体 250 passed、ruff 合格、`uv build` 成功。
 - 未検証：類縁語の臨床的妥当性は人手判断で、専門家レビューは未実施。LLM による類縁概念提案（`use_llm=true`）はモックなしの実 LLM で試していない。類縁概念の研究で`research_protocol`が類縁概念の定義を正しく答えるかは、実 PDF で未確認。
 
+## 2026-09-27 クライアント翻訳を既定化（spec v0.6）
+
+- 同梱辞書の廃止：`data/terminology.json` → `data/terminology.example.json`（ICD-10 名称 54 件を削除、既定では読まない）。wheel の同梱は `ema.sqlite3` と `ema-medicines.json` だけであることを `uv build` の生成物で確認した。
+- 同梱カタログでの模擬実行：メインスレッドがクライアント役を務め、ICD-10 の指針に従って「1型糖尿病をアウトカムとした研究」を翻訳した（E10 Insulin-dependent diabetes mellitus の名称と一般名を英語名に、T1DM・juvenile diabetes を言い換えに、type 2 diabetes mellitus を sibling、diabetes mellitus を broader の類縁概念にした）。
+  - `plan_study_search` は `needs_client_translation`・`client_expansion`・辞書なしを返した。
+  - `role=outcome` の概念一致は 11 件、類縁スコープは 86 件で、各行に語の出所が付いた。
+  - 未一致語ログは作成されなかった。
+- テスト：辞書依存の 4 件は、記入例を利用者辞書として設定する形に置き換えた。辞書なしの既定、記入例の読み込み、ログ抑止、wheel に疾患辞書が入らないことのテストを追加した。テストは自動フィクスチャで利用者の `data/dictionaries/` から隔離した。全体 256 passed、ruff 合格。
+- 独立レビュー（サブエージェント）の指摘を修正：`use_llm=true` の計画で `client_expansion.required` が真のまま残った／利用者辞書のコード候補の出所がファイル名なしの `dictionary` だった／隠しファイルの誤読とエラーにファイル名がない／存在しない `EMA_TERMINOLOGY_PATH` で `catalogue_status` も失敗した／空の辞書が未設定扱いになった／古い参照（`.env.example` など）。それぞれ回帰テストを追加した。
+- 未検証：実クライアント（Claude Code／Codex）が ICD-10 の指針に従って出す類義語の質とばらつき（同じ質問での候補数の再現性）。同梱辞書で実測した関連語による再現率向上（v0.4：liver injury 50→103 件）が、クライアント翻訳で得られるかは測っていない。
+
 ## 未検証事項（継続）
 
 - 外部LLM API呼出しの実認証検証は未実施。キーなしの呼出元LLM方式は合成PDFで保存・再利用まで検証。

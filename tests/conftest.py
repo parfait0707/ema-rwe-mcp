@@ -10,6 +10,12 @@ from ema_rwe.http import EMAClient
 from ema_rwe.service import Service
 
 
+@pytest.fixture(autouse=True)
+def no_user_dictionaries(tmp_path_factory, monkeypatch):
+    """Tests start from the shipped default (no concept dictionary), whatever lies in data/dictionaries/."""
+    monkeypatch.setenv("EMA_TERMINOLOGY_PATH", str(tmp_path_factory.mktemp("dictionaries")))
+
+
 def labelled(key, value):
     return f"<dl><dt>{key}</dt><dd>{value}</dd></dl>"
 

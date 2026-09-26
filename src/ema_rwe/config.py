@@ -7,7 +7,7 @@ from platformdirs import user_cache_path, user_data_path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 BUNDLED_DATA = Path(__file__).resolve().parent / "data"
-SEEDED_FILES = ("ema.sqlite3", "ema-medicines.json", "terminology.json")
+SEEDED_FILES = ("ema.sqlite3", "ema-medicines.json")
 
 
 def default_data_dir() -> Path:
@@ -27,10 +27,10 @@ def default_db_path() -> Path:
     return default_data_dir() / "ema.sqlite3"
 
 
-def default_terminology_path() -> Path | None:
-    """The Japanese/English concept dictionary next to the catalogue, if present."""
-    path = default_data_dir() / "terminology.json"
-    return path if path.is_file() else None
+def default_dictionary_dir() -> Path:
+    """User concept dictionaries (*.json), read only when present. Nothing ships here: by default the
+    MCP client translates questions into English terms itself."""
+    return default_data_dir() / "dictionaries"
 
 
 @dataclass

@@ -2,15 +2,21 @@
 
 import csv
 import io
+import json
+from pathlib import Path
 
 import pytest
 from test_comparison import extend_website, seed
 
+from ema_rwe import terminology
 from ema_rwe.domain import RWEError, Study
 from ema_rwe.ema import BASE
 from ema_rwe.selection import COMPACT_KEYS, SearchFilters, country, filter_rows
 from ema_rwe.service import Service
 from ema_rwe.storage import Repository, fts_match, import_csv
+from ema_rwe.vocabulary import expand
+
+EXAMPLE = Path(__file__).resolve().parents[1] / "data" / "terminology.example.json"
 
 
 def study(study_id, **fields):
@@ -112,17 +118,36 @@ async def test_compare_accepts_explicit_study_ids_within_screening_limit(service
             await service.compare_protocols("How defined?", ["opioid"], study_ids=bad)
 
 
-async def test_committed_terminology_dictionary_is_the_default(monkeypatch, service):
+async def test_default_has_no_disease_dictionary_and_asks_the_client(tmp_path, monkeypatch, service):
+    # Given no EMA_TERMINOLOGY_PATH and an empty data/dictionaries/
     monkeypatch.delenv("EMA_TERMINOLOGY_PATH", raising=False)
+    monkeypatch.setattr(terminology, "default_dictionary_dir", lambda: tmp_path / "dictionaries")
+    # When a Japanese clinical question is planned, even one with a translatable design word
+    plan = await service.plan_study_search("肝障害のコホート研究")
+    # Then the client must translate it, guided by ICD-10
+    assert plan["status"] == "needs_client_translation" and plan["client_expansion"]["required"]
+    assert "ICD-10" in plan["client_expansion"]["instruction"]
+    assert plan["dictionaries"] == [] and plan["method"] == "client_expansion"
+    assert not plan["query_expansion"]["clinical"]["english_terms"]
+    assert service.catalogue_status()["dictionaries"] == []
+
+
+async def test_example_dictionary_works_as_a_user_dictionary(tmp_path, monkeypatch, service):
+    folder = tmp_path / "dictionaries"
+    folder.mkdir()
+    (folder / EXAMPLE.name).write_bytes(EXAMPLE.read_bytes())
+    monkeypatch.setenv("EMA_TERMINOLOGY_PATH", str(folder))
     plan = await service.plan_study_search("肝障害をアウトカムとした研究")
-    assert plan["status"] == "planned"
-    assert "liver injury" in plan["query_expansion"]["clinical"]["english_terms"]
-    codes = {c["code"] for c in plan["query_expansion"]["clinical"]["code_candidates"]}
-    assert {"K71", "K72"} <= codes
-    assert all(
-        c["verification"] == "unverified" and c["origin"] == "local_dictionary"
-        for c in plan["query_expansion"]["clinical"]["code_candidates"]
+    concept = next(
+        c for c in json.loads(EXAMPLE.read_text(encoding="utf-8")) if c["concept_id"] == "liver_injury"
     )
+    assert plan["status"] == "planned" and plan["dictionaries"] == [EXAMPLE.name]
+    assert set(concept["english_terms"]) <= set(plan["query_expansion"]["clinical"]["english_terms"])
+    codes = plan["query_expansion"]["clinical"]["code_candidates"]
+    assert {c["code"] for c in concept["code_candidates"]} <= {c["code"] for c in codes}
+    assert all(c["origin"] == "local_dictionary" and c["label"] is None for c in codes)
+    sources = plan["query_expansion"]["term_sources"]
+    assert sources[concept["english_terms"][0]] == "dictionary:" + EXAMPLE.name
 
 
 def test_import_fills_role_columns_from_the_official_headers(settings, tmp_path):
@@ -188,3 +213,38 @@ def test_country_aliases_resolve_to_catalogue_spelling(alias, catalogue_name):
 
 def test_unknown_country_passes_through_unchanged():
     assert country("Estonia") == "estonia"
+
+
+async def test_llm_plan_needs_no_client_translation_and_labels_its_terms(monkeypatch, service):
+    proposed = {"queries": ["fibromyalgia"], "synonyms": ["fibromyalgia syndrome"]}
+
+    async def complete(*args):
+        return proposed
+
+    monkeypatch.setattr("ema_rwe.service.complete_json", complete)
+    plan = await service.plan_study_search("線維筋痛症の研究", use_llm=True)
+    assert plan["status"] == "planned" and plan["client_expansion"]["required"] is False
+    assert plan["query_expansion"]["term_sources"][proposed["synonyms"][0]] == "llm"
+
+
+def test_dictionary_codes_report_their_file(tmp_path, monkeypatch):
+    (tmp_path / EXAMPLE.name).write_bytes(EXAMPLE.read_bytes())
+    monkeypatch.setenv("EMA_TERMINOLOGY_PATH", str(tmp_path))
+    concept = next(c for c in json.loads(EXAMPLE.read_text(encoding="utf-8")) if c["code_candidates"])
+    sources = expand(concept["input_terms"][0])["term_sources"]
+    assert sources[concept["code_candidates"][0]["code"]] == "dictionary:" + EXAMPLE.name
+
+
+def test_dictionary_folder_skips_hidden_files_and_names_a_bad_file(tmp_path, monkeypatch):
+    monkeypatch.setenv("EMA_TERMINOLOGY_PATH", str(tmp_path))
+    (tmp_path / "._resource.json").write_bytes(b"\x00\x05binary")
+    (tmp_path / "empty.json").write_text("[]", encoding="utf-8")
+    assert expand("テスト")["clinical"]["dictionaries"] == ["empty.json"]  # empty but configured
+    (tmp_path / "notes.json").write_text('{"not": "a dictionary"}', encoding="utf-8")
+    with pytest.raises(RWEError, match="notes.json"):
+        expand("テスト")
+
+
+def test_catalogue_status_reports_a_missing_dictionary_path(tmp_path, monkeypatch, service):
+    monkeypatch.setenv("EMA_TERMINOLOGY_PATH", str(tmp_path / "absent.json"))
+    assert service.catalogue_status()["dictionaries"]["error"]["code"] == "TERMINOLOGY_CONFIG_ERROR"

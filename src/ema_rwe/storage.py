@@ -10,7 +10,7 @@ from pathlib import Path
 from .domain import RWEError, Study, now
 from .ema import BASE, is_non_interventional, norm
 from .selection import filter_rows
-from .terminology import analogous_phrases, labelled_phrases
+from .terminology import analogous_phrases, labelled_phrases, term_source
 from .vocabulary import canonical, expand
 
 SCHEMA_VERSION = 4
@@ -288,6 +288,9 @@ class Repository:
                 analysis_available=bool(analysis),
                 match_basis=scope,
                 matched_terms=matched_terms.get(study.study_id, []),
+                matched_term_sources={
+                    t: term_source(t, expansion, analogous) for t in matched_terms.get(study.study_id, [])
+                },
             )
             results.append(result)
             if limit is not None and len(results) >= limit:

@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- No disease dictionary ships or loads by default: the MCP client translates Japanese questions,
+  exploring synonyms based on ICD-10 as `plan_study_search.client_expansion` instructs. Optional user
+  dictionaries load from `data/dictionaries/*.json` or `EMA_TERMINOLOGY_PATH`;
+  `data/terminology.example.json` is a format example without WHO ICD-10 titles.
+- Result rows report `matched_term_sources`; the unmatched-query log is written only while a
+  dictionary is configured; the broad clinical groups (diabetes, bleeding, cancer) are removed.
+
 - Search rows report `match_basis` and `matched_terms`. Zero hits return `analogous_fallback`
   (analogous concepts with broader/sibling/associated relation and counts); `match_scope="analogous"`
   and caller `analogous_terms` screen those studies, labelled as analogous in the comparison table.

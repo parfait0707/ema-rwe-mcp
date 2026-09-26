@@ -9,7 +9,7 @@ from pathlib import Path
 
 from pydantic import Field, ValidationError
 
-from .config import default_terminology_path
+from .config import default_dictionary_dir
 from .domain import AnalogousTerm, CodeCandidate, Model, RWEError
 from .vocabulary import canonical, contains
 
@@ -80,18 +80,43 @@ def inline_codes(query: str) -> list[CodeCandidate]:
     return result
 
 
+def dictionary_paths() -> list[Path]:
+    """Configured concept dictionaries: EMA_TERMINOLOGY_PATH (a file or a directory of *.json),
+    else <data>/dictionaries/*.json. Empty means the MCP client translates every question."""
+    configured = os.getenv("EMA_TERMINOLOGY_PATH")
+    root = Path(configured) if configured else default_dictionary_dir()
+    if configured and not root.exists():
+        raise RWEError("TERMINOLOGY_CONFIG_ERROR", "Cannot read EMA_TERMINOLOGY_PATH.")
+    if root.is_dir():  # hidden files (e.g. macOS ._x.json) are not dictionaries
+        return [p for p in sorted(root.glob("*.json")) if not p.name.startswith(".")]
+    return [root] if root.is_file() else []
+
+
+def load_dictionaries() -> tuple[list[tuple[str, Concept]], str, list[str]]:
+    """(file name, concept) pairs from every configured dictionary, a revision over their contents, and
+    the file names (an empty file is still a configured dictionary)."""
+    paths = dictionary_paths()
+    concepts, digests = [], []
+    for path in paths:
+        try:
+            stat = path.stat()
+            loaded, digest = _load(str(path), stat.st_mtime_ns, stat.st_size)
+        except OSError as exc:
+            raise RWEError("TERMINOLOGY_CONFIG_ERROR", f"Cannot read dictionary {path.name}.") from exc
+        except RWEError as exc:
+            raise RWEError(exc.code, f"{exc.message} File: {path.name}.") from exc
+        concepts += [(path.name, c) for c in loaded]
+        digests.append(digest)
+    return concepts, ":".join(digests), [p.name for p in paths]
+
+
 def clinical_expansion(query: str, codes: list[CodeCandidate] | None = None) -> dict:
     from .drugs import drug_expansion
 
-    concepts, revision = [], "clinical-v2"
-    path = os.getenv("EMA_TERMINOLOGY_PATH") or default_terminology_path()
-    if path:
-        try:
-            stat = Path(path).stat()
-            concepts, digest = _load(path, stat.st_mtime_ns, stat.st_size)
-        except OSError as exc:
-            raise RWEError("TERMINOLOGY_CONFIG_ERROR", "Cannot read EMA_TERMINOLOGY_PATH.") from exc
-        revision += ":" + digest
+    sourced, digest, dictionary_names = load_dictionaries()
+    revision = "clinical-v3" + (":" + digest if digest else "")
+    concepts = [c for _, c in sourced]
+    source_of = {id(c): name for name, c in sourced}
     supplied = codes or []
     if len(supplied) > 40:
         raise RWEError("INVALID_INPUT", "At most 40 code candidates are allowed.")
@@ -134,7 +159,22 @@ def clinical_expansion(query: str, codes: list[CodeCandidate] | None = None) -> 
     ]
     candidates = [*inputs, *(v for c in matched for v in c.code_candidates), *drug_codes]
     candidates = list({(c.system, c.code, c.vocabulary_version): c for c in candidates}.values())
+    # Where each expansion term came from, so a search result can say why a study matched.
+    term_sources = {}
+    for c in matched:
+        for term in [*c.english_terms, *c.related_terms, *(a.term for a in c.analogous_terms)]:
+            term_sources.setdefault(term, "dictionary:" + source_of[id(c)])
+        for code in c.code_candidates:
+            for variant in code_variants(code):
+                term_sources.setdefault(variant, "dictionary:" + source_of[id(c)])
+    for term in drugs["english_terms"]:
+        term_sources.setdefault(term, "ema_medicines")
+    origin_labels = {"official_dictionary": "ema_medicines", "local_dictionary": "dictionary"}
+    for c in candidates:
+        for variant in code_variants(c):
+            term_sources.setdefault(variant, origin_labels.get(c.origin, c.origin))
     return {
+        "dictionaries": dictionary_names,
         "concepts": [c.concept_id for c in matched],
         "matched_input_terms": [t for c in matched for t in c.input_terms if contains(query, t)],
         "english_terms": list(
@@ -150,6 +190,7 @@ def clinical_expansion(query: str, codes: list[CodeCandidate] | None = None) -> 
             }.values()
         ),
         "code_candidates": [dict(c.model_dump(), search_variants=code_variants(c)) for c in candidates],
+        "term_sources": term_sources,
         "terminology_revision": revision,
         "systems_to_check": [
             "ICD-10 (specify national modification)",
@@ -245,6 +286,14 @@ def labelled_phrases(query: str, expansion: dict) -> list[tuple[str, list[str]]]
 
 def search_phrases(query: str, expansion: dict) -> list[list[str]]:
     return [group for _, group in labelled_phrases(query, expansion)]
+
+
+def term_source(term: str, expansion: dict, extra: list[AnalogousTerm] | None = None) -> str:
+    """caller, llm, vocabulary, dictionary:<file>, ema_medicines, or query (the query string itself).
+    A query string that is also an expansion term reports that term's source."""
+    if term in expansion["term_sources"]:
+        return expansion["term_sources"][term]
+    return "caller" if any(a.term.casefold() == term.casefold() for a in extra or []) else "query"
 
 
 def analogous_phrases(

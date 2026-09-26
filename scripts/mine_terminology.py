@@ -28,7 +28,7 @@ from ema_rwe.storage import Repository, fts_match
 from ema_rwe.vocabulary import canonical
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-TERMINOLOGY_PATH = REPO_ROOT / "data" / "terminology.json"
+TERMINOLOGY_PATH = REPO_ROOT / "data" / "terminology.example.json"
 DB_PATH = REPO_ROOT / "data" / "ema.sqlite3"
 CANDIDATES_PATH = REPO_ROOT / "data" / "terminology_candidates.json"
 DECISIONS_PATH = REPO_ROOT / "data" / "terminology_decisions.json"

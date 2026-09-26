@@ -8,7 +8,7 @@ __pycache__/
 data/*
 !data/ema.sqlite3
 !data/ema-medicines.json
-!data/terminology.json
+!data/terminology.example.json
 !data/terminology_decisions.json
 !data/imports/
 data/imports/*

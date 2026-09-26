@@ -38,9 +38,11 @@ def test_synonyms_find_spelling_variants(settings, csv_file):
     study.title = "Haemorrhage during anticoagulation"
     study.description = "Incident users"
     service.repo.upsert(study)
-    result = service.search_studies("出血")
+    # Clinical translation comes from the caller; the server adds no disease synonyms of its own.
+    assert service.search_studies("出血")["total_matches"] == 0
+    result = service.search_studies("bleeding", synonyms=["haemorrhage"], darwin_only=False)
     assert result["results"][0]["study_id"] == "123"
-    assert "haemorrhage" in result["query_expansion"]["synonyms"]
+    assert result["results"][0]["matched_term_sources"] == {"haemorrhage": "caller"}
     assert service.search_studies("new-user")["results"]
     af = expand("AF")
     assert "atrial_fibrillation" not in af["concepts"] + af["clinical"]["concepts"]
