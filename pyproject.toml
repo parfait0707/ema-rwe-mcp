@@ -41,7 +41,6 @@ packages = ["src/ema_rwe"]
 [tool.hatch.build.targets.wheel.force-include]
 "data/ema.sqlite3" = "ema_rwe/data/ema.sqlite3"
 "data/ema-medicines.json" = "ema_rwe/data/ema-medicines.json"
-"data/terminology.json" = "ema_rwe/data/terminology.json"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

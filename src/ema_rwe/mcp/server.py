@@ -34,8 +34,9 @@ def create_server(service: Service | None = None):
         lifespan=lifespan,
         instructions=(
             "Evidence-backed search of Non-interventional EMA studies over a local catalogue; PDFs are fetched "
-            "only for screened studies. Workflow: 1) plan_study_search to turn the question into English terms "
-            "and codes; 2) compare_protocols with ALL query variants, role=outcome/condition/exposure when the "
+            "only for screened studies. Workflow: 1) plan_study_search; no disease dictionary ships, so on "
+            "needs_client_translation generate English terms, synonyms, codes and analogous_terms yourself, "
+            "exploring synonyms based on ICD-10 as client_expansion instructs; 2) compare_protocols with ALL query variants, role=outcome/condition/exposure when the "
             "question names one, darwin_only=false; 3) if needs_narrowing, ask the user for a source type "
             "(claims/ehr/registry/others) AND countries using facets, or let them pick study_ids from candidates, "
             "then rerun; 4) within max_screening_studies process every pending tool, cache all extractions and "
@@ -111,7 +112,7 @@ def create_server(service: Service | None = None):
         analogous_terms: AnalogousTerms = None,
     ) -> dict:
         """Local catalogue search (no network). Multi-word queries must co-occur; role scopes the columns.
-        Rows carry match_basis and matched_terms; zero hits return analogous_fallback.
+        Rows carry match_basis, matched_terms and matched_term_sources; zero hits return analogous_fallback.
 
         Use darwin_only=false for all eligible studies. filters narrow by country, source type
         (claims/ehr/registry/others) and design. detail=full adds descriptions and provenance.

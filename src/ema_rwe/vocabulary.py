@@ -3,9 +3,9 @@
 import re
 import unicodedata
 
-# Design, method and population vocabulary common to pharmacoepidemiology protocols, plus a few broad
-# clinical words the concept dictionary has no generic entry for. Specific diseases and medicines
-# belong in data/terminology.json and the EMA medicines dictionary, not here.
+# Design, method and population vocabulary common to pharmacoepidemiology protocols. Clinical concepts
+# (diseases, outcomes) are translated by the MCP client or an optional user dictionary, never here:
+# a broad clinical word fires inside specific names (糖尿病 inside 1型糖尿病) and floods the results.
 GROUPS = {
     "cohort": ["cohort", "cohorts", "コホート"],
     "case_control": ["case control", "nested case control", "症例対照"],
@@ -58,9 +58,6 @@ GROUPS = {
     "linkage": ["record linkage", "data linkage", "linked data", "データリンケージ"],
     "older": ["elderly", "older adults", "older people", "geriatric", "高齢者", "高齢"],
     "paediatric": ["paediatric", "pediatric", "children", "小児"],
-    "bleeding": ["bleeding", "haemorrhage", "hemorrhage", "haemorrhagic", "hemorrhagic", "出血"],
-    "diabetes": ["diabetes", "diabetic", "糖尿病"],
-    "cancer": ["cancer", "malignancy", "malignancies", "neoplasm", "oncology", "がん", "癌"],
 }
 
 
@@ -104,19 +101,25 @@ def expand(query: str, extra: list[str] | None = None, codes=None) -> dict:
     from .terminology import clinical_expansion
 
     clinical = clinical_expansion(seed, codes)
-    # A broad group must not fire on text a specific concept already covers: 糖尿病 inside 1型糖尿病
-    # would otherwise add "diabetes" and match every diabetes study as the requested concept.
+    # A group must not fire on text a user-dictionary concept already covers (e.g. 小児 inside a
+    # dictionary name such as 小児喘息), so the concept's own terms decide what the study is about.
     residual = without(seed, clinical["matched_input_terms"])
     matched = {key: terms for key, terms in GROUPS.items() if any(contains(residual, t) for t in terms)}
     additions = [
         t for t in dict.fromkeys([*extra, *(t for terms in matched.values() for t in terms)]) if t.isascii()
     ]
+    term_sources = {t: "caller" for t in extra}
+    for term in additions:
+        term_sources.setdefault(term, "vocabulary")
+    for term, source in clinical["term_sources"].items():
+        term_sources.setdefault(term, source)
     return {
         "original_query": query,
         "expanded_query": seed + " " + " ".join(additions),
         "concepts": list(matched),
         "synonyms": additions,
         "clinical": clinical,
+        "term_sources": term_sources,
         "search_language": "en",
-        "limitations": "Curated lexical expansion, not exhaustive equivalence. No automatic drug-class/member equivalence; ambiguous abbreviations such as AF/PS are not expanded.",
+        "limitations": "Design/method vocabulary plus caller synonyms and optional user dictionaries, not exhaustive equivalence. No automatic drug-class/member equivalence; ambiguous abbreviations such as AF/PS are not expanded.",
     }

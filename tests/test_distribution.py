@@ -18,7 +18,7 @@ def test_wheel_bundles_every_seeded_file():
 
 def test_checkout_uses_repo_data_dir():
     assert config.default_db_path() == ROOT / "data" / "ema.sqlite3"
-    assert config.default_terminology_path() == ROOT / "data" / "terminology.json"
+    assert config.default_dictionary_dir() == ROOT / "data" / "dictionaries"
 
 
 def test_wheel_install_seeds_user_data_dir_once(tmp_path, monkeypatch):
@@ -31,7 +31,8 @@ def test_wheel_install_seeds_user_data_dir_once(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "user_data_path", lambda _app: user_dir)
 
     assert config.default_db_path() == user_dir / "ema.sqlite3"
-    assert config.default_terminology_path() == user_dir / "terminology.json"
+    assert config.default_dictionary_dir() == user_dir / "dictionaries"
+    assert not (user_dir / "terminology.json").exists()  # no disease dictionary ships with the wheel
     assert (user_dir / "ema-medicines.json").read_text() == "bundled ema-medicines.json"
 
     (user_dir / "ema.sqlite3").write_text("user edited")

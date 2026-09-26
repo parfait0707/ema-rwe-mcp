@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import pytest
 
@@ -11,9 +12,16 @@ from ema_rwe.terminology import code_variants, proposed_codes, search_units
 from ema_rwe.vocabulary import expand
 
 QUESTION = "間質性肺疾患をアウトカムとした研究を探し、どのようなアウトカム定義を使ったかを教えて"
+EXAMPLE = Path(__file__).resolve().parents[1] / "data" / "terminology.example.json"
 
 
-def test_japanese_concept_retrieves_code_only_pdf():
+@pytest.fixture
+def example_dictionary(monkeypatch):
+    """The committed example file configured as a user dictionary."""
+    monkeypatch.setenv("EMA_TERMINOLOGY_PATH", str(EXAMPLE))
+
+
+def test_japanese_concept_retrieves_code_only_pdf(example_dictionary):
     chunks = sections([Page(1, "8.3 Outcomes\nCase algorithm: two J849 records within 365 days.")])
     result = search_sections(chunks, QUESTION)
     assert result["results"][0]["matched_terms"] == ["J849"]
@@ -22,7 +30,7 @@ def test_japanese_concept_retrieves_code_only_pdf():
     assert {"interstitial pneumonia", "interstitial lung disease", "J84.9", "J849"} <= set(terms)
     code = result["query_expansion"]["clinical"]["code_candidates"][0]
     assert code["relation"] == "unspecified_subtype"
-    # The concept lives in the committed dictionary; its codes are hints, never server-verified.
+    # The concept lives in a user dictionary; its codes are hints, never server-verified.
     assert code["origin"] == "local_dictionary" and code["verification"] == "unverified"
     assert code["source_url"].startswith("https://icd.who.int/")
 
@@ -47,7 +55,7 @@ def test_system_specific_formatting(system, code, variants):
     assert code_variants(CodeCandidate(system=system, code=code)) == variants
 
 
-def test_local_fts_finds_code_only_metadata(settings, csv_file):
+def test_local_fts_finds_code_only_metadata(settings, csv_file, example_dictionary):
     service = Service(settings)
     import_csv(service.repo, csv_file)
     study = service.repo.get("123")
@@ -91,7 +99,7 @@ def test_llm_cannot_claim_verified_mapping():
     assert code.origin == "llm" and code.verification == "unverified"
 
 
-async def test_plan_has_callable_code_queries_and_unknown_translation_status(settings):
+async def test_plan_has_callable_code_queries_and_unknown_translation_status(settings, example_dictionary):
     service = Service(settings)
     try:
         plan = await service.plan_study_search(QUESTION)

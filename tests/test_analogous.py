@@ -40,14 +40,14 @@ def test_rows_report_the_terms_they_matched(service, dictionary):
     assert dictionary.english_terms[0] in row["matched_terms"]
 
 
-def test_broad_group_does_not_fire_inside_a_specific_concept(service, dictionary):
+def test_no_broad_clinical_group_widens_a_specific_concept(service, dictionary):
     # Given a study about diabetes in general and one about the specific concept
     service.repo.upsert(study("1", title="Hypoglycaemia in type 1 diabetes"))
     service.repo.upsert(study("2", title="Cardiovascular outcomes in diabetes"))
-    # When the specific concept is searched, the general "diabetes" vocabulary group stays silent
+    # The specific concept reaches only its own study
     assert ids(service.search_studies("1型糖尿病", darwin_only=False)) == ["1"]
-    # while the general term on its own still reaches both studies
-    assert ids(service.search_studies("糖尿病", darwin_only=False)) == ["1", "2"]
+    # and a clinical word outside every dictionary is left to the caller, not widened by the server
+    assert service.search_studies("糖尿病", darwin_only=False)["total_matches"] == 0
 
 
 def test_zero_hits_offer_analogous_studies_without_network(service, dictionary):

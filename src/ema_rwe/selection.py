@@ -126,6 +126,7 @@ COMPACT_KEYS = (
     "protocol_data_sources_status",
     "match_basis",
     "matched_terms",
+    "matched_term_sources",
 )
 
 

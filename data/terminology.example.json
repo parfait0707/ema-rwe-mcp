@@ -32,7 +32,6 @@
    {
     "system": "ICD-10",
     "code": "K71",
-    "label": "Toxic liver disease",
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "candidate",
     "source_url": "https://icd.who.int/browse10/2019/en#/K71"
@@ -40,7 +39,6 @@
    {
     "system": "ICD-10",
     "code": "K72",
-    "label": "Hepatic failure, not elsewhere classified",
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "related",
     "source_url": "https://icd.who.int/browse10/2019/en#/K72"
@@ -72,7 +70,6 @@
    {
     "system": "ICD-10",
     "code": "E11",
-    "label": "Type 2 diabetes mellitus",
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "candidate",
     "source_url": "https://icd.who.int/browse10/2019/en#/E11"
@@ -106,7 +103,6 @@
    {
     "system": "ICD-10",
     "code": "E10",
-    "label": "Type 1 diabetes mellitus",
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "candidate",
     "source_url": "https://icd.who.int/browse10/2019/en#/E10"
@@ -137,7 +133,6 @@
    {
     "system": "ICD-10",
     "code": "E16.2",
-    "label": "Hypoglycaemia, unspecified",
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "candidate",
     "source_url": "https://icd.who.int/browse10/2019/en#/E16.2"
@@ -162,7 +157,6 @@
    {
     "system": "ICD-10",
     "code": "I48",
-    "label": "Atrial fibrillation and flutter",
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "candidate",
     "source_url": "https://icd.who.int/browse10/2019/en#/I48"
@@ -196,7 +190,6 @@
    {
     "system": "ICD-10",
     "code": "I50",
-    "label": "Heart failure",
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "candidate",
     "source_url": "https://icd.who.int/browse10/2019/en#/I50"
@@ -220,7 +213,6 @@
    {
     "system": "ICD-10",
     "code": "I21",
-    "label": "Acute myocardial infarction",
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "candidate",
     "source_url": "https://icd.who.int/browse10/2019/en#/I21"
@@ -259,7 +251,6 @@
    {
     "system": "ICD-10",
     "code": "I63",
-    "label": "Cerebral infarction",
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "candidate",
     "source_url": "https://icd.who.int/browse10/2019/en#/I63"
@@ -267,7 +258,6 @@
    {
     "system": "ICD-10",
     "code": "I64",
-    "label": "Stroke, not specified as haemorrhage or infarction",
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "related",
     "source_url": "https://icd.who.int/browse10/2019/en#/I64"
@@ -305,7 +295,6 @@
    {
     "system": "ICD-10",
     "code": "I61",
-    "label": "Intracerebral haemorrhage",
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "candidate",
     "source_url": "https://icd.who.int/browse10/2019/en#/I61"
@@ -313,7 +302,6 @@
    {
     "system": "ICD-10",
     "code": "I62",
-    "label": "Other nontraumatic intracranial haemorrhage",
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "related",
     "source_url": "https://icd.who.int/browse10/2019/en#/I62"
@@ -339,7 +327,6 @@
    {
     "system": "ICD-10",
     "code": "K92.2",
-    "label": "Gastrointestinal haemorrhage, unspecified",
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "candidate",
     "source_url": "https://icd.who.int/browse10/2019/en#/K92.2"
@@ -372,7 +359,6 @@
    {
     "system": "ICD-10",
     "code": "R58",
-    "label": "Haemorrhage, not elsewhere classified",
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "related",
     "source_url": "https://icd.who.int/browse10/2019/en#/R58"
@@ -405,7 +391,6 @@
    {
     "system": "ICD-10",
     "code": "I26",
-    "label": "Pulmonary embolism",
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "candidate",
     "source_url": "https://icd.who.int/browse10/2019/en#/I26"
@@ -413,7 +398,6 @@
    {
     "system": "ICD-10",
     "code": "I80",
-    "label": "Phlebitis and thrombophlebitis",
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "candidate",
     "source_url": "https://icd.who.int/browse10/2019/en#/I80"
@@ -421,7 +405,6 @@
    {
     "system": "ICD-10",
     "code": "I82",
-    "label": "Other venous embolism and thrombosis",
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "related",
     "source_url": "https://icd.who.int/browse10/2019/en#/I82"
@@ -451,7 +434,6 @@
    {
     "system": "ICD-10",
     "code": "I10",
-    "label": "Essential (primary) hypertension",
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "candidate",
     "source_url": "https://icd.who.int/browse10/2019/en#/I10"
@@ -484,7 +466,6 @@
    {
     "system": "ICD-10",
     "code": "E78",
-    "label": "Disorders of lipoprotein metabolism and other lipidaemias",
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "candidate",
     "source_url": "https://icd.who.int/browse10/2019/en#/E78"
@@ -511,7 +492,6 @@
    {
     "system": "ICD-10",
     "code": "N18",
-    "label": "Chronic kidney disease",
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "candidate",
     "source_url": "https://icd.who.int/browse10/2019/en#/N18"
@@ -542,7 +522,6 @@
    {
     "system": "ICD-10",
     "code": "N17",
-    "label": "Acute renal failure",
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "candidate",
     "source_url": "https://icd.who.int/browse10/2019/en#/N17"
@@ -573,7 +552,6 @@
    {
     "system": "ICD-10",
     "code": "J44",
-    "label": "Other chronic obstructive pulmonary disease",
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "candidate",
     "source_url": "https://icd.who.int/browse10/2019/en#/J44"
@@ -599,7 +577,6 @@
    {
     "system": "ICD-10",
     "code": "J45",
-    "label": "Asthma",
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "candidate",
     "source_url": "https://icd.who.int/browse10/2019/en#/J45"
@@ -622,7 +599,6 @@
    {
     "system": "ICD-10",
     "code": "J18",
-    "label": "Pneumonia, organism unspecified",
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "candidate",
     "source_url": "https://icd.who.int/browse10/2019/en#/J18"
@@ -657,7 +633,6 @@
    {
     "system": "ICD-10",
     "code": "J84.9",
-    "label": "Interstitial pulmonary disease, unspecified",
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "unspecified_subtype",
     "source_url": "https://icd.who.int/browse10/2019/en#/J84.9"
@@ -682,7 +657,6 @@
    {
     "system": "ICD-10",
     "code": "M05",
-    "label": "Seropositive rheumatoid arthritis",
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "candidate",
     "source_url": "https://icd.who.int/browse10/2019/en#/M05"
@@ -690,7 +664,6 @@
    {
     "system": "ICD-10",
     "code": "M06",
-    "label": "Other rheumatoid arthritis",
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "candidate",
     "source_url": "https://icd.who.int/browse10/2019/en#/M06"
@@ -712,7 +685,6 @@
    {
     "system": "ICD-10",
     "code": "L40",
-    "label": "Psoriasis",
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "candidate",
     "source_url": "https://icd.who.int/browse10/2019/en#/L40"
@@ -740,7 +712,6 @@
    {
     "system": "ICD-10",
     "code": "K51",
-    "label": "Ulcerative colitis",
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "candidate",
     "source_url": "https://icd.who.int/browse10/2019/en#/K51"
@@ -773,7 +744,6 @@
    {
     "system": "ICD-10",
     "code": "K50",
-    "label": "Crohn disease [regional enteritis]",
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "candidate",
     "source_url": "https://icd.who.int/browse10/2019/en#/K50"
@@ -808,7 +778,6 @@
    {
     "system": "ICD-10",
     "code": "G35",
-    "label": "Multiple sclerosis",
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "candidate",
     "source_url": "https://icd.who.int/browse10/2019/en#/G35"
@@ -832,7 +801,6 @@
    {
     "system": "ICD-10",
     "code": "G43",
-    "label": "Migraine",
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "candidate",
     "source_url": "https://icd.who.int/browse10/2019/en#/G43"
@@ -864,7 +832,6 @@
    {
     "system": "ICD-10",
     "code": "G40",
-    "label": "Epilepsy",
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "candidate",
     "source_url": "https://icd.who.int/browse10/2019/en#/G40"
@@ -887,7 +854,6 @@
    {
     "system": "ICD-10",
     "code": "G20",
-    "label": "Parkinson disease",
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "candidate",
     "source_url": "https://icd.who.int/browse10/2019/en#/G20"
@@ -920,7 +886,6 @@
    {
     "system": "ICD-10",
     "code": "G30",
-    "label": "Alzheimer disease",
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "candidate",
     "source_url": "https://icd.who.int/browse10/2019/en#/G30"
@@ -928,7 +893,6 @@
    {
     "system": "ICD-10",
     "code": "F03",
-    "label": "Unspecified dementia",
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "related",
     "source_url": "https://icd.who.int/browse10/2019/en#/F03"
@@ -962,7 +926,6 @@
    {
     "system": "ICD-10",
     "code": "F32",
-    "label": "Depressive episode",
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "candidate",
     "source_url": "https://icd.who.int/browse10/2019/en#/F32"
@@ -970,7 +933,6 @@
    {
     "system": "ICD-10",
     "code": "F33",
-    "label": "Recurrent depressive disorder",
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "candidate",
     "source_url": "https://icd.who.int/browse10/2019/en#/F33"
@@ -994,7 +956,6 @@
    {
     "system": "ICD-10",
     "code": "F20",
-    "label": "Schizophrenia",
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "candidate",
     "source_url": "https://icd.who.int/browse10/2019/en#/F20"
@@ -1019,7 +980,6 @@
    {
     "system": "ICD-10",
     "code": "M81",
-    "label": "Osteoporosis without pathological fracture",
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "candidate",
     "source_url": "https://icd.who.int/browse10/2019/en#/M81"
@@ -1027,7 +987,6 @@
    {
     "system": "ICD-10",
     "code": "M80",
-    "label": "Osteoporosis with pathological fracture",
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "related",
     "source_url": "https://icd.who.int/browse10/2019/en#/M80"
@@ -1065,7 +1024,6 @@
    {
     "system": "ICD-10",
     "code": "C90.0",
-    "label": "Multiple myeloma",
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "candidate",
     "source_url": "https://icd.who.int/browse10/2019/en#/C90.0"
@@ -1091,7 +1049,6 @@
    {
     "system": "ICD-10",
     "code": "C50",
-    "label": "Malignant neoplasm of breast",
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "candidate",
     "source_url": "https://icd.who.int/browse10/2019/en#/C50"
@@ -1117,7 +1074,6 @@
    {
     "system": "ICD-10",
     "code": "C34",
-    "label": "Malignant neoplasm of bronchus and lung",
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "candidate",
     "source_url": "https://icd.who.int/browse10/2019/en#/C34"
@@ -1145,7 +1101,6 @@
    {
     "system": "ICD-10",
     "code": "C18",
-    "label": "Malignant neoplasm of colon",
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "candidate",
     "source_url": "https://icd.who.int/browse10/2019/en#/C18"
@@ -1153,7 +1108,6 @@
    {
     "system": "ICD-10",
     "code": "C20",
-    "label": "Malignant neoplasm of rectum",
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "candidate",
     "source_url": "https://icd.who.int/browse10/2019/en#/C20"
@@ -1177,7 +1131,6 @@
    {
     "system": "ICD-10",
     "code": "C61",
-    "label": "Malignant neoplasm of prostate",
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "candidate",
     "source_url": "https://icd.who.int/browse10/2019/en#/C61"
@@ -1205,7 +1158,6 @@
    {
     "system": "ICD-10",
     "code": "C22",
-    "label": "Malignant neoplasm of liver and intrahepatic bile ducts",
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "candidate",
     "source_url": "https://icd.who.int/browse10/2019/en#/C22"
@@ -1230,7 +1182,6 @@
    {
     "system": "ICD-10",
     "code": "D69.6",
-    "label": "Thrombocytopenia, unspecified",
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "candidate",
     "source_url": "https://icd.who.int/browse10/2019/en#/D69.6"
@@ -1257,7 +1208,6 @@
    {
     "system": "ICD-10",
     "code": "D70",
-    "label": "Agranulocytosis",
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "candidate",
     "source_url": "https://icd.who.int/browse10/2019/en#/D70"
@@ -1288,7 +1238,6 @@
    {
     "system": "ICD-10",
     "code": "K85",
-    "label": "Acute pancreatitis",
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "candidate",
     "source_url": "https://icd.who.int/browse10/2019/en#/K85"
@@ -1313,7 +1262,6 @@
    {
     "system": "ICD-10",
     "code": "T78.2",
-    "label": "Anaphylactic shock, unspecified",
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "candidate",
     "source_url": "https://icd.who.int/browse10/2019/en#/T78.2"
@@ -1348,7 +1296,6 @@
    {
     "system": "ICD-10",
     "code": "B02",
-    "label": "Zoster [herpes zoster]",
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "candidate",
     "source_url": "https://icd.who.int/browse10/2019/en#/B02"
@@ -1376,7 +1323,6 @@
    {
     "system": "ICD-10",
     "code": "U07.1",
-    "label": "COVID-19, virus identified",
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "candidate",
     "source_url": "https://icd.who.int/browse10/2019/en#/U07.1"

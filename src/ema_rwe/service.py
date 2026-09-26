@@ -26,10 +26,30 @@ from .pdf import (
 )
 from .selection import TYPED_SOURCES, SearchFilters, compact, selection
 from .storage import Repository, import_csv
-from .terminology import proposed_codes
+from .terminology import dictionary_paths, proposed_codes
 from .vocabulary import expand
 
 SCHEMA_VERSION = Extraction.model_fields["schema_version"].default
+
+# ICD-10-based guidance for generating disease synonyms and analogous concepts. The MCP client (or the
+# optional server LLM) follows it; the server ships no disease dictionary and no ICD-10 content.
+ICD10_SYNONYM_GUIDANCE = (
+    "Explore disease synonyms based on ICD-10 (WHO 2019): identify the 3-character category and the "
+    "4-character subcategories the concept corresponds to, and use their titles, inclusion terms and common "
+    "clinical names as English search terms, with the codes as ICD-10 code candidates (unverified, from your "
+    "own knowledge). Never use Excludes terms as synonyms. Other categories in the same ICD-10 block are "
+    "different diseases: give them as analogous_terms with relation=sibling; the block or chapter grouping is "
+    "relation=broader; complications or related conditions are relation=associated. National modifications "
+    "(ICD-10-CM, ICD-10-GM, Japanese adaptations) may differ from WHO ICD-10."
+)
+CLIENT_EXPANSION_INSTRUCTION = (
+    "Translate the question yourself and pass the result to compare_protocols (and search_studies): queries "
+    "(1-20 short English names), synonyms (at most 30 English paraphrases, spelling variants and "
+    "abbreviations), codes ({system, code}) and analogous_terms ({term, relation}). "
+    + ICD10_SYNONYM_GUIDANCE
+    + " For medicines give English INN or product names; the server expands them with the EMA medicines "
+    "dictionary. Keep outcome, exposure and comorbidity roles apart."
+)
 
 
 def read_log(path: Path) -> dict:
@@ -44,13 +64,15 @@ def record_unmatched(path: Path, text: str, tool: str, expansion: dict) -> bool:
     """Log a non-English query that neither the concept dictionary nor the drug dictionary recognised.
 
     The log lives beside the database (not inside it, which is committed) and is the evidence for
-    deciding which concepts to add to data/terminology.json. English-only queries are not logged:
+    deciding which concepts to add to a user dictionary (data/dictionaries/). Nothing is logged while
+    no dictionary is configured. English-only queries are not logged:
     the index is English, so they need no translation.
     """
     text = " ".join(text.split())[:200]
     clinical = expansion["clinical"]
     if (
-        not text
+        not clinical["dictionaries"]  # without a dictionary every Japanese query is unmatched by design
+        or not text
         or text.isascii()
         or expansion["concepts"]
         or clinical["concepts"]
@@ -76,8 +98,9 @@ def unmatched_summary(path: Path, limit: int = 20) -> dict:
         "path": str(path),
         "distinct": len(log),
         "top": [{"text": text, **entry} for text, entry in ranked[:limit]],
-        "note": "Japanese queries that matched no concept or medicine. Add frequent ones to "
-        "data/terminology.json, then derive related terms with scripts/mine_terminology.py.",
+        "note": "Japanese queries that matched no concept or medicine of the configured dictionaries "
+        "(recorded only while a dictionary is configured). Add frequent ones to a dictionary under "
+        "data/dictionaries/.",
     }
 
 
@@ -177,6 +200,7 @@ class Service:
             "max_screening_studies": self.settings.max_screening_studies,
             "max_comparison_studies": self.settings.max_comparison_studies,
             "unmatched_terms": unmatched_summary(self.unmatched_log_path),
+            "dictionaries": self._dictionary_status(),
             "browser_refresh_recommended": state != "current",
             "discovery_scope": "Only imported studies and individually retrieved Study IDs are searchable.",
             "browser_instruction": (
@@ -188,6 +212,15 @@ class Service:
                 "<date>_<claims|ehr|registry>_export-data.csv in source_type_import_directory."
             ),
         }
+
+    @staticmethod
+    def _dictionary_status():
+        """Configured dictionary files; a broken EMA_TERMINOLOGY_PATH is reported, not raised, so this
+        diagnostic tool still answers."""
+        try:
+            return [p.name for p in dictionary_paths()]
+        except RWEError as exc:
+            return {"error": exc.as_dict()["error"]}
 
     def import_catalogue_csv(self, filename: str, column_map: dict[str, str] | None = None):
         if (
@@ -347,6 +380,7 @@ class Service:
             ):
                 kept = unique.setdefault(row["study_id"], row)
                 kept["matched_terms"] = list(dict.fromkeys(kept["matched_terms"] + row["matched_terms"]))
+                kept["matched_term_sources"] = {**row["matched_term_sources"], **kept["matched_term_sources"]}
         return unique
 
     def _match_scope(
@@ -417,7 +451,7 @@ class Service:
             instruction = (
                 "No study matched the requested concept and no analogous concept is known. Propose clinically "
                 "analogous English concepts (broader category, sibling disease, associated condition) and rerun "
-                "with match_scope='analogous' and analogous_terms."
+                "with match_scope='analogous' and analogous_terms. " + ICD10_SYNONYM_GUIDANCE
             )
         elif rows:
             state = "available"
@@ -727,6 +761,9 @@ class Service:
         )
         if not queries:
             queries = expansion["synonyms"] or ([question] if question.isascii() else [])
+        # Design words (cohort, 傾向スコア) translate locally, but the clinical concept of a Japanese
+        # question is known only when a dictionary concept matched.
+        untranslated = not question.isascii() and not clinical["concepts"]
         plan = {
             "question": question,
             "query_expansion": expansion,
@@ -734,14 +771,19 @@ class Service:
             "target_role": "outcome"
             if "アウトカム" in question or "outcome" in question.lower()
             else "unspecified",
-            "status": "planned" if queries else "needs_client_translation",
+            "status": "needs_client_translation" if untranslated or not queries else "planned",
             "unmatched_logged": logged,
+            "dictionaries": clinical["dictionaries"],
+            "client_expansion": {
+                "required": untranslated or not queries,
+                "instruction": CLIENT_EXPANSION_INSTRUCTION,
+            },
             "code_systems_to_check": clinical["systems_to_check"],
             "analogous_terms": clinical["analogous_terms"],
             "instruction": "Search English names, related names and codes independently. Then inspect outcome/exposure definitions, "
             "code lists and appendices in the selected PDFs. Check the source database, vocabulary/version, "
             "code-set membership and algorithm (counts, time windows, exclusions). A code hit alone does not prove outcome use.",
-            "method": "curated_synonyms",
+            "method": "user_dictionary" if clinical["concepts"] else "client_expansion",
             "note": "Review synonyms for ambiguity; search multiple formulations and compare results.",
         }
         if use_llm:
@@ -762,6 +804,8 @@ class Service:
                         "NDC, LOINC or local codes according to source data. Do not invent codes/URLs: omit uncertain codes and "
                         "describe required master lookup. Suggestions are unverified retrieval candidates, not study definitions. "
                         "Include separate name-based and code-based queries. Distinguish outcome vs exposure vs comorbidity. "
+                        + ICD10_SYNONYM_GUIDANCE
+                        + " "
                         "For medicines, translate Japanese names, expand brand names to International Nonproprietary Names "
                         "and INNs to brand names in BOTH directions, and suggest ATC codes when known. Put translated "
                         "drug names in synonyms so the local official EMA dictionary can verify and expand them. "
@@ -793,6 +837,11 @@ class Service:
                 status="planned",
                 uncertainties=result.get("uncertainties", []),
             )
+            plan["client_expansion"]["required"] = False  # the server LLM already translated
+            sources = plan["query_expansion"]["term_sources"]
+            for term in extra:
+                if sources.get(term) == "caller":
+                    sources[term] = "llm"
             try:
                 proposed = [AnalogousTerm.model_validate(a) for a in result.get("analogous_terms") or []][:10]
             except (ValidationError, TypeError) as exc:
