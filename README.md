@@ -29,7 +29,7 @@ uvがあれば、cloneせずにMCPクライアントへ登録できます。カ�
 
 ### Codexで使う
 
-プロジェクトの`.codex/config.toml`に`mcp_servers.ema-rwe`としてcommand/args/envを記載します（開発用checkoutでの具体例は[Codex設定ガイド](docs/codex-setup.md)）。Codexでプロジェクトを開き直し、`/mcp`で`ema-rwe`があることを確認します。
+[`.codex/config.toml.sample`](.codex/config.toml.sample)をプロジェクト直下へ`.codex/config.toml`としてコピーするだけで登録されます（先頭の「Public installation」ブロックがそのまま使えます）。Codexでプロジェクトを開き直し、`/mcp`で`ema-rwe`があることを確認します。このMCP自体を開発する場合の設定は[Codex設定ガイド](docs/codex-setup.md)を参照してください。
 
 ## 質問の仕方と流れ
 
@@ -67,7 +67,16 @@ flowchart TD
 | **追加APIキーなし（既定）** | 呼出元（Claude Code/Codex）自身がPDF本文を読んで抽出します。PDF本文が会話コンテキストに積まれるため費用が高くなります（242頁のプロトコルで1問あたり100 turn超・$20超）。Claude Codeでは、MCPの案内に従って研究ごとの読み取りをSonnetサブエージェントへ委譲する運用にしています。 |
 | **サーバー側抽出** | `.env`またはMCPの`env`に`LLM_BACKEND=litellm`、`LLM_MODEL`、`LLM_BASE_URL`、`LLM_API_KEY`、`LLM_REASONING_EFFORT`、`LLM_MAX_TOKENS`を設定すると、MCPプロセス自身が設定先LLMでPDFを抽出します。Azure OpenAIのv1エンドポイントを使う場合は`LLM_MODEL=openai/<deployment>`とします。 |
 
-実測（q1「日本のレセプトでの膵炎アウトカム定義」、headless Claude Code）: サーバー側抽出は37 turn・約22分・$6.1で完走。追加APIキーなし（Sonnetサブエージェントへ委譲するフォールバック）は約30分・$22.0で完走しました。
+**大きめのプロトコル（100頁超）を複数比較する場合は、サーバー側抽出の設定を推奨します。** PDF本文を呼出元の会話コンテキストへ積まないため、同じ質問でも所要時間・コストの両方が下がります。
+
+| 質問 | モード | 壁時計 | コスト（Claude側） |
+|---|---|---:|---:|
+| q1: 日本のレセプトでの膵炎アウトカム定義 | サーバー側抽出（Azure OpenAI, gpt-5.6, effort=high） | 17分 | $4.00 |
+| q1: 同上 | 追加APIキーなし（Sonnetサブエージェントへ委譲） | 28分 | $22.04 |
+| q2: 心不全患者コホート定義 | サーバー側抽出（同上） | 18分 | $5.05 |
+| q2: 同上 | 追加APIキーなし（Sonnetサブエージェントへ委譲） | 32分 | $24.22 |
+
+実測はheadless Claude Codeでの各質問1回の実行（詳細と実行条件は[docs/validation.md](docs/validation.md)の2026-09-25の記録）。盲検採点では両モードの抽出品質は同程度〜僅差で、優劣は一定していません。この差は主に「PDF本文をどちらが読むか」によるコストとスピードの差であり、精度面でサーバー側抽出が優れていることを意味しません。
 
 ユーザーが触る主な環境変数は次のとおりです（全一覧は[README_DEV.md](README_DEV.md)）。
 
