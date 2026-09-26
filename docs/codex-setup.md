@@ -1,6 +1,6 @@
 # このディレクトリのCodex設定
 
-`AGENTS.md`はリポジトリの開発・検索ルールです。MCP設定はルート直下の任意の`config.toml`ではなく、Codexのプロジェクト設定として読み込まれる`.codex/config.toml`（`.codex/config.toml.sample`をコピーして`<checkout>`を実パスに置換。Git管理外）に置いています。[公式MCP設定](https://learn.chatgpt.com/docs/extend/mcp?surface=cli)に従い、`mcp_servers.ema-rwe`のcommand、args、cwd、envを指定しています。
+`AGENTS.md`はリポジトリの開発・検索ルールです。MCP設定はルート直下の任意の`config.toml`ではなく、Codexのプロジェクト設定として読み込まれる`.codex/config.toml`（`.codex/config.toml.sample`のうち「Developing this MCP itself」ブロックをコメント解除し、先頭の公開インストール向けブロックはコメントアウトして`<checkout>`を実パスに置換。Git管理外）に置いています。[公式MCP設定](https://learn.chatgpt.com/docs/extend/mcp?surface=cli)に従い、`mcp_servers.ema-rwe`のcommand、args、cwd、envを指定しています。
 
 このチェックアウトの`.venv/Scripts/python.exe -m ema_rwe.mcp.server`を起動し、DB、保存PDF、ブラウザ取得CSV、HTTPキャッシュ、医薬品辞書をこのリポジトリ内の`data/`・`cache/`に配置します。別の場所へ移動した場合は設定の絶対パスを変更してください。
 

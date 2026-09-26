@@ -42,4 +42,4 @@ Never commit API keys, `.env`, downloaded PDFs, local databases or HTTP/terminol
 
 ## Local Codex integration
 
-`.codex/config.toml.sample` is the template for registering this checkout's `ema-rwe` stdio MCP server with Codex; copy it to `.codex/config.toml` (git-ignored) and replace `<checkout>` with the absolute path. Keep user-level Codex settings separate; never commit credential values or machine-specific paths. See `docs/codex-setup.md` for setup and verification.
+`.codex/config.toml.sample` has a public (`uvx --from git+...`, usable as-is) block and, commented below it, the template for registering this checkout's own `ema-rwe` stdio MCP server with Codex; for the latter, copy the file to `.codex/config.toml` (git-ignored), swap which block is commented, and replace `<checkout>` with the absolute path. Keep user-level Codex settings separate; never commit credential values or machine-specific paths. See `docs/codex-setup.md` for setup and verification.

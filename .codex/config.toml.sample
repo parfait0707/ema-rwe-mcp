@@ -1,27 +1,45 @@
-# Sample project-scoped Codex MCP registration. Copy to .codex/config.toml and replace <checkout> with this checkout's absolute path (Windows example; use .venv/bin/python elsewhere).
-# Update absolute paths if this checkout moves. No API keys are stored here.
+# Sample project-scoped Codex MCP registration. Copy to .codex/config.toml (git-ignored).
+# No API keys are stored here; LLM_* below are optional, for server-side extraction (see README.md).
+
+# --- Public installation (no clone needed) ---
+# Data (catalogue DB, drug/terminology dictionaries) ships inside the package and is
+# copied to the OS user data directory on first run; no path overrides are required.
 [mcp_servers.ema-rwe]
-command = "<checkout>/.venv/Scripts/python.exe"
-args = ["-m", "ema_rwe.mcp.server"]
-cwd = "<checkout>"
+command = "uvx"
+args = ["--from", "git+https://github.com/parfait0707/rwd-catalogue-mcp", "ema-rwe-mcp"]
 enabled = true
 startup_timeout_sec = 30
 tool_timeout_sec = 180
-env_vars = ["LLM_BACKEND", "LLM_BASE_URL", "LLM_MODEL", "LLM_API_KEY", "LLM_API_VERSION", "LLM_MAX_STEPS", "LLM_REASONING_EFFORT", "LLM_MAX_TOKENS","EMA_TERMINOLOGY_PATH", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GEMINI_API_KEY", "AZURE_API_KEY", "AZURE_API_BASE", "AZURE_API_VERSION", "AWS_PROFILE", "AWS_REGION_NAME", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN"]
+env_vars = ["LLM_BACKEND", "LLM_BASE_URL", "LLM_MODEL", "LLM_API_KEY", "LLM_API_VERSION", "LLM_MAX_STEPS", "LLM_REASONING_EFFORT", "LLM_MAX_TOKENS", "EMA_TERMINOLOGY_PATH", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GEMINI_API_KEY", "AZURE_API_KEY", "AZURE_API_BASE", "AZURE_API_VERSION", "AWS_PROFILE", "AWS_REGION_NAME", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN"]
 
-[mcp_servers.ema-rwe.env]
-EMA_DB_PATH = "<checkout>/data/ema.sqlite3"
-EMA_CACHE_DIR = "<checkout>/cache/http"
-EMA_PROTOCOL_DIR = "<checkout>/data/protocols"
-EMA_DRUG_DICTIONARY_PATH = "<checkout>/data/ema-medicines.json"
-EMA_IMPORT_DIR = "<checkout>/data/imports"
-EMA_CACHE_TTL_SECONDS = "2592000"
-EMA_CATALOGUE_TTL_SECONDS = "2592000"
-EMA_MAX_SCREENING_STUDIES = "5"
-EMA_MAX_COMPARISON_STUDIES = "5"
+# --- Developing this MCP itself (this checkout) ---
+# Comment out the [mcp_servers.ema-rwe] block above, uncomment this one, and replace
+# every <checkout> with this checkout's absolute path (Windows example below; use
+# .venv/bin/python elsewhere). See docs/codex-setup.md.
+# [mcp_servers.ema-rwe]
+# command = "<checkout>/.venv/Scripts/python.exe"
+# args = ["-m", "ema_rwe.mcp.server"]
+# cwd = "<checkout>"
+# enabled = true
+# startup_timeout_sec = 30
+# tool_timeout_sec = 180
+# env_vars = ["LLM_BACKEND", "LLM_BASE_URL", "LLM_MODEL", "LLM_API_KEY", "LLM_API_VERSION", "LLM_MAX_STEPS", "LLM_REASONING_EFFORT", "LLM_MAX_TOKENS", "EMA_TERMINOLOGY_PATH", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GEMINI_API_KEY", "AZURE_API_KEY", "AZURE_API_BASE", "AZURE_API_VERSION", "AWS_PROFILE", "AWS_REGION_NAME", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN"]
+#
+# [mcp_servers.ema-rwe.env]
+# EMA_DB_PATH = "<checkout>/data/ema.sqlite3"
+# EMA_CACHE_DIR = "<checkout>/cache/http"
+# EMA_PROTOCOL_DIR = "<checkout>/data/protocols"
+# EMA_DRUG_DICTIONARY_PATH = "<checkout>/data/ema-medicines.json"
+# EMA_IMPORT_DIR = "<checkout>/data/imports"
+# EMA_CACHE_TTL_SECONDS = "2592000"
+# EMA_CATALOGUE_TTL_SECONDS = "2592000"
+# EMA_MAX_SCREENING_STUDIES = "5"
+# EMA_MAX_COMPARISON_STUDIES = "5"
 
 # Optional caller-side browser used only for a visible, user-initiated official CSV export.
-# It is a separate MCP; ema-rwe never calls it or crawls /search itself.
+# It is a separate MCP; ema-rwe never calls it or crawls /search itself. --output-dir must
+# match wherever EMA_IMPORT_DIR resolves to (the checkout's data/imports/studies above, or
+# the seeded user data directory reported by catalogue_status for a public installation).
 [mcp_servers.playwright]
 command = "npx"
 args = ["-y", "@playwright/mcp@0.0.80", "--browser", "msedge", "--output-dir", "<checkout>/data/imports/studies"]
