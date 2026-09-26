@@ -59,7 +59,7 @@ uv build
 
 ## 配布
 
-`pyproject.toml`の`[tool.hatch.build.targets.wheel.force-include]`で`data/ema.sqlite3`・`data/ema-medicines.json`・`data/terminology.json`をwheel内の`ema_rwe/data/`へ同梱しています。`config.py`の`default_data_dir()`は、チェックアウト外（`pyproject.toml`が見つからない環境、つまりwheelインストール後）で起動された初回だけ、これらの同梱ファイルをOSのユーザーデータディレクトリ（`platformdirs.user_data_path("ema-rwe-mcp")`）へコピーします。2回目以降はユーザーデータディレクトリの既存ファイルをそのまま使い、パッケージ更新で上書きしません。
+`pyproject.toml`の`[tool.hatch.build.targets.wheel.force-include]`で`data/ema.sqlite3`・`data/ema-medicines.json`をwheel内の`ema_rwe/data/`へ同梱しています。`config.py`の`default_data_dir()`は、チェックアウト外（`pyproject.toml`が見つからない環境、つまりwheelインストール後）で起動された初回だけ、これらの同梱ファイルをOSのユーザーデータディレクトリ（`platformdirs.user_data_path("ema-rwe-mcp")`）へコピーします。2回目以降はユーザーデータディレクトリの既存ファイルをそのまま使い、パッケージ更新で上書きしません。
 
 `.mcp.json`（このリポジトリ直下、Git管理外）は開発用で、`uv run --directory /path/to/repo ema-rwe-mcp`によりチェックアウトを直接起動します。作業ツリーの未コミット変更もそのまま反映されます。`.mcp.json.sample`（Git管理対象）はエンドユーザー向けで、`uvx --from git+https://...`によりcloneなしでリモートのコードを取得・起動します。両者は起動対象（ローカル作業ツリー vs. リモートのgit ref）が異なる点に注意してください。
 
@@ -171,8 +171,8 @@ PDF保存は「サイト全体のPDFを収集する」処理ではありませ�
 | `EMA_USER_AGENT` | `ema-rwe-mcp/0.1` | EMAへのHTTPリクエストのUser-Agent |
 | `EMA_PROTOCOL_DIR` | DBと同じ親フォルダ内の`protocols` | 保持するPDF/JSONの保存先 |
 | `EMA_IMPORT_DIR` | `EMA_DB_PATH`と同じ親フォルダ内の`imports` | CSV取込のルート（`studies/`・`source_type/`） |
-| `EMA_TERMINOLOGY_PATH` | チェックアウト内`data/terminology.json`（同梱） | 日本語疾患名辞書 |
-| `EMA_UNMATCHED_LOG_PATH` | `EMA_DB_PATH`と同じ親フォルダ内`terminology_unmatched.json` | 辞書に一致しなかった質問・検索語のログ（Git管理外） |
+| `EMA_TERMINOLOGY_PATH` | 未設定時はデータフォルダ内`dictionaries/*.json`（既定では存在しない） | 利用者の概念辞書。ファイルまたは`*.json`を含むフォルダ |
+| `EMA_UNMATCHED_LOG_PATH` | `EMA_DB_PATH`と同じ親フォルダ内`terminology_unmatched.json` | 辞書に一致しなかった質問・検索語のログ。辞書を設定しているときだけ記録（Git管理外） |
 | `EMA_DRUG_DICTIONARY_PATH` | `EMA_DB_PATH`と同じ親フォルダ内`ema-medicines.json` | 公式EMA医薬品辞書 |
 | `LLM_BACKEND` | `compatible` | `compatible`（Chat Completions互換）または`litellm` |
 | `LLM_BASE_URL` | (空) | `compatible`時の接続先ベースURL |

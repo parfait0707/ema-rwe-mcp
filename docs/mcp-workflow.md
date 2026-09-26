@@ -10,13 +10,19 @@ the model that drives the tools; the rest of `docs/` is in Japanese.
   `claims`, `ehr`, `registry` means the committed catalogue is usable. Only when no CSV was ever
   imported, or a stale snapshot yields no candidates, may a visible user-initiated browser export be
   imported with `import_catalogue_csv`.
-- `plan_study_search(question)` translates Japanese concepts through the committed dictionary
-  (`data/terminology.json`) and the EMA medicines dictionary. It returns `queries`, `english_terms`,
-  `related_terms` and typed `code_candidates`. Dictionary codes are retrieval hints with
-  `verification=unverified`; confirm vocabulary, version and role in the PDF.
-- If `status=needs_client_translation`, translate yourself and pass `synonyms` / `codes`. The
-  unrecognised Japanese text is logged (`unmatched_logged=true`); `catalogue_status.unmatched_terms`
-  lists the most frequent ones so the dictionary can be extended later.
+- No disease dictionary ships. `plan_study_search(question)` translates design/method words and
+  medicines (EMA medicines dictionary) and, when the user configured one, concepts of their own
+  dictionaries (`data/dictionaries/*.json` or `EMA_TERMINOLOGY_PATH`; `catalogue_status.dictionaries`).
+- `status=needs_client_translation` (every Japanese question without a matching user-dictionary
+  concept): follow `client_expansion.instruction`. Generate English `queries`, `synonyms`, `codes` and
+  `analogous_terms` yourself, exploring synonyms based on ICD-10 (WHO 2019): category and subcategory
+  titles and inclusion terms as synonyms, never Excludes terms; other categories of the same block as
+  `sibling` analogous terms, the block/chapter as `broader`. Your codes are unverified retrieval hints;
+  confirm vocabulary, version and role in the PDF.
+- Result rows carry `matched_term_sources` (`query` = the query string itself, `caller` = your synonyms, `llm` = server LLM codes/synonyms, `vocabulary`, `dictionary:<file>`,
+  `ema_medicines`) so you can say which term, from where, retrieved each study.
+- The unmatched-query log (`catalogue_status.unmatched_terms`) is written only while a user dictionary
+  is configured.
 - Medicines: expand product names to INN/common names and ATC codes; never equate a class with a
   member or a combination with one ingredient.
 
