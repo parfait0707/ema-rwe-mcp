@@ -61,7 +61,13 @@ def create_server(service: Service | None = None):
             return exc.as_dict()
 
     @server.tool()
-    async def import_catalogue_csv(filename: str, column_map: dict[str, str] | None = None) -> dict:
+    async def import_catalogue_csv(
+        filename: str,
+        column_map: Annotated[
+            dict[str, str] | None,
+            Field(description="Internal field name -> exact CSV header, for renamed export columns"),
+        ] = None,
+    ) -> dict:
         """Import one official Studies CSV by basename from studies/ or source_type/ (type in file name)."""
         try:
             return service.import_catalogue_csv(filename, column_map)
@@ -72,12 +78,22 @@ def create_server(service: Service | None = None):
     async def search_studies(
         query: Annotated[str, Field(max_length=2000)],
         limit: Annotated[int, Field(ge=1, le=20)] = 5,
-        darwin_only: bool = True,
+        darwin_only: bool = False,
         status: list[str] | None = None,
         analyzed_only: bool = False,
-        synonyms: list[str] | None = None,
-        codes: list[CodeCandidate] | None = None,
-        filters: SearchFilters | None = None,
+        synonyms: Annotated[
+            list[str] | None, Field(description="Extra English phrases OR-ed with the query")
+        ] = None,
+        codes: Annotated[
+            list[CodeCandidate] | None,
+            Field(description="Typed code hints {system, code}; matched as whole tokens, never re-mapped"),
+        ] = None,
+        filters: Annotated[
+            SearchFilters | None,
+            Field(
+                description="Narrow by countries, data_source_types (claims/ehr/registry/others), study_designs"
+            ),
+        ] = None,
         role: Literal["any", "outcome", "condition", "exposure"] = "any",
         detail: Literal["compact", "full"] = "compact",
     ) -> dict:
@@ -97,10 +113,20 @@ def create_server(service: Service | None = None):
     async def compare_protocols(
         question: str,
         queries: list[str],
-        filters: SearchFilters | None = None,
+        filters: Annotated[
+            SearchFilters | None,
+            Field(
+                description="Narrow by countries, data_source_types (claims/ehr/registry/others), study_designs"
+            ),
+        ] = None,
         darwin_only: bool = False,
-        synonyms: list[str] | None = None,
-        codes: list[CodeCandidate] | None = None,
+        synonyms: Annotated[
+            list[str] | None, Field(description="Extra English phrases OR-ed with the query")
+        ] = None,
+        codes: Annotated[
+            list[CodeCandidate] | None,
+            Field(description="Typed code hints {system, code}; matched as whole tokens, never re-mapped"),
+        ] = None,
         source_preference: SourcePreference | None = None,
         role: Literal["any", "outcome", "condition", "exposure"] = "any",
         study_ids: list[str] | None = None,
@@ -133,13 +159,25 @@ def create_server(service: Service | None = None):
         return await call("get_protocol_comparison", comparison_id, selected_study_ids, detail)
 
     @server.tool()
-    async def get_study(study_id: str, refresh: bool = False) -> dict:
+    async def get_study(
+        study_id: str,
+        refresh: Annotated[
+            bool, Field(description="Re-fetch the EMA pages instead of the cached copy")
+        ] = False,
+    ) -> dict:
         """Get metadata, verify Non-interventional study type, and retrieve catalogue Data source types."""
         return await call("get_study", study_id, refresh)
 
     @server.tool()
     async def get_protocol(
-        study_id: str, version: str = "latest", download: bool = True, refresh: bool = False
+        study_id: str,
+        version: Annotated[
+            str, Field(description="'latest' or an exact Study-documents version label")
+        ] = "latest",
+        download: bool = True,
+        refresh: Annotated[
+            bool, Field(description="Re-fetch the EMA pages instead of the cached copy")
+        ] = False,
     ) -> dict:
         """Select latest protocol from Study documents, with selection reason and retained local PDF ID."""
         return await call("get_protocol", study_id, version, download, refresh)
@@ -147,7 +185,9 @@ def create_server(service: Service | None = None):
     @server.tool()
     async def analyze_protocol(
         study_id: str,
-        force_refresh: bool = False,
+        force_refresh: Annotated[
+            bool, Field(description="Re-fetch the protocol and discard the cached analysis")
+        ] = False,
         offset: Annotated[int, Field(ge=0)] = 0,
         max_chars: Annotated[int, Field(ge=6000, le=150000)] = 30000,
         detail: Literal["summary", "full"] = "summary",
@@ -158,7 +198,9 @@ def create_server(service: Service | None = None):
     @server.tool()
     async def cache_protocol_analysis(
         study_id: str,
-        fingerprint: str,
+        fingerprint: Annotated[
+            str, Field(description="fingerprint returned by analyze_protocol; stale batches are rejected")
+        ],
         analysis: Extraction,
         coverage_complete: bool = False,
         batch_offset: int | None = None,
@@ -169,7 +211,15 @@ def create_server(service: Service | None = None):
         )
 
     @server.tool()
-    async def plan_study_search(question: str, use_llm: bool = False) -> dict:
+    async def plan_study_search(
+        question: str,
+        use_llm: Annotated[
+            bool,
+            Field(
+                description="Also ask the configured LLM for terms and codes; false uses the dictionaries only"
+            ),
+        ] = False,
+    ) -> dict:
         """Turn a question into English terms, code candidates and queries; does not search."""
         return await call("plan_study_search", question, use_llm)
 
@@ -190,8 +240,13 @@ def create_server(service: Service | None = None):
         protocol_id: str,
         query: str,
         limit: int = 10,
-        synonyms: list[str] | None = None,
-        codes: list[CodeCandidate] | None = None,
+        synonyms: Annotated[
+            list[str] | None, Field(description="Extra English phrases OR-ed with the query")
+        ] = None,
+        codes: Annotated[
+            list[CodeCandidate] | None,
+            Field(description="Typed code hints {system, code}; matched as whole tokens, never re-mapped"),
+        ] = None,
         max_chars: Annotated[int, Field(ge=1000)] | None = None,
     ) -> dict:
         """Search one archived PDF (all sections) with synonym expansion; hit text is included up to max_chars in rank order. Zero hits do not prove absence."""
