@@ -28,13 +28,13 @@ Build an evidence-backed MCP for finding and analysing EMA RWD protocols. Read `
 
 Python 3.12+. Source: `src/ema_rwe/`; core service: `service.py`; MCP adapter: `mcp/server.py`; CLI: `cli.py`; persistence: `storage.py` and `archive.py`; clinical expansion: `terminology.py`, `drugs.py`, `vocabulary.py`.
 
-On this Windows checkout:
+Run every Python tool through `uv` (the PreToolUse hook blocks bare `python`/`pip`):
 
-```powershell
-.venv/Scripts/python -m pytest -q
-.venv/Scripts/ruff check src tests
-.venv/Scripts/ruff format --check src tests
-.venv/Scripts/python -m build
+```bash
+uv run pytest -q
+uv run ruff check src tests
+uv run ruff format --check src tests
+uv build
 ```
 
 Run relevant tests for changed behaviour, including real stdio MCP tests when tool schemas change. Use mocked external responses for deterministic tests; do not require paid API credentials. Record actual validation and untested limits in `docs/validation.md`. Keep CLI, MCP schemas and documentation consistent. Keep MCP `instructions` and tool docstrings short; the caller procedure lives in `docs/mcp-workflow.md`, and search responses default to compact rows.
