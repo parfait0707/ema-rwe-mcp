@@ -488,7 +488,9 @@ def apply_decisions(
         candidate_set = candidate_sets.get(concept_id, set())
         abbreviation_checks = decision.get("abbreviation_checks", {})
         related = list(concept.get("related_terms", []))
-        seen = {canonical(t) for t in concept.get("english_terms", []) + related}
+        # 類縁概念 (`analogous_terms`) へ移した語は、統計的に再採用されても related_terms へ戻さない。
+        analogous = [a["term"] for a in concept.get("analogous_terms", [])]
+        seen = {canonical(t) for t in concept.get("english_terms", []) + related + analogous}
         for term in accept:
             if not term.isascii() or len(term) > 150:
                 raise ValueError(f"{concept_id}: related term must be ASCII and <=150 chars: {term!r}")

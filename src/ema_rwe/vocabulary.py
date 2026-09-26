@@ -75,6 +75,17 @@ def contains(text: str, term: str) -> bool:
     return bool(re.search(r"(?<!\w)" + re.escape(term) + r"(?!\w)", text))
 
 
+def without(text: str, terms: list[str]) -> str:
+    """text with every occurrence of terms removed, longest first, matched as contains() matches."""
+    text = canonical(text)
+    for term in sorted({canonical(t) for t in terms}, key=len, reverse=True):
+        pattern = re.escape(term)
+        if not re.search(r"[^\x00-\x7f]", term):
+            pattern = r"(?<!\w)" + pattern + r"(?!\w)"
+        text = re.sub(pattern, " ", text)
+    return text
+
+
 def expand(query: str, extra: list[str] | None = None, codes=None) -> dict:
     extra = extra or []
     if (
@@ -90,13 +101,16 @@ def expand(query: str, extra: list[str] | None = None, codes=None) -> dict:
             "INVALID_INPUT", "Query <=2000 characters; at most 30 extra synonyms of <=150 characters."
         )
     seed = query + " " + " ".join(extra)
-    matched = {key: terms for key, terms in GROUPS.items() if any(contains(seed, t) for t in terms)}
-    additions = [
-        t for t in dict.fromkeys([*extra, *(t for terms in matched.values() for t in terms)]) if t.isascii()
-    ]
     from .terminology import clinical_expansion
 
     clinical = clinical_expansion(seed, codes)
+    # A broad group must not fire on text a specific concept already covers: 糖尿病 inside 1型糖尿病
+    # would otherwise add "diabetes" and match every diabetes study as the requested concept.
+    residual = without(seed, clinical["matched_input_terms"])
+    matched = {key: terms for key, terms in GROUPS.items() if any(contains(residual, t) for t in terms)}
+    additions = [
+        t for t in dict.fromkeys([*extra, *(t for terms in matched.values() for t in terms)]) if t.isascii()
+    ]
     return {
         "original_query": query,
         "expanded_query": seed + " " + " ".join(additions),

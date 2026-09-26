@@ -10,7 +10,7 @@ from pathlib import Path
 from .domain import RWEError, Study, now
 from .ema import BASE, is_non_interventional, norm
 from .selection import filter_rows
-from .terminology import search_phrases
+from .terminology import analogous_phrases, labelled_phrases
 from .vocabulary import canonical, expand
 
 SCHEMA_VERSION = 4
@@ -190,6 +190,16 @@ class Repository:
                 (hashlib.sha256(row["body"].encode()).hexdigest(), study_id, row["fingerprint"], row["body"]),
             )
 
+    def concept_ids(self, query: str, synonyms=None, codes=None, role: str = "any") -> set[str]:
+        """Index matches of the requested concept before any filter: the analogous-scope exclusion and
+        the evidence that a zero-hit result came from filters rather than from the catalogue."""
+        groups = [group for _, group in labelled_phrases(query, expand(query, synonyms, codes))]
+        match = fts_match(groups, ROLE_COLUMNS[role])
+        if not match:
+            return set()
+        with self.connection() as db:
+            return {r[0] for r in db.execute("SELECT id FROM study_fts WHERE study_fts MATCH ?", (match,))}
+
     def search(
         self,
         query: str,
@@ -201,16 +211,43 @@ class Repository:
         codes=None,
         filters=None,
         role: str = "any",
+        scope: str = "concept",
+        analogous=None,
+        exclude: set[str] | None = None,
     ) -> list[dict]:
+        """scope=concept searches the query and its expansion; scope=analogous searches only analogous
+        concepts (dictionary + caller terms) and drops studies the concept search would also match,
+        plus exclude (the concept matches of sibling query variants)."""
         if (limit is not None and not 1 <= limit <= 20) or len(query) > 2000:
             raise RWEError("INVALID_INPUT", "limit must be 1..20; query must be at most 2000 characters.")
         if role not in ROLE_COLUMNS:
             raise RWEError("INVALID_INPUT", "role must be one of any, outcome, condition, exposure.")
+        if scope not in ("concept", "analogous"):
+            raise RWEError("INVALID_INPUT", "scope must be concept or analogous.")
         expansion = expand(query, synonyms, codes)
-        match = fts_match(search_phrases(query, expansion), ROLE_COLUMNS[role])
+        columns = ROLE_COLUMNS[role]
+        phrases = (
+            labelled_phrases(query, expansion)
+            if scope == "concept"
+            else analogous_phrases(expansion, analogous)
+        )
+        match = fts_match([group for _, group in phrases], columns)
         with self.connection() as db:
-            if query.strip() and not match:
+            if (query.strip() or scope == "analogous") and not match:
                 return []
+            # Which expansion terms each study matched, so a result shows why it is a candidate.
+            matched_terms = {}
+            for label, group in phrases if match else []:
+                for (study_id,) in db.execute(
+                    "SELECT id FROM study_fts WHERE study_fts MATCH ?", (fts_match([group], columns),)
+                ):
+                    terms = matched_terms.setdefault(study_id, [])
+                    if label not in terms:
+                        terms.append(label)
+        excluded = set(exclude or ())
+        if scope == "analogous":
+            excluded |= self.concept_ids(query, synonyms, codes, role)
+        with self.connection() as db:
             if match:
                 rows = db.execute(
                     f"""SELECT s.body, bm25(study_fts,{",".join(map(str, BM25_WEIGHTS))}) AS rank
@@ -223,6 +260,8 @@ class Repository:
         results = []
         for row in rows:
             study = Study.model_validate_json(row["body"])
+            if study.study_id in excluded:
+                continue
             if not is_non_interventional(study.study_type):
                 continue
             if darwin_only and study.darwin_eu is not True:
@@ -247,6 +286,8 @@ class Repository:
                 data_source_types_status="available" if study.data_source_types else "not_provided",
                 protocol_source=analysis["source"] if analysis else None,
                 analysis_available=bool(analysis),
+                match_basis=scope,
+                matched_terms=matched_terms.get(study.study_id, []),
             )
             results.append(result)
             if limit is not None and len(results) >= limit:

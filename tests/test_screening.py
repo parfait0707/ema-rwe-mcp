@@ -60,6 +60,7 @@ def test_compact_rows_by_default_and_full_on_request(service):
         "synonyms",
         "english_terms",
         "related_terms",
+        "analogous_terms",
         "codes",
         "drug_terms",
         "drugs_need_refresh",

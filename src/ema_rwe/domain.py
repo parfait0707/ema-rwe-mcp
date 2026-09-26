@@ -146,6 +146,14 @@ class ProtocolAnswer(Model):
     missing_information: list[str] = Field(default_factory=list, max_length=30)
 
 
+class AnalogousTerm(Model):
+    """A clinically analogous concept searched only on request or as the zero-hit fallback, never as the
+    requested concept itself: broader category, sibling disease, or associated condition/complication."""
+
+    term: str = Field(min_length=1, max_length=150, pattern=r"^[\x20-\x7e]+$")
+    relation: Literal["broader", "sibling", "associated"]
+
+
 class CodeCandidate(Model):
     """A retrieval hint, never evidence that a study used this code."""
 

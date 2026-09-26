@@ -7,7 +7,7 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from .config import Settings
-from .domain import CodeCandidate, Extraction, RWEError, SourcePreference
+from .domain import AnalogousTerm, CodeCandidate, Extraction, RWEError, SourcePreference
 from .selection import SearchFilters
 from .service import Service
 from .storage import Repository, import_csv
@@ -19,6 +19,16 @@ def code_argument(value):
         return CodeCandidate(system=system.strip(), code=code.strip())
     except (ValueError, ValidationError) as exc:
         raise argparse.ArgumentTypeError("Expected SYSTEM:CODE, e.g. ICD-10:J84.9") from exc
+
+
+def analogous_argument(value):
+    try:
+        term, relation = value.rsplit(":", 1)
+        return AnalogousTerm(term=term.strip(), relation=relation.strip())
+    except (ValueError, ValidationError) as exc:
+        raise argparse.ArgumentTypeError(
+            "Expected TERM:RELATION (broader/sibling/associated), e.g. renal impairment:broader"
+        ) from exc
 
 
 def parser():
@@ -61,6 +71,13 @@ def parser():
     search.add_argument("--detail", choices=["compact", "full"], default="compact")
     compare.add_argument("--study-id", action="append", dest="study_ids", help="Explicit candidate choice")
     for cmd in (search, compare):
+        cmd.add_argument(
+            "--match-scope",
+            choices=["concept", "analogous"],
+            default="concept",
+            help="analogous searches only clinically analogous concepts (the zero-hit fallback).",
+        )
+        cmd.add_argument("--analogous", action="append", type=analogous_argument, help="TERM:RELATION")
         cmd.add_argument(
             "--role",
             choices=["any", "outcome", "condition", "exposure"],
@@ -164,6 +181,8 @@ async def run(args):
                     filters,
                     args.role,
                     args.detail,
+                    args.match_scope,
+                    args.analogous,
                 )
             case "compare":
                 if (
@@ -186,6 +205,8 @@ async def run(args):
                     else None,
                     args.role,
                     args.study_ids,
+                    args.match_scope,
+                    args.analogous,
                 )
             case "comparison":
                 return await service.get_protocol_comparison(args.comparison_id, args.study_id)

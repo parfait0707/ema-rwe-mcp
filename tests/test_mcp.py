@@ -79,6 +79,30 @@ async def test_stdio_discovery_validation_and_local_search(settings, csv_file, p
         search_tool = next(t for t in tools.tools if t.name == "search_studies")
         assert search_tool.inputSchema["properties"]["darwin_only"]["default"] is False
         assert search_tool.inputSchema["properties"]["codes"]["description"]
+        for tool in (search_tool, comparison_tool):
+            properties = tool.inputSchema["properties"]
+            assert properties["match_scope"]["default"] == "concept"
+            assert properties["analogous_terms"]["description"]
+        analogous = await session.call_tool(
+            "search_studies",
+            {
+                "query": "zzqx disease",
+                "match_scope": "analogous",
+                "analogous_terms": [{"term": "opioid", "relation": "broader"}],
+            },
+        )
+        body = json.loads(analogous.content[0].text)
+        assert body["match_scope"] == "analogous" and body["results"]
+        assert {r["match_basis"] for r in body["results"]} == {"analogous"}
+        bad_relation = await session.call_tool(
+            "search_studies",
+            {
+                "query": "x",
+                "match_scope": "analogous",
+                "analogous_terms": [{"term": "y", "relation": "synonym"}],
+            },
+        )
+        assert bad_relation.isError
         result = await session.call_tool("search_studies", {"query": "opioid"})
         assert not result.isError
         body = json.loads(result.content[0].text)

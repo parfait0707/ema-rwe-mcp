@@ -20,6 +20,7 @@ def compact_view(result: dict) -> dict:
             {
                 "study": {k: row["study"].get(k) for k in ROW_STUDY_KEYS},
                 "status": row.get("status"),
+                "match": row.get("match"),
                 "error": row.get("error"),
                 "source": row.get("source"),
                 "source_suitability": {
@@ -81,10 +82,21 @@ def cohort_cells(cohort: dict | None) -> list[str] | None:
     return lines or None
 
 
-def table(rows):
+def match_cell(match: dict | None, relations: dict[str, str]) -> str | None:
+    """Why a study is a candidate: the requested concept itself, or an analogous concept and its relation."""
+    if not match:
+        return None
+    if match["basis"] == "analogous":
+        terms = ", ".join(f"{t}（{relations.get(t.casefold(), 'relation不明')}）" for t in match["terms"])
+        return f"類縁概念での一致（依頼された概念そのものではない）: {terms}"
+    return "依頼概念での一致: " + ", ".join(match["terms"])
+
+
+def table(rows, relations: dict[str, str] | None = None):
     if not rows:
         return "比較対象は未確定です。screening_summaryとselection_statusを確認してください。"
     columns = [
+        ("一致の根拠", lambda r: match_cell(r.get("match"), relations or {})),
         ("国", lambda r: r["study"]["countries"]),
         ("Data source type", lambda r: r["study"]["data_source_types"]),
         ("希望タイプへの適合性", lambda r: r.get("source_suitability", {}).get("status")),
@@ -176,7 +188,14 @@ class Comparisons:
             "question": question,
             "created_at": now(),
             "search": search,
-            "rows": [{"study": row, "status": "pending"} for row in candidates],
+            "rows": [
+                {
+                    "study": row,
+                    "match": {"basis": row["match_basis"], "terms": row["matched_terms"]},
+                    "status": "pending",
+                }
+                for row in candidates
+            ],
         }
         self.write(result)
         for row in result["rows"]:
@@ -214,7 +233,8 @@ class Comparisons:
             )
         result["json_path"] = str(folder / "comparison.json")
         result["markdown_path"] = str(folder / "comparison.md")
-        result["comparison_markdown"] = table(shown)
+        relations = {t["term"].casefold(): t["relation"] for t in result["search"].get("analogous_terms", [])}
+        result["comparison_markdown"] = table(shown, relations)
         result["comparison_markdown"] += "\n\n全一次判定結果（省略・エラーを含む）:\n\n" + "\n".join(
             f"- Study {r['study_id']}: {r['suitability']}; {r['status']}; "
             f"{'比較表に掲載' if r['in_comparison'] else '比較表の対象外／未選択'}"
