@@ -224,6 +224,15 @@ PDF 取得先ディレクトリ名から X/Y が推測可能だった（P）、�
 - 検証: `uv run pytest -q` **235 passed**（実 stdio MCP テストを含む）、`uv run ruff check` / `ruff format --check` 通過。新規テストで日本語手法語の展開、薬効群を同義語グループで展開しないこと、国名別名、日本語薬剤名の辞書経路、医薬品辞書不在時の非展開を確認。
 - 未検証: 同義語グループの追加語が PDF の関連章選択（`sections()` の `relevant`）を広げる影響を実プロトコルで測っていない。既存の `uvx` 利用者のユーザーデータ領域の `terminology.json` は初回シード後に上書きされないため、ILD 概念を得るには削除して再シードするか `EMA_TERMINOLOGY_PATH` で同梱版を指す必要がある。
 
+## 2026-09-26 プロンプト監査の修正（MCP 契約・開発手順）
+
+- `search_studies` の `darwin_only` 既定値を `false` に変更し、MCP `instructions`・`docs/mcp-workflow.md`・`compare_protocols` と一致させた（CLI とサービス層の既定値は変更していない）。`docs/spec/v0.1.md` の既定値の記載も更新。
+- 説明の無かったツール引数（`synonyms`、`codes`、`filters`、`version`、`refresh`、`force_refresh`、`fingerprint`、`use_llm`、`column_map`）に 1 句の説明を追加。docstring は変更していない。
+- OpenAI 互換経路の出力上限を固定 6000 から `max_output_tokens()`（LiteLLM 経路と同じ）に揃えた。
+- `AGENTS.md` の開発コマンドを Windows の `.venv/Scripts/python` から `uv run` に変更し、PreToolUse フックと `.claude/rules/package-management.md` に一致させた。
+- 検証: `uv run pytest -q` **235 passed**（実 stdio MCP テストで `darwin_only` 既定値 `false` と引数説明の公開を確認）、`uv run ruff check` / `ruff format --check` 通過、`uv build --help` で `uv build` の存在を確認。
+- 未検証: 互換経路で出力上限を引き上げた際の実プロバイダでの挙動（上限値を受け付けない端点がありうる）。Windows ホストでの `uv run` 実行。
+
 ## 未検証事項（継続）
 
 - 外部LLM API呼出しの実認証検証は未実施。キーなしの呼出元LLM方式は合成PDFで保存・再利用まで検証。

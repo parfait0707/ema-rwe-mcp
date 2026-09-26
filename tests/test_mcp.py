@@ -76,6 +76,9 @@ async def test_stdio_discovery_validation_and_local_search(settings, csv_file, p
         assert json.loads(imported.content[0].text)["imported"] == 2
         outside = await session.call_tool("import_catalogue_csv", {"filename": "../export-data.csv"})
         assert json.loads(outside.content[0].text)["error"]["code"] == "INVALID_INPUT"
+        search_tool = next(t for t in tools.tools if t.name == "search_studies")
+        assert search_tool.inputSchema["properties"]["darwin_only"]["default"] is False
+        assert search_tool.inputSchema["properties"]["codes"]["description"]
         result = await session.call_tool("search_studies", {"query": "opioid"})
         assert not result.isError
         body = json.loads(result.content[0].text)

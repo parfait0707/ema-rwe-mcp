@@ -142,7 +142,7 @@ async def complete_json(settings: Settings, messages: list[dict]) -> dict:
                         "model": settings.llm_model,
                         "messages": messages,
                         "temperature": 0,
-                        "max_tokens": 6000,
+                        "max_tokens": max_output_tokens(settings),
                         "response_format": {"type": "json_object"},
                     },
                 )
