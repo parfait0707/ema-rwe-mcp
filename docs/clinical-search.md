@@ -34,7 +34,11 @@ PDF検索にはさらに`protocol_id`を指定します。CLIも`--code "ICD-10:
 
 `plan_study_search(use_llm=true)`は設定済みLLMに英訳・関連語・コード候補の提案を依頼します。`research_protocol`の内部探索も検索アクションにコードを指定できます。LiteLLMの設定は[追加探索ガイド](exploration.md)を参照してください。LLMが提案するコードは常に`origin=llm, verification=unverified`です。コード候補のJSONには体系・版・ラベル・関係・出典URL・由来・確認状態・検索表記を残します。これは検索用メタデータで、PDFから抽出した根拠とは別です。
 
-チェックアウト内では同梱の`data/terminology.json`（48概念。日本語疾患名→英語名・関連語・WHO ICD-10 2019の分類コード、出典URL付き）が既定で読み込まれます。コードは検索用の候補であり`verification=unverified`のままです。`related_terms`のうちカタログ由来の語は、`scripts/mine_terminology.py`がカタログ本文（Outcomes、Medicinal condition、目的、タイトル）から統計的に抽出した候補を、明文化した採否規則と標本確認で判定して追記したものです。判定記録は`data/terminology_decisions.json`、手順と結果は[関連語導出の記録](research/202609140758_terminology_mining.md)を参照してください。
+チェックアウト内では同梱の`data/terminology.json`（49概念。日本語疾患名→英語名・関連語・WHO ICD-10 2019の分類コード、出典URL付き）が既定で読み込まれます。コードは検索用の候補であり`verification=unverified`のままです。`related_terms`のうちカタログ由来の語は、`scripts/mine_terminology.py`がカタログ本文（Outcomes、Medicinal condition、目的、タイトル）から統計的に抽出した候補を、明文化した採否規則と標本確認で判定して追記したものです。判定記録は`data/terminology_decisions.json`、手順と結果は[関連語導出の記録](research/202609140758_terminology_mining.md)を参照してください。
+
+疾患・医薬品以外の語は、`vocabulary.py`の同義語グループが英語へ展開します。対象は薬剤疫学プロトコールに頻出する研究デザイン・手法・集団の語です（例：交絡→confounding、インデックス日→index date、症例対照→case control / nested case control、小児→paediatric / pediatric / children、データリンケージ→record linkage）。個別の疾患名や薬効群はここに置かず、概念辞書と医薬品辞書で扱います。
+
+国の絞り込み（`filters.countries`）は、同梱カタログで研究数の多い上位30か国について日本語名と一般的な英語の別称を受け付けます（例：ドイツ→Germany、イギリス／UK→United Kingdom、韓国→Korea, Republic of）。それ以外の国名はカタログ表記のまま指定してください。
 
 ### 未収録語のログ
 
@@ -60,7 +64,7 @@ PDF検索にはさらに`protocol_id`を指定します。CLIも`--code "ICD-10:
 
 ## 網羅性の限界
 
-組込みの疾患名とICD-10の対応はILD例です。ICD-10／国別修正版のコード指定、小数点有無の展開、ATCの第1〜5レベルのコード指定に対応し、形式を検証します。形式検証はマスター上の実在確認ではありません。ATCの第5レベルと医薬品名の対応は、後述の公式EMA医薬品辞書を利用します。全疾患・全医療マスターの照会や階層の全子孫コード展開は未実装です。
+疾患名とICD-10の対応は`data/terminology.json`に収録した概念に限られます。ICD-10／国別修正版のコード指定、小数点有無の展開、ATCの第1〜5レベルのコード指定に対応し、形式を検証します。形式検証はマスター上の実在確認ではありません。ATCの第5レベルと医薬品名の対応は、後述の公式EMA医薬品辞書を利用します。全疾患・全医療マスターの照会や階層の全子孫コード展開は未実装です。
 
 通常の研究検索はインポート済みのカタログ情報と保存済み抽出結果が対象です。カタログ情報には疾患名もコードもなく、未取得PDFにしか書かれていない研究は、この検索だけでは発見できません。候補条件を広げてPDFを取得する必要があります。保存PDFの追加検索は指定IDの全抽出テキストを対象にしますが、画像だけのコード表にはOCRが必要です。コード命中、原文引用の一致、章判定だけで医学的同等性やアウトカムとしての使用を保証するものではありません。
 
@@ -72,6 +76,6 @@ PDF検索にはさらに`protocol_id`を指定します。CLIも`--code "ICD-10:
 
 例：`Eliquis`→`apixaban`と`B01AF02`、`apixaban`→`Eliquis`等の同じ成分構成を持つ医薬品名、`B01AF02`→両方の名称。検索結果の`query_expansion.clinical.drugs`に候補製品、成分構成、出典、辞書版、件数と打切りの有無を返します。商品名の検索でも、本文にINNやATCしかない箇所を検索できます。ATCの上位クラスを単一成分と同義には扱いません。
 
-日本語のエリキュース／アピキサバンは[PMDAの対応](https://www.pmda.go.jp/PmdaSearch/rdDetail/iyaku/3339004F1029_1?user=1)を組み込んでいます。その他の日本語名は呼出元LLM、または`plan_study_search(use_llm=true)`が英語名を`synonyms`に渡し、公式辞書で双方向展開します。日本の全商品名を内蔵した辞書ではありません。独自の日本語対応表は`EMA_TERMINOLOGY_PATH`で追加できます。
+日本語の医薬品名は内蔵していません。呼出元LLM、または`plan_study_search(use_llm=true)`が英語名を`synonyms`に渡すと、公式辞書で双方向展開します。出典のある日本語対応表を使う場合は、`EMA_TERMINOLOGY_PATH`の概念に日本語名を`input_terms`、INNを`english_terms`として登録します。一致した概念の英語名は医薬品辞書にも渡るため、同じ成分構成の製品名まで展開されます。医薬品辞書が見つからない場合は何も展開せず、`needs_refresh=true`を返します。
 
 配合剤は成分集合全体を保持します。例：Janumet→sitagliptin / metforminであり、sitagliptin単剤のJanuviaと同一扱いしません。塩や製剤を自動的に同一化せず、同じINNでも用量・投与経路・適応が一致するとは断定しません。収載範囲はEMAの中央審査品目で、国ごとの全商品名や全ATC割当てを網羅しません。

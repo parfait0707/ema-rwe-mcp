@@ -22,7 +22,9 @@ def test_japanese_concept_retrieves_code_only_pdf():
     assert {"interstitial pneumonia", "interstitial lung disease", "J84.9", "J849"} <= set(terms)
     code = result["query_expansion"]["clinical"]["code_candidates"][0]
     assert code["relation"] == "unspecified_subtype"
-    assert code["verification"] == "source_checked"
+    # The concept lives in the committed dictionary; its codes are hints, never server-verified.
+    assert code["origin"] == "local_dictionary" and code["verification"] == "unverified"
+    assert code["source_url"].startswith("https://icd.who.int/")
 
 
 @pytest.mark.parametrize("query", ["J84.9", "J849", "ICD10: J84.9"])

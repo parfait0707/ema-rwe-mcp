@@ -22,33 +22,6 @@ class Concept(Model):
     code_candidates: list[CodeCandidate] = Field(default_factory=list, max_length=40)
 
 
-ILD = Concept(
-    concept_id="interstitial_lung_disease",
-    input_terms=[
-        "間質性肺疾患",
-        "間質性肺炎",
-        "interstitial lung disease",
-        "interstitial pulmonary disease",
-        "interstitial pneumonia",
-        "ILD",
-    ],
-    english_terms=["interstitial lung disease", "interstitial pulmonary disease", "ILD"],
-    related_terms=["interstitial pneumonia"],
-    code_candidates=[
-        CodeCandidate(
-            system="ICD-10",
-            code="J84.9",
-            label="Interstitial pulmonary disease, unspecified",
-            vocabulary_version="WHO 2019",
-            relation="unspecified_subtype",
-            origin="curated",
-            verification="source_checked",
-            source_url="https://icd.who.int/browse10/2019/en/GetConcept?ConceptId=J84.9",
-        )
-    ],
-)
-
-
 @lru_cache(maxsize=8)
 def _load(path: str, mtime: int, size: int):
     if size > 2_000_000:
@@ -108,15 +81,14 @@ def inline_codes(query: str) -> list[CodeCandidate]:
 def clinical_expansion(query: str, codes: list[CodeCandidate] | None = None) -> dict:
     from .drugs import drug_expansion
 
-    concepts, revision = [ILD], "clinical-v1"
+    concepts, revision = [], "clinical-v2"
     path = os.getenv("EMA_TERMINOLOGY_PATH") or default_terminology_path()
     if path:
         try:
             stat = Path(path).stat()
-            custom, digest = _load(path, stat.st_mtime_ns, stat.st_size)
+            concepts, digest = _load(path, stat.st_mtime_ns, stat.st_size)
         except OSError as exc:
             raise RWEError("TERMINOLOGY_CONFIG_ERROR", "Cannot read EMA_TERMINOLOGY_PATH.") from exc
-        concepts += custom
         revision += ":" + digest
     supplied = codes or []
     if len(supplied) > 40:
@@ -134,7 +106,17 @@ def clinical_expansion(query: str, codes: list[CodeCandidate] | None = None) -> 
             for b in c.code_candidates
         )
     ]
-    drugs = drug_expansion(query + " " + " ".join(c.code for c in inputs if canonical(c.system) == "atc"))
+    # English names of matched concepts reach the medicines dictionary too, so a sourced dictionary
+    # entry for a Japanese medicine name expands to every EMA product with the same ingredient set.
+    drugs = drug_expansion(
+        " ".join(
+            [
+                query,
+                *(t for c in matched for t in c.english_terms),
+                *(c.code for c in inputs if canonical(c.system) == "atc"),
+            ]
+        )
+    )
     revision += ":" + drugs["dictionary_revision"]
     drug_codes = [
         CodeCandidate(

@@ -571,6 +571,35 @@
   ]
  },
  {
+  "concept_id": "interstitial_lung_disease",
+  "input_terms": [
+   "間質性肺疾患",
+   "間質性肺炎",
+   "interstitial lung disease",
+   "interstitial pulmonary disease",
+   "interstitial pneumonia",
+   "ILD"
+  ],
+  "english_terms": [
+   "interstitial lung disease",
+   "interstitial pulmonary disease",
+   "ILD"
+  ],
+  "related_terms": [
+   "interstitial pneumonia"
+  ],
+  "code_candidates": [
+   {
+    "system": "ICD-10",
+    "code": "J84.9",
+    "label": "Interstitial pulmonary disease, unspecified",
+    "vocabulary_version": "WHO ICD-10 2019",
+    "relation": "unspecified_subtype",
+    "source_url": "https://icd.who.int/browse10/2019/en#/J84.9"
+   }
+  ]
+ },
+ {
   "concept_id": "rheumatoid_arthritis",
   "input_terms": [
    "関節リウマチ",

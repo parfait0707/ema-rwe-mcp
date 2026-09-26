@@ -41,13 +41,25 @@ def drug_file(tmp_path, monkeypatch):
     return path
 
 
+@pytest.fixture
+def japanese_drug_terms(tmp_path, monkeypatch):
+    """A local dictionary entry translating Japanese medicine names, as a user would add one."""
+    path = tmp_path / "terms.json"
+    concept = {
+        "concept_id": "apixaban_ja",
+        "input_terms": ["エリキュース", "アピキサバン"],
+        "english_terms": ["apixaban"],
+    }
+    path.write_text(json.dumps([concept], ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setenv("EMA_TERMINOLOGY_PATH", str(path))
+    return path
+
+
 @pytest.mark.parametrize(
     "query,expected",
     [
         ("Eliquis", "apixaban"),
         ("apixaban", "Eliquis"),
-        ("エリキュースの研究", "apixaban"),
-        ("アピキサバンの研究", "Eliquis"),
         ("B01AF02", "Eliquis"),
         ("rivaroxaban", "Xarelto"),
     ],
@@ -59,6 +71,32 @@ def test_bidirectional_names_and_atc(drug_file, query, expected):
     assert result["drugs"]["matches"][0]["source_url"].startswith("https://www.ema.europa.eu/")
 
 
+@pytest.mark.parametrize(
+    "query,expected", [("エリキュースの研究", "apixaban"), ("アピキサバンの研究", "Eliquis")]
+)
+def test_japanese_name_from_local_dictionary_expands_through_ema_dictionary(
+    drug_file, japanese_drug_terms, query, expected
+):
+    result = expand(query)["clinical"]
+    assert expected in result["english_terms"]
+    assert "AnimalOnly" not in result["english_terms"]
+
+
+def test_japanese_name_without_dictionary_entry_is_not_guessed(drug_file, tmp_path, monkeypatch):
+    empty = tmp_path / "empty.json"
+    empty.write_text("[]", encoding="utf-8")
+    monkeypatch.setenv("EMA_TERMINOLOGY_PATH", str(empty))
+    result = expand("エリキュースの研究")["clinical"]
+    assert result["english_terms"] == [] and result["drugs"]["total_matches"] == 0
+
+
+def test_missing_medicines_dictionary_expands_nothing_and_requests_refresh(tmp_path, monkeypatch):
+    monkeypatch.setenv("EMA_DRUG_DICTIONARY_PATH", str(tmp_path / "absent.json"))
+    result = drug_expansion("apixaban Eliquis B01AF02")
+    assert result["total_matches"] == 0 and result["english_terms"] == []
+    assert result["needs_refresh"] is True
+
+
 def test_combination_keeps_full_ingredient_set(drug_file):
     assert "Janumet" not in drug_expansion("sitagliptin")["english_terms"]
     combo = drug_expansion("Janumet")
@@ -67,13 +105,13 @@ def test_combination_keeps_full_ingredient_set(drug_file):
     assert combo["matches"][0]["ingredients"] == ["sitagliptin", "metformin"]
 
 
-def test_pdf_search_by_brand_finds_inn_or_atc_only(drug_file):
+def test_pdf_search_by_brand_finds_inn_or_atc_only(drug_file, japanese_drug_terms):
     chunks = sections([Page(1, "Exposure apixaban."), Page(2, "Exposure B01AF02."), Page(3, "B01AF020")])
     assert {r["page"] for r in search_sections(chunks, "エリキュース")["results"]} == {1, 2}
     assert search_sections(sections([Page(1, "Exposure Eliquis.")]), "apixaban")["results"]
 
 
-def test_fts_bidirectional(drug_file, settings, csv_file):
+def test_fts_bidirectional(drug_file, japanese_drug_terms, settings, csv_file):
     service = Service(settings)
     import_csv(service.repo, csv_file)
     study = service.repo.get("123")
