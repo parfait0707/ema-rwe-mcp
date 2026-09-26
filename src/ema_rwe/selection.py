@@ -43,15 +43,41 @@ DESIGN_ALIASES = {
     "ecological": ["ecological"],
     "self-controlled": ["self controlled", "sccs", "case crossover"],
 }
-COUNTRIES = {
-    "日本": "japan",
-    "jp": "japan",
-    "米国": "united states",
-    "us": "united states",
-    "usa": "united states",
-    "uk": "united kingdom",
-    "英国": "united kingdom",
+# Japanese names and common English short forms for the countries with the most studies in the
+# committed catalogue; values are canonical catalogue spellings. Other names pass through unchanged.
+COUNTRY_NAMES = {
+    "united kingdom": ["英国", "イギリス", "uk", "great britain"],
+    "germany": ["ドイツ"],
+    "spain": ["スペイン"],
+    "france": ["フランス"],
+    "united states": ["米国", "アメリカ", "us", "usa", "united states of america"],
+    "italy": ["イタリア"],
+    "netherlands": ["オランダ"],
+    "denmark": ["デンマーク"],
+    "sweden": ["スウェーデン"],
+    "belgium": ["ベルギー"],
+    "austria": ["オーストリア"],
+    "norway": ["ノルウェー"],
+    "finland": ["フィンランド"],
+    "greece": ["ギリシャ"],
+    "portugal": ["ポルトガル"],
+    "canada": ["カナダ"],
+    "poland": ["ポーランド"],
+    "switzerland": ["スイス"],
+    "ireland": ["アイルランド"],
+    "japan": ["日本"],
+    "hungary": ["ハンガリー"],
+    "czechia": ["チェコ", "czech republic"],
+    "australia": ["オーストラリア"],
+    "croatia": ["クロアチア"],
+    "korea republic of": ["韓国", "south korea", "korea"],
+    "romania": ["ルーマニア"],
+    "bulgaria": ["ブルガリア"],
+    "china": ["中国"],
+    "israel": ["イスラエル"],
+    "taiwan": ["台湾"],
 }
+COUNTRIES = {alias: name for name, aliases in COUNTRY_NAMES.items() for alias in aliases}
 
 
 def country(value):
@@ -113,7 +139,8 @@ def selection(rows, max_screening_studies=5, max_listed_candidates=50):
     for row in rows:
         for key, values in attributes(row).items():
             counts[key].update(values)
-            unknown[key] += not values
+            if key != "data_source_types":  # always non-empty: untyped studies count as others
+                unknown[key] += not values
         unknown["data_source_types"] += not row["data_source_types"]
         conditions.update(canonical(c) for c in row.get("conditions", []))
     total = len(rows)

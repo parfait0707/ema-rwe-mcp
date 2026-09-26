@@ -2,12 +2,10 @@
 
 import hashlib
 import json
-import os
 import re
-import tempfile
 from pathlib import Path
 
-from .domain import RWEError, now
+from .domain import RWEError, atomic_write, now
 
 
 class ProtocolArchive:
@@ -20,15 +18,6 @@ class ProtocolArchive:
             raise RWEError("INVALID_INPUT", "Invalid protocol_id; use an ID returned by get_protocol.")
         return self.directory / (protocol_id + suffix)
 
-    def _atomic(self, path: Path, content: bytes):
-        fd, temp = tempfile.mkstemp(dir=self.directory, suffix=".tmp")
-        try:
-            with os.fdopen(fd, "wb") as stream:
-                stream.write(content)
-            os.replace(temp, path)
-        finally:
-            Path(temp).unlink(missing_ok=True)
-
     def save(self, study_id: str, pdf: bytes, metadata: dict) -> dict:
         if not re.fullmatch(r"\d{1,20}", study_id) or not pdf.lstrip().startswith(b"%PDF-"):
             raise RWEError("INVALID_INPUT", "Cannot archive invalid study ID/PDF.")
@@ -36,7 +25,7 @@ class ProtocolArchive:
         pid = f"pdf_{study_id}_{digest}"
         path = self._path(pid, ".pdf")
         if not path.exists() or hashlib.sha256(path.read_bytes()).hexdigest() != digest:
-            self._atomic(path, pdf)
+            atomic_write(path, pdf)
         record = {
             **metadata,
             "study_id": study_id,
@@ -46,7 +35,7 @@ class ProtocolArchive:
             "archived_at": now(),
             "retention": "until_user_deletes",
         }
-        self._atomic(self._path(pid, ".json"), json.dumps(record, ensure_ascii=False).encode())
+        atomic_write(self._path(pid, ".json"), json.dumps(record, ensure_ascii=False))
         return record
 
     def load(self, protocol_id: str) -> tuple[bytes, dict]:

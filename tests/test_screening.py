@@ -8,7 +8,7 @@ from test_comparison import extend_website, seed
 
 from ema_rwe.domain import RWEError, Study
 from ema_rwe.ema import BASE
-from ema_rwe.selection import COMPACT_KEYS, SearchFilters
+from ema_rwe.selection import COMPACT_KEYS, SearchFilters, country, filter_rows
 from ema_rwe.service import Service
 from ema_rwe.storage import Repository, fts_match, import_csv
 
@@ -167,3 +167,23 @@ def test_import_fills_role_columns_from_the_official_headers(settings, tmp_path)
     assert repo.search("hepatic events", None, False, None, role="outcome")[0]["study_id"] == "77"
     assert repo.search("C10BA05", None, False, None, role="exposure")[0]["study_id"] == "77"
     assert repo.search("hypertension", None, False, None, role="condition", filters=SearchFilters())
+
+
+@pytest.mark.parametrize(
+    "alias,catalogue_name",
+    [
+        ("ドイツ", "Germany"),
+        ("イギリス", "United Kingdom"),
+        ("usa", "United States"),
+        ("韓国", "Korea, Republic of"),
+        ("Czech Republic", "Czechia"),
+    ],
+)
+def test_country_aliases_resolve_to_catalogue_spelling(alias, catalogue_name):
+    row = {"countries": [catalogue_name], "data_source_types": [], "study_designs": []}
+    assert country(alias) == country(catalogue_name)
+    assert filter_rows([row], SearchFilters(countries=[alias])) == [row]
+
+
+def test_unknown_country_passes_through_unchanged():
+    assert country("Estonia") == "estonia"

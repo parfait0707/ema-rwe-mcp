@@ -42,7 +42,8 @@ def test_synonyms_find_spelling_variants(settings, csv_file):
     assert result["results"][0]["study_id"] == "123"
     assert "haemorrhage" in result["query_expansion"]["synonyms"]
     assert service.search_studies("new-user")["results"]
-    assert "atrial_fibrillation" not in expand("AF")["concepts"]
+    af = expand("AF")
+    assert "atrial_fibrillation" not in af["concepts"] + af["clinical"]["concepts"]
 
 
 def test_context_excludes_references_and_contents_but_exploration_can_read_them():
@@ -101,7 +102,10 @@ def test_authentic_reference_quote_cannot_be_cached_as_current_study_method():
 def test_multiword_synonyms_do_not_degenerate_to_generic_words(settings, csv_file):
     service = Service(settings)
     import_csv(service.repo, csv_file)
-    assert service.search_studies("DOAC")["results"] == []
+    expansion = expand("IPTW")
+    assert "inverse probability of treatment weighting" in expansion["synonyms"]
+    # "of", "treatment" and "probability" appear in unrelated text; the phrase must co-occur.
+    assert service.search_studies("IPTW")["results"] == []
 
 
 async def test_local_archive_survives_restart_and_http_cache_cleanup(service):
@@ -237,3 +241,24 @@ async def test_actual_litellm_sdk_mock_completion(settings, monkeypatch):
     monkeypatch.setattr(litellm, "acompletion", mocked)
     settings.llm_backend, settings.llm_model = "litellm", "openai/gpt-4o"
     assert await complete_json(settings, [{"role": "user", "content": "Return JSON"}]) == {"ok": True}
+
+
+@pytest.mark.parametrize(
+    "query,concept,synonym",
+    [
+        ("交絡の調整方法", "confounding", "confounding"),
+        ("インデックス日の定義", "index_date", "index date"),
+        ("症例対照研究", "case_control", "nested case control"),
+        ("小児の研究", "paediatric", "pediatric"),
+        ("データリンケージ", "linkage", "record linkage"),
+    ],
+)
+def test_generic_protocol_vocabulary_translates_japanese_method_terms(query, concept, synonym):
+    expansion = expand(query)
+    assert concept in expansion["concepts"]
+    assert synonym in expansion["synonyms"]
+
+
+def test_specific_drug_classes_are_left_to_dictionaries_not_synonym_groups():
+    for query in ("DOAC", "抗凝固薬", "オピオイド"):
+        assert expand(query)["concepts"] == []

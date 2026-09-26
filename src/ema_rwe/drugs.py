@@ -4,7 +4,6 @@ import hashlib
 import json
 import os
 import re
-import tempfile
 import time
 from functools import lru_cache
 from pathlib import Path
@@ -12,11 +11,10 @@ from pathlib import Path
 import httpx
 
 from .config import Settings
-from .domain import RWEError
+from .domain import RWEError, atomic_write
 from .vocabulary import canonical
 
 SOURCE_URL = "https://www.ema.europa.eu/en/documents/report/medicines-output-medicines_json-report_en.json"
-PMDA_URL = "https://www.pmda.go.jp/PmdaSearch/rdDetail/iyaku/3339004F1029_1?user=1"
 MAX_BYTES = 30_000_000
 TTL = 7 * 86400
 
@@ -89,16 +87,7 @@ async def refresh_dictionary(force=False, transport=None):
         raise RWEError(
             "DRUG_DICTIONARY_DOWNLOAD_FAILED", "Could not download the official EMA medicines JSON."
         ) from exc
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = None
-    try:
-        with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as file:
-            temporary = Path(file.name)
-            file.write(raw)
-        temporary.replace(path)
-    finally:
-        if temporary:
-            temporary.unlink(missing_ok=True)
+    atomic_write(path, bytes(raw))
     return {
         "cached": False,
         "records": len(records),
@@ -111,6 +100,8 @@ async def refresh_dictionary(force=False, transport=None):
 
 
 def _index(records):
+    if not records:
+        return {}, None
     terms = {}
     for i, row in enumerate(records):
         for term in [row["product_name"], " / ".join(row["ingredients"]), *row["atc_codes"]]:
@@ -137,34 +128,19 @@ def load_dictionary():
     if path.exists():
         stat = path.stat()
         return _load(str(path), stat.st_mtime_ns, stat.st_size)
-    # Small verified fallback, sufficient to demonstrate Japanese brand/INN translation offline.
-    records = [
-        {
-            "product_name": "Eliquis",
-            "inn_or_common_name": "apixaban",
-            "ingredients": ["apixaban"],
-            "atc_codes": ["B01AF02"],
-            "source_url": "https://www.ema.europa.eu/en/medicines/human/EPAR/eliquis",
-            "source_updated_at": "2026-04-01",
-        }
-    ]
-    return (
-        records,
-        {"coverage": "built-in example only; call refresh_drug_dictionary"},
-        "eliquis-v1",
-        _index(records),
-    )
+    # No dictionary on disk: expand nothing rather than pretend coverage; needs_refresh tells the caller.
+    return [], {"coverage": "none; call refresh_drug_dictionary"}, "missing", _index([])
 
 
 def drug_expansion(query):
+    """Products sharing the full ingredient set of any name/INN/ATC in an English (or code) query.
+
+    Japanese medicine names are translated before this step: by a sourced concept in the terminology
+    dictionary (clinical_expansion feeds its English terms here) or by the caller/configured LLM.
+    """
     records, meta, digest, (terms, pattern) = load_dictionary()
     seed = canonical(query)
-    aliases = []
-    for name in ("エリキュース", "アピキサバン"):
-        if name in seed:
-            seed += " apixaban"
-            aliases.append({"input": name, "english": "apixaban", "source_url": PMDA_URL})
-    indices = {i for match in pattern.finditer(seed) for i in terms[match.group()]}
+    indices = {i for match in pattern.finditer(seed) for i in terms[match.group()]} if pattern else set()
     # Only expand to products with the SAME FULL ingredient tuple; no class-member or single/combination equivalence.
     groups = {tuple(sorted(canonical(v) for v in records[i]["ingredients"])) for i in indices}
     matched = (
@@ -183,7 +159,6 @@ def drug_expansion(query):
         "total_matches": len(matched),
         "truncated": len(matched) > 100 or len(names) > 100,
         "english_terms": names[:100],
-        "japanese_aliases": aliases,
         "dictionary_revision": digest,
         "source_metadata": meta,
         "needs_refresh": not path.exists() or time.time() - path.stat().st_mtime > TTL,

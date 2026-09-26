@@ -3,7 +3,6 @@ import hashlib
 import json
 import logging
 import time
-import uuid
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from urllib.parse import urljoin, urlsplit
@@ -12,7 +11,7 @@ from urllib.robotparser import RobotFileParser
 import httpx
 
 from .config import Settings
-from .domain import RWEError
+from .domain import RWEError, atomic_write
 from .ema import BASE
 
 log = logging.getLogger(__name__)
@@ -151,12 +150,8 @@ class EMAClient:
                                 "content_type": response.headers.get("content-type", ""),
                             }
                             # Atomic replace; callers never observe a half-written body/manifest.
-                            temp = body.with_suffix("." + uuid.uuid4().hex + ".tmp")
-                            temp.write_bytes(data)
-                            temp.replace(body)
-                            temp = manifest.with_suffix("." + uuid.uuid4().hex + ".tmp")
-                            temp.write_text(json.dumps(meta))
-                            temp.replace(manifest)
+                            atomic_write(body, data)
+                            atomic_write(manifest, json.dumps(meta))
                             return data, dict(meta, cached=False)
                 except httpx.TransportError as exc:
                     if attempt == 3:

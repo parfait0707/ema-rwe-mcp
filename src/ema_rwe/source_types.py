@@ -4,11 +4,6 @@ from .domain import RWEError, SourcePreference
 from .selection import SOURCE_ALIASES, categories
 
 
-def preference_for(filters, preference):
-    """filters.data_source_types narrows catalogue candidates; only source_preference ranks PDF evidence."""
-    return preference
-
-
 def assess_row(row, preference):
     assessments = []
     for container in (row.get("analysis", {}), row.get("answer", {})):

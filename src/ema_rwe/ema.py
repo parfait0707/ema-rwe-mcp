@@ -109,13 +109,16 @@ def parse_documents(html: str) -> list[Document]:
     return list(docs.values())
 
 
+KIND_RANK = {"initial": 0, "updated": 1}
+
+
 def select_protocol(docs: list[Document], version: str = "latest") -> tuple[Document, str]:
     if version != "latest":
         docs = [d for d in docs if (d.version or "").lower().lstrip("v") == version.lower().lstrip("v")]
     if not docs:
         raise RWEError("PROTOCOL_NOT_FOUND", "No matching protocol PDF in Study documents.")
-    best_kind = max({"initial": 0, "protocol": 1, "updated": 2}[d.kind] for d in docs)
-    group = [d for d in docs if {"initial": 0, "protocol": 1, "updated": 2}[d.kind] == best_kind]
+    best_kind = max(KIND_RANK[d.kind] for d in docs)
+    group = [d for d in docs if KIND_RANK[d.kind] == best_kind]
     if all(d.version for d in group):
         key = lambda d: (
             tuple(int(x) for x in d.version.split(".")) + (0,) * (8 - len(d.version.split("."))),
