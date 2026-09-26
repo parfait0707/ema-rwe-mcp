@@ -124,6 +124,8 @@ COMPACT_KEYS = (
     "score",
     "analysis_available",
     "protocol_data_sources_status",
+    "match_basis",
+    "matched_terms",
 )
 
 

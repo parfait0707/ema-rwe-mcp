@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Search rows report `match_basis` and `matched_terms`. Zero hits return `analogous_fallback`
+  (analogous concepts with broader/sibling/associated relation and counts); `match_scope="analogous"`
+  and caller `analogous_terms` screen those studies, labelled as analogous in the comparison table.
+- `data/terminology.json` moves 21 concepts' different-concept terms from `related_terms` to
+  `analogous_terms`; broad groups (diabetes, bleeding, cancer) no longer fire inside a specific concept,
+  so 「1型糖尿病」 no longer returns every diabetes study.
+
 ## 0.1.1 (2026-09-26)
 
 - `catalogue_status` reports `studies_total` (the whole local catalogue) and labels the per-export `count`,

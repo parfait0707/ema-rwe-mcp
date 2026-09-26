@@ -10,7 +10,7 @@ from pathlib import Path
 from pydantic import Field, ValidationError
 
 from .config import default_terminology_path
-from .domain import CodeCandidate, Model, RWEError
+from .domain import AnalogousTerm, CodeCandidate, Model, RWEError
 from .vocabulary import canonical, contains
 
 
@@ -20,6 +20,8 @@ class Concept(Model):
     english_terms: list[str] = Field(min_length=1, max_length=40)
     related_terms: list[str] = Field(default_factory=list, max_length=40)
     code_candidates: list[CodeCandidate] = Field(default_factory=list, max_length=40)
+    # Different clinical concepts, kept out of the default search (see AnalogousTerm).
+    analogous_terms: list[AnalogousTerm] = Field(default_factory=list, max_length=40)
 
 
 @lru_cache(maxsize=8)
@@ -134,11 +136,19 @@ def clinical_expansion(query: str, codes: list[CodeCandidate] | None = None) -> 
     candidates = list({(c.system, c.code, c.vocabulary_version): c for c in candidates}.values())
     return {
         "concepts": [c.concept_id for c in matched],
+        "matched_input_terms": [t for c in matched for t in c.input_terms if contains(query, t)],
         "english_terms": list(
             dict.fromkeys([*(t for c in matched for t in c.english_terms), *drugs["english_terms"]])
         ),
         "drugs": drugs,
         "related_terms": list(dict.fromkeys(t for c in matched for t in c.related_terms)),
+        "analogous_terms": list(
+            {
+                a.term.casefold(): {**a.model_dump(), "concept_id": c.concept_id}
+                for c in matched
+                for a in c.analogous_terms
+            }.values()
+        ),
         "code_candidates": [dict(c.model_dump(), search_variants=code_variants(c)) for c in candidates],
         "terminology_revision": revision,
         "systems_to_check": [
@@ -210,22 +220,40 @@ def _content_words(query: str, expansion: dict) -> tuple[list[str], list[str]]:
     return words, code_terms
 
 
-def search_phrases(query: str, expansion: dict) -> list[list[str]]:
-    """Word groups for the catalogue index: words in a group must co-occur (NEAR); groups are OR-ed.
+def labelled_phrases(query: str, expansion: dict) -> list[tuple[str, list[str]]]:
+    """(matched term, word group) pairs for the catalogue index: words in a group must co-occur
+    (NEAR); groups are OR-ed. The label is what a result reports as the term it matched.
 
     The query itself is one group when it has at most four content words. Longer free text falls
     back to single words so that a sentence-style question still retrieves candidates.
     """
     words, code_terms = _content_words(query, expansion)
-    groups = [words] if 0 < len(words) <= 4 else [[w] for w in words]
+    groups = [(" ".join(words), words)] if 0 < len(words) <= 4 else [(w, [w]) for w in words]
     for term in [
         *expansion["synonyms"],
         *expansion["clinical"]["english_terms"],
         *expansion["clinical"]["related_terms"],
         *code_terms,
     ]:
-        groups.append(re.findall(r"\w+", term))
-    return [g for g in groups if g][:350]
+        groups.append((term, re.findall(r"\w+", term)))
+    unique = {}
+    for label, group in groups:
+        if group:
+            unique.setdefault(label.casefold(), (label, group))
+    return list(unique.values())[:350]
+
+
+def search_phrases(query: str, expansion: dict) -> list[list[str]]:
+    return [group for _, group in labelled_phrases(query, expansion)]
+
+
+def analogous_phrases(
+    expansion: dict, extra: list[AnalogousTerm] | None = None
+) -> list[tuple[str, list[str]]]:
+    """(term, word group) pairs for the analogous-concept search: dictionary entries plus caller terms."""
+    terms = [a["term"] for a in expansion["clinical"]["analogous_terms"]] + [a.term for a in extra or []]
+    unique = {t.casefold(): t for t in reversed(terms)}  # first spelling wins, as in analogous_terms()
+    return [(t, g) for t in reversed(unique.values()) if (g := re.findall(r"\w+", t))][:80]
 
 
 def proposed_codes(raw: list[dict]) -> list[CodeCandidate]:

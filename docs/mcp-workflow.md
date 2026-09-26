@@ -33,6 +33,25 @@ the model that drives the tools; the rest of `docs/` is in Japanese.
 - `darwin_only=false` unless the user restricts to DARWIN EU.
 - Counts are local-index counts, never EMA coverage or verified PDF eligibility.
 
+## 2b. Zero hits: analogous concepts
+
+- Every result row carries `match_basis` and `matched_terms`. Report them when a candidate matched only
+  through an expansion term.
+- When the requested concept has no study, the response carries `analogous_fallback` (no PDFs fetched):
+  analogous concepts with `relation` (broader/sibling/associated) and `study_count`. Tell the user that no
+  study of the requested concept exists in the local index, show these concepts, and on agreement rerun
+  `compare_protocols` with `match_scope="analogous"`, the same queries and filters, and a `question` that
+  names the analogous concept.
+- `status=concept_filtered_out`: studies of the requested concept exist in the index
+  (`concept_index_matches_before_filters`) but filters, `darwin_only`, `status` or `analyzed_only` removed
+  them. Say so and offer to relax those first; the analogous concepts are only an alternative.
+- `status=no_analogous_terms`: propose clinically analogous English concepts yourself and pass them as
+  `analogous_terms: [{term, relation}]` with `match_scope="analogous"`.
+- Present every analogous result as "defined this way for the analogous concept X (relation)", never as
+  the requested concept. The comparison table's first row states the match basis.
+- If screened protocols of the requested concept lack the definition asked for, offer the same
+  `match_scope="analogous"` search; the server does not detect this automatically.
+
 ## 3. Narrow when `status=needs_narrowing`
 
 Ask the user, in one message, for BOTH:

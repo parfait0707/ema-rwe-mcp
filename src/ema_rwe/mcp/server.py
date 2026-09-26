@@ -5,9 +5,18 @@ from typing import Annotated, Literal
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 
-from ..domain import CodeCandidate, Extraction, ProtocolAnswer, RWEError, SourcePreference
+from ..domain import AnalogousTerm, CodeCandidate, Extraction, ProtocolAnswer, RWEError, SourcePreference
 from ..selection import SearchFilters
 from ..service import Service
+
+MatchScope = Annotated[
+    Literal["concept", "analogous"],
+    Field(description="analogous searches only clinically analogous concepts (the zero-hit fallback)"),
+]
+AnalogousTerms = Annotated[
+    list[AnalogousTerm] | None,
+    Field(description="Caller-proposed analogous concepts {term, relation: broader/sibling/associated}"),
+]
 
 
 def create_server(service: Service | None = None):
@@ -30,7 +39,9 @@ def create_server(service: Service | None = None):
             "question names one, darwin_only=false; 3) if needs_narrowing, ask the user for a source type "
             "(claims/ehr/registry/others) AND countries using facets, or let them pick study_ids from candidates, "
             "then rerun; 4) within max_screening_studies process every pending tool, cache all extractions and "
-            "answers, then get_protocol_comparison. Never choose a subset silently, never call planned data "
+            "answers, then get_protocol_comparison. Zero hits return analogous_fallback: offer it and rerun with "
+            "match_scope=analogous, labelling results as the analogous concept. "
+            "Never choose a subset silently, never call planned data "
             "sources used, cite PDF pages. When analyze_protocol returns needs_client_extraction and your "
             "client can run a cheaper subagent (e.g. Claude Code Agent with model sonnet), delegate that "
             "study's batch reading and caching to it and keep only cached results in the main context. "
@@ -96,15 +107,29 @@ def create_server(service: Service | None = None):
         ] = None,
         role: Literal["any", "outcome", "condition", "exposure"] = "any",
         detail: Literal["compact", "full"] = "compact",
+        match_scope: MatchScope = "concept",
+        analogous_terms: AnalogousTerms = None,
     ) -> dict:
         """Local catalogue search (no network). Multi-word queries must co-occur; role scopes the columns.
+        Rows carry match_basis and matched_terms; zero hits return analogous_fallback.
 
         Use darwin_only=false for all eligible studies. filters narrow by country, source type
         (claims/ehr/registry/others) and design. detail=full adds descriptions and provenance.
         """
         try:
             return service.search_studies(
-                query, limit, darwin_only, status, analyzed_only, synonyms, codes, filters, role, detail
+                query,
+                limit,
+                darwin_only,
+                status,
+                analyzed_only,
+                synonyms,
+                codes,
+                filters,
+                role,
+                detail,
+                match_scope,
+                analogous_terms,
             )
         except RWEError as exc:
             return exc.as_dict()
@@ -130,11 +155,14 @@ def create_server(service: Service | None = None):
         source_preference: SourcePreference | None = None,
         role: Literal["any", "outcome", "condition", "exposure"] = "any",
         study_ids: list[str] | None = None,
+        match_scope: MatchScope = "concept",
+        analogous_terms: AnalogousTerms = None,
     ) -> dict:
         """Screen the deduplicated union of all query variants; PDFs are fetched only within the limit.
 
         needs_narrowing returns facets and, when few enough, candidates: narrow via filters or pass the
         user's study_ids. source_preference ranks PDF evidence for a definition role after screening.
+        Zero hits return analogous_fallback; rerun with match_scope=analogous to screen those studies.
         """
         return await call(
             "compare_protocols",
@@ -147,6 +175,8 @@ def create_server(service: Service | None = None):
             source_preference,
             role,
             study_ids,
+            match_scope,
+            analogous_terms,
         )
 
     @server.tool()

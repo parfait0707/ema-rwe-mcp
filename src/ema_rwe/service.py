@@ -5,10 +5,12 @@ import re
 from datetime import UTC, datetime
 from pathlib import Path
 
+from pydantic import ValidationError
+
 from .archive import ProtocolArchive
 from .comparison import Comparisons
 from .config import Settings
-from .domain import CodeCandidate, Extraction, ProtocolAnswer, RWEError, SourcePreference, now
+from .domain import AnalogousTerm, CodeCandidate, Extraction, ProtocolAnswer, RWEError, SourcePreference, now
 from .drugs import refresh_dictionary
 from .ema import BASE, is_non_interventional, parse_documents, parse_study, select_protocol
 from .exploration import Explorer
@@ -86,10 +88,21 @@ def expansion_summary(expansion: dict) -> dict:
         "synonyms": expansion["synonyms"],
         "english_terms": clinical["english_terms"],
         "related_terms": clinical["related_terms"],
+        "analogous_terms": [f"{a['term']} ({a['relation']})" for a in clinical["analogous_terms"]],
         "codes": [f"{c['system']}:{c['code']}" for c in clinical["code_candidates"]],
         "drug_terms": clinical["drugs"]["english_terms"],
         "drugs_need_refresh": clinical["drugs"]["needs_refresh"],
     }
+
+
+def analogous_terms(expansions: list[dict], extra: list[AnalogousTerm] | None) -> list[dict]:
+    """Dictionary and caller analogous concepts with their relation, one entry per term."""
+    terms = [a for e in expansions for a in e["clinical"]["analogous_terms"]]
+    terms += [{**a.model_dump(), "concept_id": None} for a in extra or []]
+    unique = {}
+    for term in terms:
+        unique.setdefault(term["term"].casefold(), term)
+    return list(unique.values())
 
 
 def source_type_from_filename(filename: str) -> str | None:
@@ -231,13 +244,25 @@ class Service:
         filters: SearchFilters | None = None,
         role: str = "any",
         detail: str = "compact",
+        match_scope: str = "concept",
+        analogous: list[AnalogousTerm] | None = None,
     ):
         if not 1 <= limit <= 20:
             raise RWEError("INVALID_INPUT", "limit must be 1..20; preview also obeys max_comparison_studies.")
         if detail not in ("compact", "full"):
             raise RWEError("INVALID_INPUT", "detail must be compact or full.")
         candidates = self.repo.search(
-            query, None, darwin_only, status, analyzed_only, synonyms, codes, filters, role
+            query,
+            None,
+            darwin_only,
+            status,
+            analyzed_only,
+            synonyms,
+            codes,
+            filters,
+            role,
+            match_scope,
+            analogous,
         )
         results = candidates[: min(limit, self.settings.max_comparison_studies)]
         for result in results:
@@ -260,6 +285,20 @@ class Service:
             "query": query,
             "role": role,
             **self._selection(candidates),
+            **self._match_scope(
+                [query],
+                [expansion],
+                darwin_only,
+                synonyms,
+                codes,
+                filters,
+                role,
+                match_scope,
+                analogous,
+                bool(candidates),
+                status,
+                analyzed_only,
+            ),
             "max_comparison_studies": self.settings.max_comparison_studies,
             "returned_count": len(results),
             "results_are_preview": len(results) < len(candidates),
@@ -272,6 +311,134 @@ class Service:
             **self._catalogue_summary(bool(candidates)),
             "note": "Protocol fields are not_analyzed until analyze_protocol and extraction are completed. "
             "detail=full returns descriptions, provenance and the full query expansion.",
+        }
+
+    def _union(
+        self,
+        queries,
+        darwin_only,
+        synonyms,
+        codes,
+        filters,
+        role,
+        scope="concept",
+        analogous=None,
+        status=None,
+        analyzed_only=False,
+    ):
+        """Deduplicated candidates of all query variants; matched_terms accumulate across variants.
+        An analogous search excludes the concept matches of every variant, not just its own."""
+        exclude = self._concept_ids(queries, synonyms, codes, role) if scope == "analogous" else None
+        unique = {}
+        for query in queries:
+            for row in self.repo.search(
+                query,
+                None,
+                darwin_only,
+                status,
+                analyzed_only,
+                synonyms,
+                codes,
+                filters,
+                role,
+                scope,
+                analogous,
+                exclude,
+            ):
+                kept = unique.setdefault(row["study_id"], row)
+                kept["matched_terms"] = list(dict.fromkeys(kept["matched_terms"] + row["matched_terms"]))
+        return unique
+
+    def _match_scope(
+        self,
+        queries,
+        expansions,
+        darwin_only,
+        synonyms,
+        codes,
+        filters,
+        role,
+        scope,
+        analogous,
+        has_candidates,
+        status=None,
+        analyzed_only=False,
+    ):
+        """How candidates matched, plus the analogous-concept fallback when the concept itself has no study."""
+        terms = analogous_terms(expansions, analogous)
+        result = {"match_scope": scope}
+        if scope == "analogous":
+            result["analogous_terms"] = terms
+            result["analogous_note"] = (
+                "Every candidate matched only an analogous concept, not the requested one; present its "
+                "definitions as those of the analogous concept."
+                if has_candidates
+                else "No study matched these analogous concepts; relax filters or role, or propose other "
+                "analogous_terms."
+            )
+        elif not has_candidates:
+            union_args = (
+                queries,
+                darwin_only,
+                synonyms,
+                codes,
+                filters,
+                role,
+                "analogous",
+                analogous,
+                status,
+                analyzed_only,
+            )
+            result["analogous_fallback"] = self._fallback(queries, terms, synonyms, codes, role, union_args)
+        return result
+
+    def _concept_ids(self, queries, synonyms, codes, role) -> set[str]:
+        return set().union(*(self.repo.concept_ids(q, synonyms, codes, role) for q in queries))
+
+    def _fallback(self, queries, terms, synonyms, codes, role, union_args):
+        # Concept studies in the index that filters, darwin_only, status or analyzed_only removed:
+        # then the concept is not absent, and the caller must say so before offering analogues.
+        filtered_out = len(self._concept_ids(queries, synonyms, codes, role))
+        rows = list(self._union(*union_args).values()) if terms else []
+        selected = self._selection(rows)
+        counts = {
+            t["term"]: sum(t["term"].casefold() in {m.casefold() for m in r["matched_terms"]} for r in rows)
+            for t in terms
+        }
+        if filtered_out:
+            state = "concept_filtered_out"
+            instruction = (
+                f"{filtered_out} indexed studies match the requested concept but were removed by filters, "
+                "darwin_only, status or analyzed_only. Tell the user and offer to relax those first; offer the "
+                "analogous concepts below only as an alternative."
+            )
+        elif not terms:
+            state = "no_analogous_terms"
+            instruction = (
+                "No study matched the requested concept and no analogous concept is known. Propose clinically "
+                "analogous English concepts (broader category, sibling disease, associated condition) and rerun "
+                "with match_scope='analogous' and analogous_terms."
+            )
+        elif rows:
+            state = "available"
+            instruction = (
+                "No study matched the requested concept itself. Tell the user so, show these analogous concepts "
+                "with their relation and study_count, and on agreement rerun compare_protocols with "
+                "match_scope='analogous' (same queries and filters; phrase the question for the analogous "
+                "concept). Label every result as an analogous concept, never as the requested one."
+            )
+        else:
+            state = "no_matches"
+            instruction = (
+                "Neither the requested concept nor its known analogous concepts matched. Tell the user so; "
+                "relax filters or role, or propose further analogous concepts via analogous_terms."
+            )
+        return {
+            "status": state,
+            "concept_index_matches_before_filters": filtered_out,
+            "analogous_terms": [{**t, "study_count": counts[t["term"]]} for t in terms],
+            **{k: selected[k] for k in ("total_matches", "candidates", "candidates_listed")},
+            "instruction": instruction,
         }
 
     def _selection(self, candidates):
@@ -304,6 +471,8 @@ class Service:
         source_preference: SourcePreference | None = None,
         role: str = "any",
         study_ids: list[str] | None = None,
+        match_scope: str = "concept",
+        analogous: list[AnalogousTerm] | None = None,
     ):
         if (
             not question.strip()
@@ -314,17 +483,11 @@ class Service:
             raise RWEError("INVALID_INPUT", "A question and 1..20 nonempty search queries are required.")
         # filters.data_source_types narrows catalogue candidates; only source_preference ranks PDF evidence.
         preference = source_preference
-        unique = {}
-        for query in queries:
-            for row in self.repo.search(
-                query, None, darwin_only, None, False, synonyms, codes, filters, role
-            ):
-                unique.setdefault(row["study_id"], row)
+        unique = self._union(queries, darwin_only, synonyms, codes, filters, role, match_scope, analogous)
         candidates = list(unique.values())
-        for query in queries:
-            record_unmatched(
-                self.unmatched_log_path, query, "compare_protocols", expand(query, synonyms, codes)
-            )
+        expansions = [expand(q, synonyms, codes) for q in queries]
+        for query, expansion in zip(queries, expansions):
+            record_unmatched(self.unmatched_log_path, query, "compare_protocols", expansion)
         if study_ids is not None:
             # An explicit user choice among the listed candidates; never a silent top N.
             if (
@@ -346,7 +509,19 @@ class Service:
             "role": role,
             "selected_study_ids": study_ids,
             "filters": (filters or SearchFilters()).model_dump(),
-            "query_expansions": [expansion_summary(expand(q, synonyms, codes)) for q in queries],
+            "query_expansions": [expansion_summary(e) for e in expansions],
+            **self._match_scope(
+                queries,
+                expansions,
+                darwin_only,
+                synonyms,
+                codes,
+                filters,
+                role,
+                match_scope,
+                analogous,
+                bool(unique),
+            ),
             "darwin_only": darwin_only,
             "search_scope": "local catalogue metadata and saved analysis only",
             **self._catalogue_summary(bool(candidates)),
@@ -562,6 +737,7 @@ class Service:
             "status": "planned" if queries else "needs_client_translation",
             "unmatched_logged": logged,
             "code_systems_to_check": clinical["systems_to_check"],
+            "analogous_terms": clinical["analogous_terms"],
             "instruction": "Search English names, related names and codes independently. Then inspect outcome/exposure definitions, "
             "code lists and appendices in the selected PDFs. Check the source database, vocabulary/version, "
             "code-set membership and algorithm (counts, time windows, exclusions). A code hit alone does not prove outcome use.",
@@ -576,8 +752,12 @@ class Service:
                         "role": "system",
                         "content": "Plan EMA RWD protocol searches. Translate the user's clinical concepts into English. "
                         "Return JSON {queries: [up to 5 English keyword/code queries], synonyms: [up to 30 English search phrases], "
-                        "code_candidates: [{system, code, label, vocabulary_version, relation, source_url}], uncertainties: [strings]}. "
-                        "relation is candidate/related/broader/narrower/unspecified_subtype; version, label and URL may be null. "
+                        "code_candidates: [{system, code, label, vocabulary_version, relation, source_url}], "
+                        "analogous_terms: [{term, relation}], uncertainties: [strings]}. "
+                        "For code_candidates, relation is candidate/related/broader/narrower/unspecified_subtype; version, label "
+                        "and URL may be null. analogous_terms are up to 10 clinically analogous but different English concepts, "
+                        "searched only when the requested one has no study; their relation is only broader (category), sibling "
+                        "(another disease of the same category) or associated (complication or related condition). "
                         "Consider ICD-10 and national modifications, ICD-9-CM, SNOMED CT, Read/CTV3, MedDRA, OMOP, ATC, RxNorm, "
                         "NDC, LOINC or local codes according to source data. Do not invent codes/URLs: omit uncertain codes and "
                         "describe required master lookup. Suggestions are unverified retrieval candidates, not study definitions. "
@@ -613,6 +793,13 @@ class Service:
                 status="planned",
                 uncertainties=result.get("uncertainties", []),
             )
+            try:
+                proposed = [AnalogousTerm.model_validate(a) for a in result.get("analogous_terms") or []][:10]
+            except (ValidationError, TypeError) as exc:
+                raise RWEError(
+                    "SCHEMA_VALIDATION_FAILED", "Search planner analogous_terms are invalid."
+                ) from exc
+            plan["analogous_terms"] = analogous_terms([plan["query_expansion"]], proposed)
         plan["queries"] = list(
             dict.fromkeys(
                 [

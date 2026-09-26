@@ -21,7 +21,6 @@
    "hepatic events",
    "toxic liver disease",
    "hepatic failure",
-   "hepatitis",
    "jaundice",
    "abnormal liver function",
    "elevated liver enzymes",
@@ -46,6 +45,12 @@
     "relation": "related",
     "source_url": "https://icd.who.int/browse10/2019/en#/K72"
    }
+  ],
+  "analogous_terms": [
+   {
+    "term": "hepatitis",
+    "relation": "sibling"
+   }
   ]
  },
  {
@@ -61,8 +66,6 @@
    "T2DM"
   ],
   "related_terms": [
-   "diabetes mellitus",
-   "diabetic ketoacidosis",
    "hba1c"
   ],
   "code_candidates": [
@@ -73,6 +76,16 @@
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "candidate",
     "source_url": "https://icd.who.int/browse10/2019/en#/E11"
+   }
+  ],
+  "analogous_terms": [
+   {
+    "term": "diabetes mellitus",
+    "relation": "broader"
+   },
+   {
+    "term": "diabetic ketoacidosis",
+    "relation": "associated"
    }
   ]
  },
@@ -88,9 +101,7 @@
    "type 1 diabetes",
    "T1DM"
   ],
-  "related_terms": [
-   "diabetes mellitus"
-  ],
+  "related_terms": [],
   "code_candidates": [
    {
     "system": "ICD-10",
@@ -99,6 +110,12 @@
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "candidate",
     "source_url": "https://icd.who.int/browse10/2019/en#/E10"
+   }
+  ],
+  "analogous_terms": [
+   {
+    "term": "diabetes mellitus",
+    "relation": "broader"
    }
   ]
  },
@@ -138,7 +155,6 @@
    "AF"
   ],
   "related_terms": [
-   "atrial flutter",
    "non-valvular atrial fibrillation",
    "NVAF"
   ],
@@ -150,6 +166,12 @@
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "candidate",
     "source_url": "https://icd.who.int/browse10/2019/en#/I48"
+   }
+  ],
+  "analogous_terms": [
+   {
+    "term": "atrial flutter",
+    "relation": "sibling"
    }
   ]
  },
@@ -193,10 +215,7 @@
    "acute myocardial infarction",
    "MI"
   ],
-  "related_terms": [
-   "acute coronary syndrome",
-   "ischaemic heart disease"
-  ],
+  "related_terms": [],
   "code_candidates": [
    {
     "system": "ICD-10",
@@ -205,6 +224,16 @@
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "candidate",
     "source_url": "https://icd.who.int/browse10/2019/en#/I21"
+   }
+  ],
+  "analogous_terms": [
+   {
+    "term": "acute coronary syndrome",
+    "relation": "broader"
+   },
+   {
+    "term": "ischaemic heart disease",
+    "relation": "broader"
    }
   ]
  },
@@ -224,9 +253,7 @@
    "cerebral infarction"
   ],
   "related_terms": [
-   "cerebrovascular accident",
-   "transient ischaemic attack",
-   "systemic embolism"
+   "cerebrovascular accident"
   ],
   "code_candidates": [
    {
@@ -244,6 +271,16 @@
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "related",
     "source_url": "https://icd.who.int/browse10/2019/en#/I64"
+   }
+  ],
+  "analogous_terms": [
+   {
+    "term": "transient ischaemic attack",
+    "relation": "sibling"
+   },
+   {
+    "term": "systemic embolism",
+    "relation": "associated"
    }
   ]
  },
@@ -296,7 +333,6 @@
    "GI bleeding"
   ],
   "related_terms": [
-   "major bleeding",
    "upper gastrointestinal bleeding"
   ],
   "code_candidates": [
@@ -307,6 +343,12 @@
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "candidate",
     "source_url": "https://icd.who.int/browse10/2019/en#/K92.2"
+   }
+  ],
+  "analogous_terms": [
+   {
+    "term": "major bleeding",
+    "relation": "broader"
    }
   ]
  },
@@ -323,7 +365,6 @@
    "haemorrhage"
   ],
   "related_terms": [
-   "clinically relevant non-major bleeding",
    "intracranial haemorrhage",
    "gastrointestinal bleeding"
   ],
@@ -335,6 +376,12 @@
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "related",
     "source_url": "https://icd.who.int/browse10/2019/en#/R58"
+   }
+  ],
+  "analogous_terms": [
+   {
+    "term": "clinically relevant non-major bleeding",
+    "relation": "sibling"
    }
   ]
  },
@@ -353,9 +400,7 @@
    "deep vein thrombosis",
    "pulmonary embolism"
   ],
-  "related_terms": [
-   "thrombosis"
-  ],
+  "related_terms": [],
   "code_candidates": [
    {
     "system": "ICD-10",
@@ -380,6 +425,12 @@
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "related",
     "source_url": "https://icd.who.int/browse10/2019/en#/I82"
+   }
+  ],
+  "analogous_terms": [
+   {
+    "term": "thrombosis",
+    "relation": "broader"
    }
   ]
  },
@@ -453,7 +504,6 @@
    "CKD"
   ],
   "related_terms": [
-   "renal impairment",
    "end-stage renal disease",
    "eGFR"
   ],
@@ -465,6 +515,12 @@
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "candidate",
     "source_url": "https://icd.who.int/browse10/2019/en#/N18"
+   }
+  ],
+  "analogous_terms": [
+   {
+    "term": "renal impairment",
+    "relation": "broader"
    }
   ]
  },
@@ -481,9 +537,7 @@
    "AKI",
    "acute renal failure"
   ],
-  "related_terms": [
-   "renal impairment"
-  ],
+  "related_terms": [],
   "code_candidates": [
    {
     "system": "ICD-10",
@@ -492,6 +546,12 @@
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "candidate",
     "source_url": "https://icd.who.int/browse10/2019/en#/N17"
+   }
+  ],
+  "analogous_terms": [
+   {
+    "term": "renal impairment",
+    "relation": "broader"
    }
   ]
  },
@@ -556,8 +616,7 @@
    "pneumonia"
   ],
   "related_terms": [
-   "community-acquired pneumonia",
-   "lower respiratory tract infection"
+   "community-acquired pneumonia"
   ],
   "code_candidates": [
    {
@@ -567,6 +626,12 @@
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "candidate",
     "source_url": "https://icd.who.int/browse10/2019/en#/J18"
+   }
+  ],
+  "analogous_terms": [
+   {
+    "term": "lower respiratory tract infection",
+    "relation": "broader"
    }
   ]
  },
@@ -642,9 +707,7 @@
    "psoriasis",
    "plaque psoriasis"
   ],
-  "related_terms": [
-   "psoriatic arthritis"
-  ],
+  "related_terms": [],
   "code_candidates": [
    {
     "system": "ICD-10",
@@ -653,6 +716,12 @@
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "candidate",
     "source_url": "https://icd.who.int/browse10/2019/en#/L40"
+   }
+  ],
+  "analogous_terms": [
+   {
+    "term": "psoriatic arthritis",
+    "relation": "associated"
    }
   ]
  },
@@ -666,10 +735,7 @@
    "ulcerative colitis",
    "colitis ulcerative"
   ],
-  "related_terms": [
-   "inflammatory bowel disease",
-   "IBD"
-  ],
+  "related_terms": [],
   "code_candidates": [
    {
     "system": "ICD-10",
@@ -678,6 +744,16 @@
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "candidate",
     "source_url": "https://icd.who.int/browse10/2019/en#/K51"
+   }
+  ],
+  "analogous_terms": [
+   {
+    "term": "inflammatory bowel disease",
+    "relation": "broader"
+   },
+   {
+    "term": "IBD",
+    "relation": "broader"
    }
   ]
  },
@@ -692,10 +768,7 @@
    "Crohn's disease",
    "Crohn disease"
   ],
-  "related_terms": [
-   "inflammatory bowel disease",
-   "IBD"
-  ],
+  "related_terms": [],
   "code_candidates": [
    {
     "system": "ICD-10",
@@ -704,6 +777,16 @@
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "candidate",
     "source_url": "https://icd.who.int/browse10/2019/en#/K50"
+   }
+  ],
+  "analogous_terms": [
+   {
+    "term": "inflammatory bowel disease",
+    "relation": "broader"
+   },
+   {
+    "term": "IBD",
+    "relation": "broader"
    }
   ]
  },
@@ -743,7 +826,6 @@
    "migraine"
   ],
   "related_terms": [
-   "headache",
    "CGRP"
   ],
   "code_candidates": [
@@ -754,6 +836,12 @@
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "candidate",
     "source_url": "https://icd.who.int/browse10/2019/en#/G43"
+   }
+  ],
+  "analogous_terms": [
+   {
+    "term": "headache",
+    "relation": "broader"
    }
   ]
  },
@@ -794,9 +882,7 @@
    "Parkinson's disease",
    "Parkinson disease"
   ],
-  "related_terms": [
-   "parkinsonism"
-  ],
+  "related_terms": [],
   "code_candidates": [
    {
     "system": "ICD-10",
@@ -805,6 +891,12 @@
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "candidate",
     "source_url": "https://icd.who.int/browse10/2019/en#/G20"
+   }
+  ],
+  "analogous_terms": [
+   {
+    "term": "parkinsonism",
+    "relation": "broader"
    }
   ]
  },
@@ -822,7 +914,6 @@
    "Alzheimer disease"
   ],
   "related_terms": [
-   "cognitive impairment",
    "alzheimer"
   ],
   "code_candidates": [
@@ -841,6 +932,12 @@
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "related",
     "source_url": "https://icd.who.int/browse10/2019/en#/F03"
+   }
+  ],
+  "analogous_terms": [
+   {
+    "term": "cognitive impairment",
+    "relation": "broader"
    }
   ]
  },
@@ -915,11 +1012,8 @@
    "osteoporosis"
   ],
   "related_terms": [
-   "fracture",
-   "fragility fracture",
    "bone mineral density",
-   "osteoporotic",
-   "osteoporotic fractures"
+   "osteoporotic"
   ],
   "code_candidates": [
    {
@@ -937,6 +1031,20 @@
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "related",
     "source_url": "https://icd.who.int/browse10/2019/en#/M80"
+   }
+  ],
+  "analogous_terms": [
+   {
+    "term": "fracture",
+    "relation": "associated"
+   },
+   {
+    "term": "fragility fracture",
+    "relation": "associated"
+   },
+   {
+    "term": "osteoporotic fractures",
+    "relation": "associated"
    }
   ]
  },
@@ -1143,8 +1251,7 @@
    "agranulocytosis"
   ],
   "related_terms": [
-   "febrile neutropenia",
-   "leukopenia"
+   "febrile neutropenia"
   ],
   "code_candidates": [
    {
@@ -1154,6 +1261,12 @@
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "candidate",
     "source_url": "https://icd.who.int/browse10/2019/en#/D70"
+   }
+  ],
+  "analogous_terms": [
+   {
+    "term": "leukopenia",
+    "relation": "broader"
    }
   ]
  },
@@ -1193,8 +1306,6 @@
    "anaphylactic reaction"
   ],
   "related_terms": [
-   "hypersensitivity",
-   "allergic reaction",
    "anaphylactoid",
    "anaphylactic"
   ],
@@ -1206,6 +1317,16 @@
     "vocabulary_version": "WHO ICD-10 2019",
     "relation": "candidate",
     "source_url": "https://icd.who.int/browse10/2019/en#/T78.2"
+   }
+  ],
+  "analogous_terms": [
+   {
+    "term": "hypersensitivity",
+    "relation": "broader"
+   },
+   {
+    "term": "allergic reaction",
+    "relation": "broader"
    }
   ]
  },
