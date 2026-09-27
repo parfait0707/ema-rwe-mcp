@@ -39,6 +39,13 @@ gh release create v0.1.1 --title "v0.1.1" --notes-file CHANGELOG.md
 gh repo edit parfait0707/rwd-catalogue-mcp --visibility public --accept-visibility-change-consequences
 ```
 
+## 以降のリリース（例：v0.2.0）
+
+1. `pyproject.toml` の `version`、`uv lock`、`README.md`・`README_DEV.md` の版表記、`.mcp.json.sample`・`.codex/config.toml.sample` の固定タグ、`EMA_USER_AGENT` の既定値、`CHANGELOG.md` の見出しを揃え、PR でマージする。
+2. main で `uv run pytest -q` と `uv run ruff check src tests` が green であることを確認し、`git tag -a vX.Y.Z -m "..." && git push origin vX.Y.Z`。
+3. `gh release create vX.Y.Z --title "vX.Y.Z" --notes-file <その版の CHANGELOG 節>`。
+4. 下記「公開後の確認」の 1 を新しいタグで行う。
+
 ## 公開後の確認
 
 1. 資格情報のない環境で `uvx --from git+https://github.com/parfait0707/rwd-catalogue-mcp@v0.1.1 ema-rwe --help` が動く。
