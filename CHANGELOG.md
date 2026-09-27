@@ -1,20 +1,27 @@
 # Changelog
 
-## Unreleased
+## 0.2.0 (2026-09-27)
 
-- No disease dictionary ships or loads by default: the MCP client translates Japanese questions,
-  exploring synonyms based on ICD-10 as `plan_study_search.client_expansion` instructs. Optional user
-  dictionaries load from `data/dictionaries/*.json` or `EMA_TERMINOLOGY_PATH`;
-  `data/terminology.example.json` is a format example without WHO ICD-10 titles.
-- Result rows report `matched_term_sources`; the unmatched-query log is written only while a
-  dictionary is configured; the broad clinical groups (diabetes, bleeding, cancer) are removed.
+Breaking: no disease dictionary ships or loads by default. Clients that relied on the bundled
+Japanese disease dictionary must translate questions themselves (the MCP now tells them how) or place
+a dictionary in `data/dictionaries/`.
 
-- Search rows report `match_basis` and `matched_terms`. Zero hits return `analogous_fallback`
-  (analogous concepts with broader/sibling/associated relation and counts); `match_scope="analogous"`
-  and caller `analogous_terms` screen those studies, labelled as analogous in the comparison table.
-- `data/terminology.json` moves 21 concepts' different-concept terms from `related_terms` to
-  `analogous_terms`; broad groups (diabetes, bleeding, cancer) no longer fire inside a specific concept,
-  so 「1型糖尿病」 no longer returns every diabetes study.
+- The MCP client translates Japanese questions, exploring synonyms based on ICD-10 as
+  `plan_study_search.client_expansion` instructs; `needs_client_translation` is returned for every
+  Japanese question without a matching user-dictionary concept. The same ICD-10 guidance drives the
+  server LLM planner (`use_llm=true`).
+- Optional user dictionaries load from `data/dictionaries/*.json` or `EMA_TERMINOLOGY_PATH` (file or
+  folder); `catalogue_status.dictionaries` lists them. The former `data/terminology.json` is now the
+  format example `data/terminology.example.json`, without WHO ICD-10 titles and not loaded by default.
+  The EMA medicines dictionary still ships and loads by default.
+- Search rows report `match_basis`, `matched_terms` and `matched_term_sources` (query, caller, llm,
+  vocabulary, `dictionary:<file>`, ema_medicines).
+- Zero hits return `analogous_fallback`: analogous concepts (broader/sibling/associated) with counts,
+  or `concept_filtered_out` when filters removed existing concept studies. `match_scope="analogous"` and
+  `analogous_terms` (MCP and CLI `--match-scope` / `--analogous`) screen those studies, labelled
+  "類縁概念での一致" in the comparison table's first row.
+- The broad clinical groups (diabetes, bleeding, cancer) are removed, so 「1型糖尿病」 no longer
+  returns every diabetes study. The unmatched-query log is written only while a dictionary is configured.
 
 ## 0.1.1 (2026-09-26)
 
