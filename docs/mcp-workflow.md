@@ -28,18 +28,29 @@ the model that drives the tools; the rest of `docs/` is in Japanese.
 
 ## 2. Screen with `compare_protocols`
 
-- Pass ALL query variants in `queries`; the candidate count is the deduplicated union.
+- Pass one **block** per concept: `blocks: [{role, queries, category_terms}]`. Terms within a block are
+  OR-ed; blocks are AND-ed. A single-concept question may use `queries`, `role` and `category_terms`
+  instead. With blocks, put every term in its block (no global `synonyms`/`codes`).
+- `queries`: every specific name and paraphrase (ICD-10 titles and inclusion terms, clinical names,
+  abbreviations, singular/plural, INN or product names). The candidate count is the deduplicated
+  union.
+- `category_terms`: the umbrella a catalogue record may use instead of the specific name — the ICD-10
+  block or chapter title, composite outcomes (MACE, cardiovascular events, adverse events of special
+  interest, immune-related adverse events, pregnancy outcomes) and ATC group names for medicines. Keep
+  them specific to the concept; generic phrases such as "adverse drug reactions" only add noise.
+- Every column is searched. `role` ranks matches in that role's catalogue columns (Outcomes, Medicinal
+  condition, INN/ATC) first instead of filtering, because 19% of records have an empty Outcomes field.
+- Candidates are ranked, never cut: specific matches before category-only ones, role-column matches
+  first, secondary-use data before surveys, then fused BM25 rank. Each candidate carries
+  `rank_features`, `matched_terms` and `matched_term_sources` (`category` for umbrella matches).
+- `check_protocols=N` (0–20) checks the Study documents of the top N listed candidates (no PDF) and
+  ranks studies without a protocol last. Use it before asking the user to pick `study_ids`.
 - Matching is local FTS5: the words of a multi-word term must co-occur in one column (`NEAR`, distance
-  max(3, words - 1); a query's own distance also covers its stop words, so a title such as "Malignant
-  neoplasm of bronchus and lung" matches itself); single words match as tokens; variants are OR-ed. Each
-  `compare_protocols` query variant stays one phrase however long, so full ICD-10 titles are safe
-  queries. `search_studies` still splits a query of five or more content words into single words, so
-  pass sentence-style questions there, not to `compare_protocols`. Dictionary terms and code variants are
-  added automatically.
-- `role` scopes the columns: `outcome` searches the catalogue Outcomes, Main study objective, title
-  and saved definitions; `condition` searches Medicinal condition and title; `exposure` searches
-  product names, INN, ATC, protocol data sources and title. Use it whenever the question names a role
-  ("as an outcome", "in patients with", "exposed to"). `any` searches everything.
+  max(3, words - 1); a query's own distance also covers its stop words). Each query variant stays one
+  phrase however long. `search_studies` still splits a query of five or more content words into single
+  words and filters by `role`, so pass sentence-style questions there, not to `compare_protocols`.
+- ICD-10 codes rarely appear in catalogue records (code-only relative recall 0.010 on the gold set);
+  they matter when reading protocol PDFs.
 - `darwin_only=false` unless the user restricts to DARWIN EU.
 - Counts are local-index counts, never EMA coverage or verified PDF eligibility.
 

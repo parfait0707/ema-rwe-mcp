@@ -61,7 +61,12 @@ def test_compact_rows_by_default_and_full_on_request(service):
     service.repo.upsert(study("1", description="Long description " * 20, outcomes="bleeding"))
     compact = service.search_studies("bleeding", darwin_only=False)
     assert compact["detail"] == "compact" and "description" not in compact["results"][0]
-    assert set(COMPACT_KEYS) <= set(compact["results"][0]) | {"score"}
+    screening_only = {
+        "rank_features",
+        "protocol_available",
+        "out_of_scope",
+    }  # set by compare_protocols ranking
+    assert set(COMPACT_KEYS) <= set(compact["results"][0]) | {"score"} | screening_only
     assert set(compact["query_expansion"]) == {
         "synonyms",
         "english_terms",

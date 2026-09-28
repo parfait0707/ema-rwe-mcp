@@ -8,6 +8,7 @@ from pydantic import ValidationError
 
 from .config import Settings
 from .domain import AnalogousTerm, CodeCandidate, Extraction, RWEError, SourcePreference
+from .ranking import ScreeningBlock
 from .selection import SearchFilters
 from .service import Service
 from .storage import Repository, import_csv
@@ -54,7 +55,14 @@ def parser():
     search.add_argument("--code", action="append", type=code_argument)
     compare = commands.add_parser("compare")
     compare.add_argument("question")
-    compare.add_argument("--query", action="append", required=True)
+    compare.add_argument("--query", action="append", default=[])
+    compare.add_argument("--category-term", action="append", help="Umbrella term ranked below specific ones")
+    compare.add_argument(
+        "--blocks",
+        type=Path,
+        help="JSON file: list of {role, queries, category_terms}, AND-ed (replaces --query)",
+    )
+    compare.add_argument("--check-protocols", type=int, default=0, help="Check Study documents of the top N")
     compare.add_argument("--darwin-only", action="store_true")
     compare.add_argument("--synonym", action="append")
     compare.add_argument("--code", action="append", type=code_argument)
@@ -207,6 +215,14 @@ async def run(args):
                     args.study_ids,
                     args.match_scope,
                     args.analogous,
+                    args.category_term,
+                    [
+                        ScreeningBlock.model_validate(b)
+                        for b in json.loads(args.blocks.read_text(encoding="utf-8"))
+                    ]
+                    if args.blocks
+                    else None,
+                    args.check_protocols,
                 )
             case "comparison":
                 return await service.get_protocol_comparison(args.comparison_id, args.study_id)

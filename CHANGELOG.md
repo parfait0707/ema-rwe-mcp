@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- `compare_protocols` screens concept `blocks` (`{role, queries, category_terms}`, AND-ed) in every
+  catalogue column and ranks candidates without cutting any: specific matches before category-only
+  ones, role-column matches first, secondary-use data before surveys, then fused BM25 rank
+  (`rank_features`). `category_terms` add umbrella names (ICD-10 block, MACE/AESI, ATC group).
+  `check_protocols=N` checks the Study documents of the top N candidates and ranks studies without a
+  protocol last. On the gold set (provisional labels): relative recall 0.858 → 0.965, relevant studies
+  in the top 5 3.60 → 4.10.
+
 ## 0.2.1 (2026-09-28)
 
 Bug-fix release. Search-logic changes from the retrieval survey

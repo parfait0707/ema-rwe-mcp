@@ -83,6 +83,23 @@ async def test_stdio_discovery_validation_and_local_search(settings, csv_file, p
             properties = tool.inputSchema["properties"]
             assert properties["match_scope"]["default"] == "concept"
             assert properties["analogous_terms"]["description"]
+        compare_properties = comparison_tool.inputSchema["properties"]
+        assert compare_properties["check_protocols"]["default"] == 0
+        assert {"blocks", "category_terms"} <= set(compare_properties)
+        assert "queries" not in comparison_tool.inputSchema.get("required", [])
+        blocked = await session.call_tool(
+            "compare_protocols",
+            {
+                "question": "q",
+                "blocks": [
+                    {"role": "exposure", "queries": ["zzqx"]},  # no match: stays offline (no PDF preparation)
+                    {"role": "outcome", "queries": ["qqzz"], "category_terms": ["yyxx"]},
+                ],
+            },
+        )
+        body = json.loads(blocked.content[0].text)
+        assert body["blocks"][1]["category_terms"] == ["yyxx"] and body["total_matches"] == 0
+        assert body["network_requests"] == 0
         analogous = await session.call_tool(
             "search_studies",
             {
