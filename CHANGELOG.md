@@ -1,10 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.3.1 (2026-09-28)
 
-- Wheel installs (`uvx`) refresh the user's catalogue database when a newer package bundles a newer
-  catalogue import. Cached analyses and answers are carried over; a database the user imported a
-  newer CSV into is kept.
+- Wheel installs (`uvx`) refresh the catalogue tables of the user's database when a newer package
+  bundles a newer catalogue import, in place and in one transaction. Cached analyses and answers are
+  untouched; a database the user imported a newer CSV into is kept.
 
 ## 0.3.0 (2026-09-28)
 
