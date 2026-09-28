@@ -1,0 +1,335 @@
+{
+ "q01": [
+  [
+   "interstitial lung disease",
+   "ILD",
+   "pulmonary fibrosis",
+   "idiopathic pulmonary fibrosis",
+   "drug-induced interstitial lung disease",
+   "diffuse parenchymal lung disease",
+   "pneumonitis",
+   "interstitial pneumonia",
+   "usual interstitial pneumonia",
+   "nonspecific interstitial pneumonia",
+   "organizing pneumonia",
+   "lung fibrosis"
+  ]
+ ],
+ "q02": [
+  [
+   "acute pancreatitis",
+   "pancreatitis",
+   "drug-induced pancreatitis",
+   "severe acute pancreatitis",
+   "necrotizing pancreatitis",
+   "acute pancreatitis hospitalization",
+   "pancreatitis hospitalisation",
+   "biliary pancreatitis",
+   "gallstone pancreatitis",
+   "pancreatic inflammation"
+  ]
+ ],
+ "q03": [
+  [
+   "drug-induced liver injury",
+   "DILI",
+   "hepatotoxicity",
+   "acute liver injury",
+   "drug-induced hepatotoxicity",
+   "liver injury",
+   "drug-induced acute hepatitis",
+   "hepatocellular liver injury",
+   "cholestatic liver injury",
+   "acute liver failure",
+   "drug-related liver damage"
+  ]
+ ],
+ "q04": [
+  [
+   "severe hypoglycaemia",
+   "severe hypoglycemia",
+   "hypoglycemia",
+   "hypoglycaemia",
+   "hypoglycemic episodes",
+   "hypoglycemia-related hospitalization",
+   "severe hypoglycemic events",
+   "insulin-induced hypoglycemia",
+   "hypoglycemic coma",
+   "documented hypoglycemia"
+  ]
+ ],
+ "q05": [
+  [
+   "rhabdomyolysis",
+   "statin-induced rhabdomyolysis",
+   "muscle breakdown",
+   "myopathy",
+   "myotoxicity",
+   "creatine kinase elevation",
+   "drug-induced myopathy",
+   "severe myopathy",
+   "acute rhabdomyolysis",
+   "muscle injury"
+  ]
+ ],
+ "q06": [
+  [
+   "venous thromboembolism",
+   "VTE",
+   "deep vein thrombosis",
+   "pulmonary embolism",
+   "DVT",
+   "thromboembolic events",
+   "venous thrombosis",
+   "blood clots",
+   "thromboembolism"
+  ]
+ ],
+ "q07": [
+  [
+   "major adverse cardiovascular events",
+   "MACE",
+   "cardiovascular events",
+   "myocardial infarction stroke death",
+   "composite cardiovascular outcome",
+   "cardiovascular death",
+   "nonfatal myocardial infarction",
+   "nonfatal stroke",
+   "cardiovascular morbidity and mortality",
+   "ischemic cardiovascular events"
+  ]
+ ],
+ "q08": [
+  [
+   "herpes zoster",
+   "shingles",
+   "varicella zoster reactivation",
+   "zoster infection",
+   "herpes zoster infection",
+   "postherpetic neuralgia",
+   "zoster-related hospitalization"
+  ]
+ ],
+ "q09": [
+  [
+   "congenital malformations",
+   "birth defects",
+   "congenital anomalies",
+   "congenital abnormalities",
+   "fetal malformations",
+   "teratogenic effects",
+   "structural birth defects",
+   "major congenital malformations",
+   "congenital malformation risk",
+   "fetal abnormalities"
+  ]
+ ],
+ "q10": [
+  [
+   "Stevens-Johnson syndrome",
+   "toxic epidermal necrolysis",
+   "SJS",
+   "TEN",
+   "SJS-TEN spectrum",
+   "severe cutaneous adverse reactions",
+   "drug-induced skin reactions",
+   "epidermal necrolysis",
+   "severe skin reactions",
+   "bullous skin reactions"
+  ]
+ ],
+ "q11": [
+  [
+   "heart failure",
+   "congestive heart failure",
+   "chronic heart failure",
+   "heart failure reduced ejection fraction",
+   "HFrEF",
+   "heart failure preserved ejection fraction",
+   "HFpEF",
+   "cardiac failure",
+   "decompensated heart failure",
+   "acute heart failure",
+   "heart failure patients cohort"
+  ]
+ ],
+ "q12": [
+  [
+   "rheumatoid arthritis",
+   "RA patients",
+   "rheumatoid arthritis cohort",
+   "seropositive rheumatoid arthritis",
+   "rheumatoid arthritis registry",
+   "inflammatory arthritis",
+   "RA",
+   "rheumatoid arthritis patients"
+  ]
+ ],
+ "q13": [
+  [
+   "chronic kidney disease",
+   "CKD",
+   "chronic renal disease",
+   "chronic renal failure",
+   "renal impairment",
+   "kidney disease patients",
+   "end-stage renal disease",
+   "ESRD",
+   "chronic kidney disease cohort",
+   "reduced kidney function"
+  ]
+ ],
+ "q14": [
+  [
+   "direct oral anticoagulants",
+   "DOAC",
+   "non-vitamin K antagonist oral anticoagulants",
+   "NOAC",
+   "rivaroxaban",
+   "apixaban",
+   "dabigatran",
+   "edoxaban",
+   "oral anticoagulant therapy",
+   "anticoagulant users"
+  ],
+  [
+   "gastrointestinal bleeding",
+   "GI bleeding",
+   "upper gastrointestinal hemorrhage",
+   "lower gastrointestinal hemorrhage",
+   "gastrointestinal haemorrhage",
+   "major bleeding",
+   "GI hemorrhage",
+   "bleeding events",
+   "gastrointestinal bleeds"
+  ]
+ ],
+ "q15": [
+  [
+   "SGLT2 inhibitors",
+   "sodium-glucose cotransporter 2 inhibitors",
+   "SGLT2i",
+   "empagliflozin",
+   "dapagliflozin",
+   "canagliflozin",
+   "ertugliflozin",
+   "gliflozins"
+  ],
+  [
+   "diabetic ketoacidosis",
+   "DKA",
+   "euglycemic ketoacidosis",
+   "ketoacidosis",
+   "diabetic ketoacidosis hospitalization",
+   "metabolic acidosis diabetes"
+  ]
+ ],
+ "q16": [
+  [
+   "JAK inhibitors",
+   "Janus kinase inhibitors",
+   "tofacitinib",
+   "baricitinib",
+   "upadacitinib",
+   "filgotinib",
+   "JAKi"
+  ],
+  [
+   "serious infections",
+   "severe infections",
+   "opportunistic infections",
+   "infection-related hospitalization",
+   "serious infectious events",
+   "herpes zoster infections",
+   "infection risk"
+  ]
+ ],
+ "q17": [
+  [
+   "immune checkpoint inhibitors",
+   "ICI therapy",
+   "PD-1 inhibitors",
+   "PD-L1 inhibitors",
+   "CTLA-4 inhibitors",
+   "pembrolizumab",
+   "nivolumab",
+   "atezolizumab",
+   "ipilimumab",
+   "durvalumab"
+  ],
+  [
+   "pneumonitis",
+   "interstitial lung disease",
+   "immune-related pneumonitis",
+   "checkpoint inhibitor pneumonitis",
+   "drug-induced pneumonitis",
+   "ILD",
+   "immune-mediated lung toxicity",
+   "lung inflammation"
+  ]
+ ],
+ "q18": [
+  [
+   "antiepileptic drugs in pregnancy",
+   "anticonvulsants in pregnancy",
+   "valproate exposure in pregnancy",
+   "lamotrigine exposure in pregnancy",
+   "levetiracetam exposure in pregnancy",
+   "carbamazepine exposure in pregnancy",
+   "prenatal antiepileptic drug exposure",
+   "maternal epilepsy treatment",
+   "AED use during pregnancy"
+  ],
+  [
+   "offspring outcomes",
+   "neurodevelopmental outcomes",
+   "congenital malformations",
+   "birth defects",
+   "fetal outcomes",
+   "child neurodevelopment",
+   "infant outcomes",
+   "pregnancy outcomes",
+   "developmental delay",
+   "cognitive outcomes in children"
+  ]
+ ],
+ "q19": [
+  [
+   "COVID-19 infection",
+   "SARS-CoV-2 infection",
+   "coronavirus disease 2019",
+   "post-COVID condition",
+   "COVID-19 patients",
+   "SARS-CoV-2 positive",
+   "long COVID"
+  ],
+  [
+   "myocarditis",
+   "pericarditis",
+   "cardiac inflammation",
+   "post-viral myocarditis",
+   "myocarditis hospitalization",
+   "acute myocarditis"
+  ]
+ ],
+ "q20": [
+  [
+   "vaccination",
+   "vaccine exposure",
+   "COVID-19 vaccination",
+   "influenza vaccination",
+   "vaccine safety",
+   "post-vaccination",
+   "immunization"
+  ],
+  [
+   "Guillain-Barre syndrome",
+   "GBS",
+   "acute inflammatory demyelinating polyneuropathy",
+   "post-vaccination GBS",
+   "peripheral neuropathy",
+   "demyelinating polyneuropathy",
+   "ascending paralysis"
+  ]
+ ]
+}
