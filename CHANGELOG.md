@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Wheel installs (`uvx`) refresh the user's catalogue database when a newer package bundles a newer
+  catalogue import. Cached analyses and answers are carried over; a database the user imported a
+  newer CSV into is kept.
+
 ## 0.3.0 (2026-09-28)
 
 Search-logic release. Candidate lists are longer (65 → 144 studies on average in the gold set) but

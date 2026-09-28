@@ -522,3 +522,73 @@ def import_csv(
         "mode": "upsert; records absent from this export are retained",
         "schema_warnings": schema_warnings,
     }
+
+
+# Catalogue tables a newer bundled database replaces; everything else (cached analyses, answers,
+# history) is the user's own work and is never touched.
+CATALOGUE_TABLES = ("studies", "imports", "study_catalogue_search", "study_fts")
+
+
+def latest_import(path: Path, immutable: bool = False) -> str | None:
+    """Timestamp of the database's newest catalogue import; None when it is unreadable or has none."""
+    # immutable: the bundle may sit in a read-only site-packages where even a read would create -shm.
+    uri = f"{path.resolve().as_uri()}?mode=ro" + ("&immutable=1" if immutable else "")
+    try:
+        db = sqlite3.connect(uri, uri=True)
+        try:
+            return db.execute("SELECT MAX(imported_at) FROM imports").fetchone()[0]
+        finally:
+            db.close()
+    except sqlite3.Error:
+        return None
+
+
+def refresh_from_bundle(bundled: Path, dest: Path) -> bool:
+    """Replace the catalogue tables of `dest` with the bundled ones when the bundle holds a newer import.
+
+    Done in place, in one write transaction, so running servers see either catalogue and the user's
+    cached analyses and answers stay as they are. A database whose own import is newer (the user
+    imported a CSV) is kept. Studies re-fetched by get_study revert to the bundled row.
+    """
+    new = latest_import(bundled, immutable=True)
+    if not new or not dest.is_file() or not (latest_import(dest) or "") < new:
+        return False
+    try:
+        repo = Repository(dest)  # brings an older user schema up to this package's version
+        # uri=True so ATTACH accepts the read-only, immutable bundle URI
+        db = sqlite3.connect(dest.resolve().as_uri(), uri=True, timeout=30)
+        try:
+            db.execute("ATTACH DATABASE ? AS bundle", (f"{bundled.resolve().as_uri()}?mode=ro&immutable=1",))
+            try:
+                if db.execute("PRAGMA bundle.user_version").fetchone()[0] != SCHEMA_VERSION:
+                    return False
+                db.execute("BEGIN IMMEDIATE")
+                # Re-check under the write lock: another process may have refreshed meanwhile.
+                current = db.execute("SELECT MAX(imported_at) FROM imports").fetchone()[0]
+                if current and current >= new:
+                    db.rollback()
+                    return False
+                for table in CATALOGUE_TABLES:
+                    columns = ", ".join(
+                        r[1] for r in db.execute(f"PRAGMA main.table_info({table})").fetchall()
+                    )
+                    db.execute(f"DELETE FROM main.{table}")
+                    db.execute(f"INSERT INTO main.{table} ({columns}) SELECT {columns} FROM bundle.{table}")
+                analysed = db.execute(
+                    "SELECT s.body FROM studies s JOIN analyses a ON a.study_id = s.id"
+                ).fetchall()
+                for (body,) in analysed:  # the bundle's index lacks the user's analysed facts
+                    try:
+                        repo._index(db, Study.model_validate_json(body))
+                    except (KeyError, TypeError, ValueError):
+                        continue  # a malformed cached analysis stays unindexed, as it was
+                db.commit()
+            finally:
+                if db.in_transaction:
+                    db.rollback()
+                db.execute("DETACH DATABASE bundle")
+        finally:
+            db.close()
+        return True
+    except Exception:  # noqa: BLE001 - never block startup; the working catalogue stays as it was
+        return False
