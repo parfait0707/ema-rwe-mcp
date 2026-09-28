@@ -38,3 +38,64 @@ def test_wheel_install_seeds_user_data_dir_once(tmp_path, monkeypatch):
     (user_dir / "ema.sqlite3").write_text("user edited")
     config.default_data_dir()
     assert (user_dir / "ema.sqlite3").read_text() == "user edited"
+
+
+def catalogue(path, imported_at, *titles):
+    from test_screening import study
+
+    from ema_rwe.storage import Repository
+
+    repo = Repository(path)
+    for i, title in enumerate(titles, 1):
+        repo.upsert(study(str(i), title=title))
+    with repo.connection() as db:
+        db.execute(
+            "INSERT INTO imports VALUES (?,?,?,?)", (imported_at, "export.csv", imported_at, len(titles))
+        )
+    return repo
+
+
+def test_newer_bundle_refreshes_catalogue_and_keeps_user_caches(tmp_path):
+    from ema_rwe.storage import refresh_from_bundle
+
+    bundled, user = tmp_path / "bundled.sqlite3", tmp_path / "user.sqlite3"
+    catalogue(bundled, "2026-10-01", "Pancreatitis cohort", "Newly registered stroke study")
+    repo = catalogue(user, "2026-09-13", "Pancreatitis cohort")
+    with repo.connection() as db:
+        db.execute("INSERT INTO analyses VALUES ('1','fp',?)", ('{"analysis": {}}',))
+        db.execute("CREATE TABLE protocol_answers (cache_key TEXT PRIMARY KEY, body TEXT NOT NULL)")
+        db.execute("INSERT INTO protocol_answers VALUES ('k','answer')")
+
+    assert refresh_from_bundle(bundled, user)
+    refreshed = type(repo)(user)
+    assert refreshed.study_count() == 2
+    assert [r["study_id"] for r in refreshed.search("stroke", None, False, None)] == ["2"]
+    assert refreshed.analysis("1") == {"analysis": {}}
+    with refreshed.connection() as db:
+        assert db.execute("SELECT body FROM protocol_answers").fetchone()[0] == "answer"
+    assert not refresh_from_bundle(bundled, user)  # same import now: nothing to do
+
+
+def test_user_import_newer_than_bundle_is_kept(tmp_path):
+    from ema_rwe.storage import refresh_from_bundle
+
+    bundled, user = tmp_path / "bundled.sqlite3", tmp_path / "user.sqlite3"
+    catalogue(bundled, "2026-09-13", "Old bundled study")
+    catalogue(user, "2026-10-01", "User imported study")
+    assert not refresh_from_bundle(bundled, user)
+    assert refresh_from_bundle(bundled, tmp_path / "missing.sqlite3") is False
+
+
+def test_bundle_with_another_schema_leaves_user_database_untouched(tmp_path):
+    import sqlite3
+
+    from ema_rwe.storage import refresh_from_bundle
+
+    bundled, user = tmp_path / "bundled.sqlite3", tmp_path / "user.sqlite3"
+    catalogue(bundled, "2026-10-01", "Bundled study", "Another")
+    db = sqlite3.connect(bundled)
+    db.execute("PRAGMA user_version=999")
+    db.close()
+    repo = catalogue(user, "2026-09-13", "User study")
+    assert not refresh_from_bundle(bundled, user)
+    assert repo.study_count() == 1 and repo.get("1").title == "User study"

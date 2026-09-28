@@ -8,10 +8,12 @@ from platformdirs import user_cache_path, user_data_path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 BUNDLED_DATA = Path(__file__).resolve().parent / "data"
 SEEDED_FILES = ("ema.sqlite3", "ema-medicines.json")
+_refreshed: set[Path] = set()
 
 
 def default_data_dir() -> Path:
-    """<checkout>/data inside a checkout; otherwise the user data dir, seeded once from the wheel's bundled copy."""
+    """<checkout>/data inside a checkout; otherwise the user data dir, seeded from the wheel's bundled copy and
+    refreshed when a newer package bundles a newer catalogue (the user's cached analyses are kept)."""
     if (REPO_ROOT / "pyproject.toml").is_file():
         return REPO_ROOT / "data"
     target = user_data_path("ema-rwe-mcp")
@@ -20,6 +22,11 @@ def default_data_dir() -> Path:
         source, destination = BUNDLED_DATA / name, target / name
         if source.is_file() and not destination.exists():
             shutil.copyfile(source, destination)
+    if target not in _refreshed:  # once per process: startup calls this several times
+        _refreshed.add(target)
+        from .storage import refresh_from_bundle  # storage imports this module indirectly
+
+        refresh_from_bundle(BUNDLED_DATA / "ema.sqlite3", target / "ema.sqlite3")
     return target
 
 
