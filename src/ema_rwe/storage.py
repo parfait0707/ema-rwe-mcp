@@ -190,10 +190,12 @@ class Repository:
                 (hashlib.sha256(row["body"].encode()).hexdigest(), study_id, row["fingerprint"], row["body"]),
             )
 
-    def concept_ids(self, query: str, synonyms=None, codes=None, role: str = "any") -> set[str]:
+    def concept_ids(
+        self, query: str, synonyms=None, codes=None, role: str = "any", split_long: bool = True
+    ) -> set[str]:
         """Index matches of the requested concept before any filter: the analogous-scope exclusion and
         the evidence that a zero-hit result came from filters rather than from the catalogue."""
-        groups = [group for _, group in labelled_phrases(query, expand(query, synonyms, codes))]
+        groups = [group for _, group in labelled_phrases(query, expand(query, synonyms, codes), split_long)]
         match = fts_match(groups, ROLE_COLUMNS[role])
         if not match:
             return set()
@@ -214,6 +216,7 @@ class Repository:
         scope: str = "concept",
         analogous=None,
         exclude: set[str] | None = None,
+        split_long: bool = True,
     ) -> list[dict]:
         """scope=concept searches the query and its expansion; scope=analogous searches only analogous
         concepts (dictionary + caller terms) and drops studies the concept search would also match,
@@ -227,7 +230,7 @@ class Repository:
         expansion = expand(query, synonyms, codes)
         columns = ROLE_COLUMNS[role]
         phrases = (
-            labelled_phrases(query, expansion)
+            labelled_phrases(query, expansion, split_long)
             if scope == "concept"
             else analogous_phrases(expansion, analogous)
         )
@@ -246,7 +249,7 @@ class Repository:
                         terms.append(label)
         excluded = set(exclude or ())
         if scope == "analogous":
-            excluded |= self.concept_ids(query, synonyms, codes, role)
+            excluded |= self.concept_ids(query, synonyms, codes, role, split_long)
         with self.connection() as db:
             if match:
                 rows = db.execute(
@@ -298,14 +301,19 @@ class Repository:
         return results
 
 
-def fts_match(groups: list[list[str]], columns: tuple[str, ...] | None) -> str:
-    """OR of word groups. Multi-word groups must co-occur within three tokens of one column."""
+def fts_match(groups: list, columns: tuple[str, ...] | None) -> str:
+    """OR of word groups. A group is a word list, or (words, distance) when its words were picked out
+    of longer text. Multi-word groups must co-occur in one column: NEAR distance (tokens between the
+    first and last word) is max(3, words - 1), or the given distance when larger."""
     clauses = []
     for group in groups:
+        group, distance = group if isinstance(group, tuple) else (group, 0)
         words = ['"' + canonical(w).replace('"', '""') + '"' for w in group if canonical(w)]
         if not words:
             continue
-        clauses.append(words[0] if len(words) == 1 else f"NEAR({' '.join(words)}, 3)")
+        # A fixed distance would never match an adjacent phrase of six or more words.
+        near = max(3, len(words) - 1, distance)
+        clauses.append(words[0] if len(words) == 1 else f"NEAR({' '.join(words)}, {near})")
     if not clauses:
         return ""
     expr = " OR ".join(clauses)

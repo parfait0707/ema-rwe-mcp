@@ -358,10 +358,13 @@ class Service:
         analogous=None,
         status=None,
         analyzed_only=False,
+        split_long=True,
     ):
         """Deduplicated candidates of all query variants; matched_terms accumulate across variants.
         An analogous search excludes the concept matches of every variant, not just its own."""
-        exclude = self._concept_ids(queries, synonyms, codes, role) if scope == "analogous" else None
+        exclude = (
+            self._concept_ids(queries, synonyms, codes, role, split_long) if scope == "analogous" else None
+        )
         unique = {}
         for query in queries:
             for row in self.repo.search(
@@ -377,6 +380,7 @@ class Service:
                 scope,
                 analogous,
                 exclude,
+                split_long,
             ):
                 kept = unique.setdefault(row["study_id"], row)
                 kept["matched_terms"] = list(dict.fromkeys(kept["matched_terms"] + row["matched_terms"]))
@@ -397,6 +401,7 @@ class Service:
         has_candidates,
         status=None,
         analyzed_only=False,
+        split_long=True,
     ):
         """How candidates matched, plus the analogous-concept fallback when the concept itself has no study."""
         terms = analogous_terms(expansions, analogous)
@@ -422,17 +427,20 @@ class Service:
                 analogous,
                 status,
                 analyzed_only,
+                split_long,
             )
-            result["analogous_fallback"] = self._fallback(queries, terms, synonyms, codes, role, union_args)
+            result["analogous_fallback"] = self._fallback(
+                queries, terms, synonyms, codes, role, union_args, split_long
+            )
         return result
 
-    def _concept_ids(self, queries, synonyms, codes, role) -> set[str]:
-        return set().union(*(self.repo.concept_ids(q, synonyms, codes, role) for q in queries))
+    def _concept_ids(self, queries, synonyms, codes, role, split_long=True) -> set[str]:
+        return set().union(*(self.repo.concept_ids(q, synonyms, codes, role, split_long) for q in queries))
 
-    def _fallback(self, queries, terms, synonyms, codes, role, union_args):
+    def _fallback(self, queries, terms, synonyms, codes, role, union_args, split_long=True):
         # Concept studies in the index that filters, darwin_only, status or analyzed_only removed:
         # then the concept is not absent, and the caller must say so before offering analogues.
-        filtered_out = len(self._concept_ids(queries, synonyms, codes, role))
+        filtered_out = len(self._concept_ids(queries, synonyms, codes, role, split_long))
         rows = list(self._union(*union_args).values()) if terms else []
         selected = self._selection(rows)
         counts = {
@@ -517,7 +525,10 @@ class Service:
             raise RWEError("INVALID_INPUT", "A question and 1..20 nonempty search queries are required.")
         # filters.data_source_types narrows catalogue candidates; only source_preference ranks PDF evidence.
         preference = source_preference
-        unique = self._union(queries, darwin_only, synonyms, codes, filters, role, match_scope, analogous)
+        # Query variants are explicit search terms: keep each as one phrase, however long.
+        unique = self._union(
+            queries, darwin_only, synonyms, codes, filters, role, match_scope, analogous, split_long=False
+        )
         candidates = list(unique.values())
         expansions = [expand(q, synonyms, codes) for q in queries]
         for query, expansion in zip(queries, expansions):
@@ -555,6 +566,7 @@ class Service:
                 match_scope,
                 analogous,
                 bool(unique),
+                split_long=False,
             ),
             "darwin_only": darwin_only,
             "search_scope": "local catalogue metadata and saved analysis only",
