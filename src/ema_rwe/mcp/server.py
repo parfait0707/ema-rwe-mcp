@@ -6,6 +6,7 @@ from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 
 from ..domain import AnalogousTerm, CodeCandidate, Extraction, ProtocolAnswer, RWEError, SourcePreference
+from ..ranking import ScreeningBlock
 from ..selection import SearchFilters
 from ..service import Service
 
@@ -36,8 +37,8 @@ def create_server(service: Service | None = None):
             "Evidence-backed search of Non-interventional EMA studies over a local catalogue; PDFs are fetched "
             "only for screened studies. Workflow: 1) plan_study_search; no disease dictionary ships, so on "
             "needs_client_translation generate English terms, synonyms, codes and analogous_terms yourself, "
-            "exploring synonyms based on ICD-10 as client_expansion instructs; 2) compare_protocols with ALL query variants, role=outcome/condition/exposure when the "
-            "question names one, darwin_only=false; 3) if needs_narrowing, ask the user for a source type "
+            "exploring synonyms based on ICD-10 as client_expansion instructs; 2) compare_protocols with one block per "
+            "concept (role, ALL query variants, category_terms), darwin_only=false; candidates come ranked; 3) if needs_narrowing, ask the user for a source type "
             "(claims/ehr/registry/others) AND countries using facets, or let them pick study_ids from candidates, "
             "then rerun; 4) within max_screening_studies process every pending tool, cache all extractions and "
             "answers, then get_protocol_comparison. Zero hits return analogous_fallback: offer it and rerun with "
@@ -138,7 +139,9 @@ def create_server(service: Service | None = None):
     @server.tool()
     async def compare_protocols(
         question: str,
-        queries: list[str],
+        queries: Annotated[
+            list[str] | None, Field(description="Single-concept terms; leave empty when blocks are given")
+        ] = None,
         filters: Annotated[
             SearchFilters | None,
             Field(
@@ -158,17 +161,32 @@ def create_server(service: Service | None = None):
         study_ids: list[str] | None = None,
         match_scope: MatchScope = "concept",
         analogous_terms: AnalogousTerms = None,
+        category_terms: Annotated[
+            list[str] | None,
+            Field(
+                description="Umbrella terms (ICD-10 block/chapter, MACE-style composite, ATC group); ranked lower"
+            ),
+        ] = None,
+        blocks: Annotated[
+            list[ScreeningBlock] | None,
+            Field(
+                description="One per concept, AND-ed: {role, queries, category_terms}; replaces queries/role"
+            ),
+        ] = None,
+        check_protocols: Annotated[
+            int, Field(ge=0, le=20, description="Check Study documents of the top N listed candidates")
+        ] = 0,
     ) -> dict:
-        """Screen the deduplicated union of all query variants; PDFs are fetched only within the limit.
+        """Screen the union of all query variants in every column, ranked (role, specificity, study type).
 
-        needs_narrowing returns facets and, when few enough, candidates: narrow via filters or pass the
-        user's study_ids. source_preference ranks PDF evidence for a definition role after screening.
-        Zero hits return analogous_fallback; rerun with match_scope=analogous to screen those studies.
+        needs_narrowing returns facets and, when few enough, ranked candidates: narrow via filters or pass
+        the user's study_ids. source_preference ranks PDF evidence after screening. Zero hits return
+        analogous_fallback; rerun with match_scope=analogous to screen those studies.
         """
         return await call(
             "compare_protocols",
             question,
-            queries,
+            queries or [],
             filters,
             darwin_only,
             synonyms,
@@ -178,6 +196,9 @@ def create_server(service: Service | None = None):
             study_ids,
             match_scope,
             analogous_terms,
+            category_terms,
+            blocks,
+            check_protocols,
         )
 
     @server.tool()

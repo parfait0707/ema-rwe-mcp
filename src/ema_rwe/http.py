@@ -54,6 +54,7 @@ class EMAClient:
         )
         self.lock = asyncio.Lock()
         self.last_request = 0.0
+        self.requests_made = 0  # actual HTTP requests (cache hits excluded), for honest network counts
         self.robots = None
         self.cleanup()
 
@@ -115,6 +116,7 @@ class EMAClient:
             for attempt in range(4):
                 await asyncio.sleep(max(0, self.settings.interval - (time.monotonic() - self.last_request)))
                 self.last_request = time.monotonic()
+                self.requests_made += 1
                 try:
                     async with self.client.stream("GET", current) as response:
                         status = response.status_code

@@ -24,6 +24,7 @@ from .pdf import (
     sections,
     validate_evidence,
 )
+from .ranking import ScreeningBlock, order_key, screen
 from .selection import TYPED_SOURCES, SearchFilters, compact, selection
 from .storage import Repository, import_csv
 from .terminology import dictionary_paths, proposed_codes
@@ -42,11 +43,23 @@ ICD10_SYNONYM_GUIDANCE = (
     "relation=broader; complications or related conditions are relation=associated. National modifications "
     "(ICD-10-CM, ICD-10-GM, Japanese adaptations) may differ from WHO ICD-10."
 )
+CATEGORY_GUIDANCE = (
+    "Catalogue records often name only a category, so give each concept category_terms too: the ICD-10 "
+    "block or chapter title (e.g. systemic connective tissue disorders for SLE, ischaemic heart diseases for "
+    "unstable angina), composite or umbrella outcomes studies use (MACE, cardiovascular events, adverse events "
+    "of special interest, immune-related adverse events, pregnancy outcomes) and, for medicines, the ATC group "
+    "name (PD-1/PD-L1 inhibitors, direct factor Xa inhibitors, antimycotics for systemic use). Keep them "
+    "specific to the concept: generic terms such as 'adverse drug reactions' only add noise. Category matches "
+    "are ranked below specific ones. Codes rarely appear in catalogue records; they matter in the protocol PDFs."
+)
 CLIENT_EXPANSION_INSTRUCTION = (
-    "Translate the question yourself and pass the result to compare_protocols (and search_studies): queries "
-    "(1-20 short English names), synonyms (at most 30 English paraphrases, spelling variants and "
-    "abbreviations), codes ({system, code}) and analogous_terms ({term, relation}). "
+    "Translate the question yourself and pass the result to compare_protocols as blocks, one per concept "
+    "({role: outcome|condition|exposure|any, queries: 1-20 short English names and paraphrases, "
+    "category_terms}); blocks are AND-ed, terms within a block OR-ed, and every column is searched with the "
+    "role used for ranking. A single-concept question may instead use queries, role and category_terms. "
     + ICD10_SYNONYM_GUIDANCE
+    + " "
+    + CATEGORY_GUIDANCE
     + " For medicines give English INN or product names; the server expands them with the EMA medicines "
     "dictionary. Keep outcome, exposure and comorbidity roles apart."
 )
@@ -466,8 +479,8 @@ class Service:
             instruction = (
                 "No study matched the requested concept itself. Tell the user so, show these analogous concepts "
                 "with their relation and study_count, and on agreement rerun compare_protocols with "
-                "match_scope='analogous' (same queries and filters; phrase the question for the analogous "
-                "concept). Label every result as an analogous concept, never as the requested one."
+                "match_scope='analogous' (same queries and filters, passing a block's queries and role as "
+                "queries/role; phrase the question for the analogous concept). Label every result as an analogous concept, never as the requested one."
             )
         else:
             state = "no_matches"
@@ -515,21 +528,74 @@ class Service:
         study_ids: list[str] | None = None,
         match_scope: str = "concept",
         analogous: list[AnalogousTerm] | None = None,
+        category_terms: list[str] | None = None,
+        blocks: list[ScreeningBlock] | None = None,
+        check_protocols: int = 0,
     ):
+        given_blocks = bool(blocks)
+        if blocks:
+            if queries or synonyms or codes or category_terms or role != "any" or match_scope != "concept":
+                raise RWEError(
+                    "INVALID_INPUT",
+                    "With blocks, put every term and role in its block (role, queries, category_terms); queries, "
+                    "role, synonyms, codes, category_terms and match_scope=analogous are not combined with blocks.",
+                )
+            queries = [q for b in blocks for q in b.queries]
         if (
             not question.strip()
             or len(question) > 2000
-            or not 1 <= len(queries) <= 20
+            or not 1 <= len(queries) <= (40 if given_blocks else 20)
             or any(not q.strip() for q in queries)
+            or not 0 <= check_protocols <= 20
         ):
-            raise RWEError("INVALID_INPUT", "A question and 1..20 nonempty search queries are required.")
+            raise RWEError(
+                "INVALID_INPUT",
+                "A question and 1..20 nonempty search queries (1..40 across blocks) are required; "
+                "check_protocols is 0..20.",
+            )
         # filters.data_source_types narrows catalogue candidates; only source_preference ranks PDF evidence.
         preference = source_preference
-        # Query variants are explicit search terms: keep each as one phrase, however long.
-        unique = self._union(
-            queries, darwin_only, synonyms, codes, filters, role, match_scope, analogous, split_long=False
-        )
+        if not blocks:
+            try:
+                blocks = [ScreeningBlock(role=role, queries=queries, category_terms=category_terms or [])]
+            except ValidationError as exc:
+                raise RWEError(
+                    "INVALID_INPUT", "Invalid role or category_terms (1..20 nonempty terms)."
+                ) from exc
+        # The single block's role drives the analogous fallback, whichever form the caller used.
+        role = blocks[0].role if len(blocks) == 1 else role
+        if match_scope == "analogous":
+            # Query variants are explicit search terms: keep each as one phrase, however long.
+            unique = self._union(
+                queries, darwin_only, synonyms, codes, filters, role, match_scope, analogous, split_long=False
+            )
+        else:
+
+            def search(term: str, column_role: str, with_expansion: bool) -> list[dict]:
+                return self.repo.search(
+                    term,
+                    None,
+                    darwin_only,
+                    None,
+                    False,
+                    synonyms if with_expansion else None,
+                    codes if with_expansion else None,
+                    filters,
+                    column_role,
+                    split_long=False,
+                )
+
+            # Every column, ranked: the role is a ranking signal, not a filter (empty Outcomes fields).
+            unique = {row["study_id"]: row for row in screen(search, blocks)}
         candidates = list(unique.values())
+        checked = 0
+        listed = self.settings.max_screening_studies < len(candidates) <= self.settings.max_listed_candidates
+        requests = 0
+        if check_protocols and listed and study_ids is None and match_scope == "concept":
+            before = getattr(self.client, "requests_made", 0)
+            checked = await self._check_protocols(candidates[:check_protocols])
+            requests = getattr(self.client, "requests_made", 0) - before
+            candidates.sort(key=order_key)
         expansions = [expand(q, synonyms, codes) for q in queries]
         for query, expansion in zip(queries, expansions):
             record_unmatched(self.unmatched_log_path, query, "compare_protocols", expansion)
@@ -552,6 +618,11 @@ class Service:
             "source_preference": preference.model_dump() if preference else None,
             "queries": queries,
             "role": role,
+            "blocks": [b.model_dump() for b in blocks],
+            "ranking": "Candidates are ordered, never cut: specific-term matches before category-only matches, "
+            "matches in the role's own columns first, secondary-use data before surveys, then fused BM25 rank"
+            + ("; studies checked to have no published protocol go last." if checked else "."),
+            "protocols_checked": checked,
             "selected_study_ids": study_ids,
             "filters": (filters or SearchFilters()).model_dump(),
             "query_expansions": [expansion_summary(e) for e in expansions],
@@ -565,16 +636,37 @@ class Service:
                 role,
                 match_scope,
                 analogous,
-                bool(unique),
+                bool(unique) or len(blocks) > 1,
                 split_long=False,
             ),
             "darwin_only": darwin_only,
             "search_scope": "local catalogue metadata and saved analysis only",
             **self._catalogue_summary(bool(candidates)),
         }
+        if len(blocks) > 1 and not unique:
+            search["analogous_fallback"] = {
+                "status": "not_available_for_blocks",
+                "instruction": "No study matched every block. Report each block separately (run compare_protocols "
+                "per block) or broaden a block with category_terms; analogous concepts apply to one block at a time.",
+            }
         if not 1 <= len(candidates) <= self.settings.max_screening_studies:
-            return {**search, "network_requests": 0, "rows": [], "pdf_downloads": 0}
+            return {**search, "network_requests": requests, "rows": [], "pdf_downloads": 0}
         return await self.comparisons.prepare(question, candidates, search)
+
+    async def _check_protocols(self, rows: list[dict]) -> int:
+        """Mark whether each top candidate's Study documents list a protocol (no PDF download). A study
+        without one cannot answer a definition question; it is ranked last, never removed."""
+        for row in rows:
+            try:
+                await self.get_protocol(row["study_id"], download=False)
+                row["protocol_available"] = True
+            except RWEError as exc:
+                # No protocol, or no longer a non-interventional study: neither can answer, so rank last.
+                unusable = exc.code in ("PROTOCOL_NOT_FOUND", "STUDY_OUT_OF_SCOPE")
+                row["protocol_available"] = False if unusable else None
+                if exc.code == "STUDY_OUT_OF_SCOPE":
+                    row["out_of_scope"] = True
+        return len(rows)
 
     async def get_protocol_comparison(
         self, comparison_id: str, selected_study_ids: list[str] | None = None, detail: str = "compact"
