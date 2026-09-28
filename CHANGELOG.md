@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.2.1 (2026-09-28)
+
+Bug-fix release. Search-logic changes from the retrieval survey
+(`docs/research/202609281003_search_logic.md`) are planned for 0.3.
 
 - `compare_protocols` keeps every query variant as one phrase, however long; only `search_studies`
   still splits free text of five or more content words into single words. A five-word ICD-10 title no
