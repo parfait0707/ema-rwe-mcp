@@ -5,7 +5,7 @@
             "command": "uvx",
             "args": [
                 "--from",
-                "git+https://github.com/parfait0707/rwd-catalogue-mcp@v0.2.1",
+                "git+https://github.com/parfait0707/rwd-catalogue-mcp@v0.3.0",
                 "ema-rwe-mcp"
             ],
             "env": {}
