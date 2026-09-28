@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 (2026-09-28)
+
+Search-logic release. Candidate lists are longer (65 → 144 studies on average in the gold set) but
+ranked, so narrow them or pick from the top.
 
 - `compare_protocols` screens concept `blocks` (`{role, queries, category_terms}`, AND-ed) in every
   catalogue column and ranks candidates without cutting any: specific matches before category-only
