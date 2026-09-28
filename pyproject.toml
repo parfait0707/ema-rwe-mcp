@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ema-rwe-mcp"
-version = "0.2.0"
+version = "0.2.1"
 description = "Evidence-backed EMA non-interventional protocol search and analysis MCP"
 requires-python = ">=3.12"
 readme = "README.md"
