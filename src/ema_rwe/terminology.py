@@ -211,7 +211,7 @@ def clinical_expansion(query: str, codes: list[CodeCandidate] | None = None) -> 
 
 def search_units(query: str, expansion: dict) -> list[str]:
     """English phrases + whole code strings; never search the '9' from J84.9 alone."""
-    words, code_terms = _content_words(query, expansion)
+    words, code_terms, _ = _content_words(query, expansion)
     return list(
         dict.fromkeys(
             [
@@ -225,8 +225,10 @@ def search_units(query: str, expansion: dict) -> list[str]:
     )[:350]
 
 
-def _content_words(query: str, expansion: dict) -> tuple[list[str], list[str]]:
-    """Query words minus codes, code-system names and stop words, plus the whole code strings."""
+def _content_words(query: str, expansion: dict) -> tuple[list[str], list[str], int]:
+    """Query words minus codes, code-system names and stop words, plus the whole code strings, and the
+    number of tokens between the first and last content word in the query text (stop words included:
+    the index keeps them, so NEAR must allow for them)."""
     remainder = query
     code_terms = [v for c in expansion["clinical"]["code_candidates"] for v in c["search_variants"]]
     for term in sorted(code_terms, key=len, reverse=True):
@@ -257,19 +259,28 @@ def _content_words(query: str, expansion: dict) -> tuple[list[str], list[str]]:
         "used",
     }
     # Do not partially extract ASCII from a non-English word.
-    words = [t for t in re.findall(r"\w+", remainder) if t.isascii() and t.casefold() not in stop]
-    return words, code_terms
+    tokens = re.findall(r"\w+", remainder)
+    kept = [i for i, t in enumerate(tokens) if t.isascii() and t.casefold() not in stop]
+    between = kept[-1] - kept[0] - 1 if len(kept) > 1 else 0
+    return [tokens[i] for i in kept], code_terms, between
 
 
-def labelled_phrases(query: str, expansion: dict) -> list[tuple[str, list[str]]]:
+def labelled_phrases(query: str, expansion: dict, split_long: bool = True) -> list[tuple[str, list]]:
     """(matched term, word group) pairs for the catalogue index: words in a group must co-occur
     (NEAR); groups are OR-ed. The label is what a result reports as the term it matched.
 
     The query itself is one group when it has at most four content words. Longer free text falls
-    back to single words so that a sentence-style question still retrieves candidates.
+    back to single words so that a sentence-style question still retrieves candidates, unless
+    split_long is false: a caller's explicit search term (compare_protocols query variants, e.g. an
+    ICD-10 title such as "drug-induced interstitial lung disease") stays one phrase, because its
+    single words ("drug", "disease") would match most of the catalogue.
     """
-    words, code_terms = _content_words(query, expansion)
-    groups = [(" ".join(words), words)] if 0 < len(words) <= 4 else [(w, [w]) for w in words]
+    words, code_terms, between = _content_words(query, expansion)
+    as_phrase = 0 < len(words) <= 4 or (words and not split_long)
+    # The group holds content words only, so its NEAR distance comes from the query's own token span
+    # plus one spare token: "risk of stroke in patients with atrial fibrillation" still matches itself.
+    phrase = (words, between + 1) if len(words) > 1 else words
+    groups = [(" ".join(words), phrase)] if as_phrase else [(w, [w]) for w in words]
     for term in [
         *expansion["synonyms"],
         *expansion["clinical"]["english_terms"],
@@ -279,13 +290,13 @@ def labelled_phrases(query: str, expansion: dict) -> list[tuple[str, list[str]]]
         groups.append((term, re.findall(r"\w+", term)))
     unique = {}
     for label, group in groups:
-        if group:
+        if group and (not isinstance(group, tuple) or group[0]):
             unique.setdefault(label.casefold(), (label, group))
     return list(unique.values())[:350]
 
 
-def search_phrases(query: str, expansion: dict) -> list[list[str]]:
-    return [group for _, group in labelled_phrases(query, expansion)]
+def search_phrases(query: str, expansion: dict, split_long: bool = True) -> list[list[str]]:
+    return [group for _, group in labelled_phrases(query, expansion, split_long)]
 
 
 def term_source(term: str, expansion: dict, extra: list[AnalogousTerm] | None = None) -> str:

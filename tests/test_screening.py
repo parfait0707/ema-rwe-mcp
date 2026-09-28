@@ -248,3 +248,49 @@ def test_dictionary_folder_skips_hidden_files_and_names_a_bad_file(tmp_path, mon
 def test_catalogue_status_reports_a_missing_dictionary_path(tmp_path, monkeypatch, service):
     monkeypatch.setenv("EMA_TERMINOLOGY_PATH", str(tmp_path / "absent.json"))
     assert service.catalogue_status()["dictionaries"]["error"]["code"] == "TERMINOLOGY_CONFIG_ERROR"
+
+
+def test_near_distance_grows_with_phrase_length():
+    # Distance counts tokens between the first and last word, so an adjacent phrase must still fit.
+    assert fts_match([["a", "b"]], None).endswith(", 3)")
+    assert fts_match([list("abcde")], None).endswith(", 4)")
+    assert fts_match([list("abcdef")], None).endswith(", 5)")
+
+
+def test_six_word_term_matches_when_adjacent(service):
+    phrase = "acute exacerbation of idiopathic pulmonary fibrosis"
+    service.repo.upsert(study("1", title=f"Incidence of {phrase} in nintedanib users"))
+    result = service.search_studies("zzqx", synonyms=[phrase], darwin_only=False)
+    assert [r["study_id"] for r in result["results"]] == ["1"]
+
+
+async def test_compare_keeps_a_long_query_variant_as_one_phrase(service):
+    # Given one study about the term and one sharing only its common words ("drug", "disease")
+    service.repo.upsert(study("1", title="Drug-induced interstitial lung disease after chemotherapy"))
+    service.repo.upsert(study("2", title="Drug utilisation in chronic kidney disease"))
+    term = "drug-induced interstitial lung disease"  # five content words
+    # compare_protocols treats each variant as an explicit term
+    result = await service.compare_protocols("q", [term])
+    assert result["search"]["total_matches"] == 1
+    assert [r["study"]["study_id"] for r in result["rows"]] == ["1"]
+    # while search_studies still splits long free text so a sentence-style question finds candidates
+    assert service.search_studies(term, darwin_only=False)["total_matches"] == 2
+
+
+def test_group_distance_from_source_text_overrides_word_count():
+    assert fts_match([(["risk", "fibrillation"], 7)], None) == 'NEAR("risk" "fibrillation", 7)'
+    assert fts_match([(["a", "b"], 1)], None).endswith(", 3)")  # never below the default
+
+
+@pytest.mark.parametrize(
+    "term",
+    [
+        "risk of stroke in patients with atrial fibrillation",  # five content words, three stop words
+        "Malignant neoplasm of bronchus and lung",  # an ICD-10 title with four content words
+    ],
+)
+async def test_a_term_with_stop_words_matches_its_own_text(service, term):
+    # The index keeps stop words, so they must not use up the NEAR distance.
+    service.repo.upsert(study("1", title=term.capitalize()))
+    assert (await service.compare_protocols("q", [term]))["search"]["total_matches"] == 1
+    assert service.search_studies(term, darwin_only=False)["total_matches"] == 1
