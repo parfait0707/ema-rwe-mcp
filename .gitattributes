@@ -1,0 +1,2 @@
+# Verbatim catalogue text (evidence quotes are matched against it): no whitespace fixes.
+tests/fixtures/gold/pool/*.csv -whitespace
