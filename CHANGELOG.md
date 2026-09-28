@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- `compare_protocols` keeps every query variant as one phrase, however long; only `search_studies`
+  still splits free text of five or more content words into single words. A five-word ICD-10 title no
+  longer matches on "drug" or "disease" alone (1,212 → 54 candidates in the ILD example).
+- NEAR distance grows with phrase length (`max(3, words - 1)`), and a query's own distance counts the
+  stop words it drops, so long names and ICD-10 titles such as "Malignant neoplasm of bronchus and
+  lung" match their own text.
+
 ## 0.2.0 (2026-09-27)
 
 Breaking: no disease dictionary ships or loads by default. Clients that relied on the bundled

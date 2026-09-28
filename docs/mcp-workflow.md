@@ -29,8 +29,12 @@ the model that drives the tools; the rest of `docs/` is in Japanese.
 ## 2. Screen with `compare_protocols`
 
 - Pass ALL query variants in `queries`; the candidate count is the deduplicated union.
-- Matching is local FTS5: a multi-word query must co-occur within three tokens of one column
-  (`NEAR`); single words match as tokens; variants are OR-ed. Dictionary terms and code variants are
+- Matching is local FTS5: the words of a multi-word term must co-occur in one column (`NEAR`, distance
+  max(3, words - 1); a query's own distance also covers its stop words, so a title such as "Malignant
+  neoplasm of bronchus and lung" matches itself); single words match as tokens; variants are OR-ed. Each
+  `compare_protocols` query variant stays one phrase however long, so full ICD-10 titles are safe
+  queries. `search_studies` still splits a query of five or more content words into single words, so
+  pass sentence-style questions there, not to `compare_protocols`. Dictionary terms and code variants are
   added automatically.
 - `role` scopes the columns: `outcome` searches the catalogue Outcomes, Main study objective, title
   and saved definitions; `condition` searches Medicinal condition and title; `exposure` searches
