@@ -27,7 +27,9 @@ from ema_rwe.vocabulary import canonical
 GOLD = ROOT / "tests" / "fixtures" / "gold"
 POOL_DEPTH = 60  # per strategy, as in TREC pooling; narrow strategies rarely reach it
 RRF_K = 20  # TrialGPT's fusion constant
-STRATEGIES = ("variants", "variants_any_role", "codes_only", "seed", "alt_variants", "facet")
+STRATEGIES = ("variants", "variants_any_role", "codes_only", "seed", "alt_variants", "facet", "tiered")
+GAIN = {"relevant": 2, "partial": 1}  # graded relevance for nDCG
+ORDERINGS = ("base", "specificity", "specificity_type")
 LABELS = ("relevant", "partial", "not_relevant", "unclear")
 FIELDS = (
     "question_id",
@@ -101,6 +103,10 @@ def block_ranking(repo: Repository, block: dict, strategy: str, alt: list[str] |
         lists = [search_ids(repo, v, role) for v in alt or []]
     elif strategy == "facet":
         lists = [facet_ids(repo, block["facet"])] if block["facet"] else []
+    elif strategy == "tiered":
+        # Every column, specific terms plus the umbrella (category) terms a record may use instead.
+        terms = block["variants"] + block.get("categories", [])
+        lists = [search_ids(repo, t, "any") for t in terms] + code_lists(repo, block, "any")
     else:
         raise ValueError(strategy)
     return rrf(lists)
@@ -113,6 +119,74 @@ def retrieve(repo: Repository, question: dict, strategy: str, alt: dict) -> list
         for i, b in enumerate(question["blocks"])
     ]
     return intersect(blocks) if all(blocks) else []
+
+
+def features(repo: Repository, question: dict, study_ids: list[str]) -> dict[str, dict]:
+    """Ranking signals per candidate: blocks matched by a specific term (not only a category term),
+    blocks matched in the role's own columns, and whether the study type suits a definition question
+    (secondary-use data, no survey)."""
+    specific, in_role = {}, {}
+    for block in question["blocks"]:
+        any_hits = set(block_ranking(repo, block, "variants_any_role", None))
+        role_hits = set(block_ranking(repo, block, "variants", None))
+        for s in study_ids:
+            specific[s] = specific.get(s, 0) + (s in any_hits)
+            in_role[s] = in_role.get(s, 0) + (s in role_hits)
+    with repo.connection() as db:
+        bodies = {
+            i: json.loads(b)
+            for i, b in db.execute(
+                f"SELECT id, body FROM studies WHERE id IN ({','.join('?' * len(study_ids))})", study_ids
+            )
+        }
+    out = {}
+    for s in study_ids:
+        body = bodies.get(s, {})
+        designs = " ".join(body.get("study_designs", [])).casefold()
+        survey = "survey" in body.get("title", "").casefold() or "cross-sectional" in designs
+        secondary = bool(body.get("data_source_types"))
+        out[s] = {"specific": specific[s], "in_role": in_role[s], "type_fit": secondary - survey}
+    return out
+
+
+def order(ranked: list[str], feats: dict[str, dict], ordering: str) -> list[str]:
+    """Reorder a fused ranking; the fused rank stays the final tie-breaker."""
+    position = {s: i for i, s in enumerate(ranked)}
+    if ordering == "base":
+        return list(ranked)
+    if ordering == "specificity":
+        key = lambda s: (-feats[s]["specific"], -feats[s]["in_role"], position[s])
+    elif ordering == "specificity_type":
+        key = lambda s: (-feats[s]["specific"], -feats[s]["in_role"], -feats[s]["type_fit"], position[s])
+    else:
+        raise ValueError(ordering)
+    return sorted(ranked, key=key)
+
+
+def ranking_metrics(ranked: list[str], labels: dict[str, str]) -> dict:
+    """nDCG@5/10 (relevant=2, partial=1), relevant studies in the top 5, and recall of relevant studies
+    within the top 20 (the screening dialogue shows about that many)."""
+    import math
+
+    def dcg(gains: list[int]) -> float:
+        return sum(g / math.log2(i + 2) for i, g in enumerate(gains))
+
+    gains = [GAIN.get(labels.get(s, ""), 0) for s in ranked]
+    ideal = sorted((GAIN.get(v, 0) for v in labels.values()), reverse=True)
+    relevant = sum(v == "relevant" for v in labels.values())
+
+    def ndcg(k: int) -> float | None:
+        best = dcg(ideal[:k])
+        return round(dcg(gains[:k]) / best, 3) if best else None
+
+    return {
+        "ndcg@5": ndcg(5),
+        "ndcg@10": ndcg(10),
+        "relevant@5": sum(labels.get(s) == "relevant" for s in ranked[:5]),
+        "recall@20": round(sum(labels.get(s) == "relevant" for s in ranked[:20]) / relevant, 3)
+        if relevant
+        else None,
+    }
 
 
 def load_questions() -> tuple[list[dict], dict]:
@@ -242,6 +316,9 @@ def evaluate(repo: Repository) -> dict:
         if not all(v in LABELS for v in labels.values()):
             raise SystemExit(f"{q['id']}: unlabelled or unknown labels in the pool")
         report[q["id"]] = {}
+        tiered = retrieve(repo, q, "tiered", alt)
+        feats = features(repo, q, tiered) if tiered else {}
+        report[q["id"]]["ranking"] = {o: ranking_metrics(order(tiered, feats, o), labels) for o in ORDERINGS}
         for strategy in STRATEGIES:
             retrieved = retrieve(repo, q, strategy, alt)
             report[q["id"]][strategy] = {
