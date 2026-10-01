@@ -37,3 +37,6 @@ CLAUDE.md
 
 # Session work logs stay local (removed from the public history)
 docs/work_log/
+
+# Gold-set pools quote catalogue records and hold labels; kept local, not published.
+tests/fixtures/gold/pool/
