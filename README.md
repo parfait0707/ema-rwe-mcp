@@ -99,6 +99,8 @@ flowchart TD
 
 ## カタログの更新（任意）
 
+**2026-10-01にカタログデータを更新しました**（v0.3.2）。同日のEMA公式CSV exportから作り直し、Non-interventional studyは3,314件（claims 819件、EHR 916件、registry 559件、種別タグなし1,511件）です。v0.3.1以前を`uvx`で使っている場合は、`@v0.3.2`に変えて再起動すると、キャッシュ済みの解析と回答を残したままカタログだけが入れ替わります。
+
 同梱のカタログDBは**2026-10-01時点**のNon-interventional study全件です。最新の研究を検索対象に加えたい場合だけ、[EMA検索ページ](https://catalogues.ema.europa.eu/search?f%5B0%5D=content_type%3Adarwin_study)のExport ResultsでCSVを取得し、`import_catalogue_csv`で取り込みます。CSVを一度も取り込んでいない、または最新取込から`EMA_CATALOGUE_TTL_SECONDS`（既定30日）を過ぎて検索候補が0件だった場合は、Playwright MCPを併用して呼出元が表示ブラウザでEMA公式のExportを1回実行し、そのCSVを取り込む経路も使えます。手順の詳細（必須列・ファイル名規約・Playwright併用の理由）は[README_DEV.md](README_DEV.md)を参照してください。
 
 ## できないこと・注意
