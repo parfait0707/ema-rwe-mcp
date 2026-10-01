@@ -236,3 +236,30 @@ async def test_added_medicine_names_are_capped_per_question_and_never_relabel_ca
     # edoxaban (catalogue only) was typed by the caller in another block: it stays the caller's query
     row = next(c for c in result["candidates"] if c["study_id"] == "1")
     assert row["matched_term_sources"]["edoxaban"] == "query"
+
+
+async def test_protocol_listing_and_text_layer_order_candidates_without_dropping_them(service):
+    # Given equally specific matches: one image-only protocol, one export listing no protocol, one listed
+    service.repo.upsert(study("1", title="Statin cohort", protocol_listed=True, protocol_text_layer="none"))
+    service.repo.upsert(study("2", title="Statin cohort", protocol_listed=False))
+    service.repo.upsert(study("3", title="Statin cohort", protocol_listed=True))
+    for i in range(4, 10):
+        service.repo.upsert(study(str(i), title="Statin users", protocol_listed=True))
+    result = await service.compare_protocols("q", ["statin"])
+    order = ids(result)
+    # Then listed protocols come first, an unlisted one after them, an unreadable one last: none removed
+    assert order.index("3") < order.index("2") < order.index("1") == len(order) - 1
+    assert result["candidates"][-1]["protocol_text_layer"] == "none"
+
+
+@pytest.mark.usefixtures("drug_file")
+async def test_absent_medicine_offers_its_atc_class_as_analogous_concepts(service):
+    # Given a catalogue that records two SGLT2 inhibitors, but not the requested ipragliflozin
+    service.repo.upsert(study("1", exposures=["(A10BK01) dapagliflozin", "(A10BK) SGLT2 inhibitors"]))
+    service.repo.upsert(study("2", exposures=["(A10BK03) empagliflozin"]))
+    result = await service.compare_protocols("q", ["ipragliflozin", "A10BK05"], role="exposure")
+    fallback = result["analogous_fallback"]
+    # Then the class (broader) and its recorded members (sibling) are offered, never searched silently
+    assert result["total_matches"] == 0 and fallback["status"] == "available"
+    offered = {t["term"]: t["relation"] for t in fallback["analogous_terms"]}
+    assert offered == {"SGLT2 inhibitors": "broader", "dapagliflozin": "sibling", "empagliflozin": "sibling"}

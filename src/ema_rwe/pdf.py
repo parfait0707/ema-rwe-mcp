@@ -149,6 +149,16 @@ def extract_pages(data: bytes) -> list[Page]:
     return pages
 
 
+def text_layer(data: bytes) -> str | None:
+    """full, partial (half or more pages without text) or none (image-only, needs OCR); None if unparsable."""
+    try:
+        pages = extract_pages(data)
+    except RWEError as exc:
+        return "none" if exc.code == "PDF_OCR_REQUIRED" else None
+    blank = sum(len(p.text.strip()) < 50 for p in pages)
+    return "partial" if blank * 2 >= len(pages) else "full"
+
+
 def sections(pages: list[Page]) -> list[dict]:
     result = []
 

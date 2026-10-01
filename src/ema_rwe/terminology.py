@@ -110,7 +110,9 @@ def load_dictionaries() -> tuple[list[tuple[str, Concept]], str, list[str]]:
     return concepts, ":".join(digests), [p.name for p in paths]
 
 
-def clinical_expansion(query: str, codes: list[CodeCandidate] | None = None) -> dict:
+def clinical_expansion(
+    query: str, codes: list[CodeCandidate] | None = None, whole_terms: list[str] | None = None
+) -> dict:
     from .drugs import drug_expansion
 
     sourced, digest, dictionary_names = load_dictionaries()
@@ -135,14 +137,11 @@ def clinical_expansion(query: str, codes: list[CodeCandidate] | None = None) -> 
     ]
     # English names of matched concepts reach the medicines dictionary too, so a sourced dictionary
     # entry for a Japanese medicine name expands to every EMA product with the same ingredient set.
-    drugs = drug_expansion(
-        " ".join(
-            [
-                query,
-                *(t for c in matched for t in c.english_terms),
-                *(c.code for c in inputs if canonical(c.system) == "atc"),
-            ]
-        )
+    english = [t for c in matched for t in c.english_terms]
+    drugs = (
+        drug_expansion([*whole_terms, *english], whole_term=True)
+        if whole_terms is not None
+        else drug_expansion(" ".join([query, *english]))
     )
     revision += ":" + drugs["dictionary_revision"]
     drug_codes = [

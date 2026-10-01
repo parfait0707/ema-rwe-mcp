@@ -61,7 +61,6 @@ def japanese_drug_terms(tmp_path, monkeypatch):
     [
         ("Eliquis", "apixaban"),
         ("apixaban", "Eliquis"),
-        ("B01AF02", "Eliquis"),
         ("rivaroxaban", "Xarelto"),
     ],
 )
@@ -232,3 +231,21 @@ def test_combination_query_resolves_only_to_the_whole_ingredient_set(drug_file):
     assert expand_medicine("empagliflozin and metformin", labels)["atc_codes"] == ["A10BD20"]
     # A combination known to no source resolves to nothing rather than to its ingredients
     assert expand_medicine("sitagliptin and empagliflozin", labels) is None
+
+
+def test_atc_code_is_never_a_cross_source_key(drug_file):
+    # The EMA dictionary does not turn a code into names: its record may label the code differently
+    assert expand("B01AF02")["clinical"]["english_terms"] == []
+    # A code resolves to names only through the catalogue's own '(code) name' entries
+    assert set(expand_medicine("B01AF02", {"B01AF02": "apixaban"})["category_terms"]) == {"B01AF"}
+    # An EMA record whose code the catalogue gives to another medicine is not a class member
+    found = expand_medicine("B01AF", {"B01AF02": "edoxaban", "B01AF01": "rivaroxaban"})
+    assert "apixaban" not in found["queries"] and {"edoxaban", "rivaroxaban"} <= set(found["queries"])
+
+
+def test_whole_term_matching_never_finds_a_name_inside_a_longer_one(drug_file):
+    phrase = "apixaban-like anticoagulants"
+    assert [m["product_name"] for m in drug_expansion(phrase)["matches"]] == ["Eliquis"]
+    assert drug_expansion(phrase, whole_term=True)["matches"] == []
+    assert [m["product_name"] for m in drug_expansion("Eliquis", whole_term=True)["matches"]] == ["Eliquis"]
+    assert expand_medicine(phrase, {}) is None

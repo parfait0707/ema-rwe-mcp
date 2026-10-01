@@ -129,6 +129,8 @@ COMPACT_KEYS = (
     "matched_term_sources",
     "rank_features",
     "protocol_available",
+    "protocol_listed",
+    "protocol_text_layer",
     "out_of_scope",
 )
 

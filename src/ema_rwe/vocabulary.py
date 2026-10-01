@@ -83,7 +83,7 @@ def without(text: str, terms: list[str]) -> str:
     return text
 
 
-def expand(query: str, extra: list[str] | None = None, codes=None) -> dict:
+def expand(query: str, extra: list[str] | None = None, codes=None, whole_term: bool = False) -> dict:
     extra = extra or []
     if (
         not isinstance(query, str)
@@ -100,7 +100,7 @@ def expand(query: str, extra: list[str] | None = None, codes=None) -> dict:
     seed = query + " " + " ".join(extra)
     from .terminology import clinical_expansion
 
-    clinical = clinical_expansion(seed, codes)
+    clinical = clinical_expansion(seed, codes, [query, *extra] if whole_term else None)
     # A group must not fire on text a user-dictionary concept already covers (e.g. 小児 inside a
     # dictionary name such as 小児喘息), so the concept's own terms decide what the study is about.
     residual = without(seed, clinical["matched_input_terms"])

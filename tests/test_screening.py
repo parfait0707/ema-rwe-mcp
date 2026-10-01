@@ -5,12 +5,14 @@ import io
 import json
 from pathlib import Path
 
+import pymupdf
 import pytest
 from test_comparison import extend_website, seed
 
 from ema_rwe import terminology
 from ema_rwe.domain import RWEError, Study
 from ema_rwe.ema import BASE
+from ema_rwe.pdf import text_layer
 from ema_rwe.selection import COMPACT_KEYS, SearchFilters, country, filter_rows
 from ema_rwe.service import Service
 from ema_rwe.storage import Repository, fts_match, import_csv
@@ -318,3 +320,30 @@ async def test_protocol_retrieval_keeps_catalogue_only_fields(service):
     assert kept.detail_checked_at
     assert {name: getattr(kept, name) for name in fields} == fields
     assert [r["study_id"] for r in service.repo.search("morphine", None, False, None)] == ["123"]
+
+
+async def test_protocol_text_layer_is_recorded_and_survives_a_page_refresh(service):
+    service.repo.upsert(study("123", title="Opioid safety", protocol_listed=True))
+    result = await service.get_protocol("123")
+    assert result["protocol"]["text_layer"] == "full"
+    kept = service.repo.get("123")
+    assert kept.protocol_text_layer == "full" and kept.protocol_listed is True
+
+
+def test_text_layer_of_an_image_only_pdf_is_none():
+    with pymupdf.open() as doc:
+        doc.new_page()
+        assert text_layer(doc.tobytes()) == "none"
+
+
+def test_import_records_whether_the_export_lists_a_protocol(settings, tmp_path):
+    path = tmp_path / "export.csv"
+    path.write_text(
+        "Study ID,Official title and acronym,Study type,Protocol file(s),Protocol URL\n"
+        "1,With protocol,Non-interventional study,protocol.pdf,\n"
+        "2,Without protocol,Non-interventional study,,\n",
+        encoding="utf-8",
+    )
+    repo = Repository(settings.db_path)
+    import_csv(repo, path)
+    assert (repo.get("1").protocol_listed, repo.get("2").protocol_listed) == (True, False)

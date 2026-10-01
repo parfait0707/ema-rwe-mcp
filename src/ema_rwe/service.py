@@ -16,13 +16,14 @@ from .ema import BASE, is_non_interventional, parse_documents, parse_study, sele
 from .exploration import Explorer
 from .http import EMAClient
 from .llm import EXTRACTION_PROMPT, complete_json, configured, extract_with_provider, merge_extractions
-from .medicines import MAX_NAMES, expand_medicine
+from .medicines import GENERIC, MAX_NAMES, expand_medicine
 from .pdf import (
     audit_extraction,
     extract_pages,
     finalize_extraction,
     reading_order,
     sections,
+    text_layer,
     validate_evidence,
 )
 from .ranking import ScreeningBlock, order_key, screen
@@ -45,7 +46,15 @@ ICD10_SYNONYM_GUIDANCE = (
     "(ICD-10-CM, ICD-10-GM, Japanese adaptations) may differ from WHO ICD-10."
 )
 # Study fields the detail-page parser does not (fully) read; a page refresh keeps the stored values.
-CATALOGUE_FIELDS = ("exposures", "conditions", "outcomes", "objective", "catalogue_data_sources")
+CATALOGUE_FIELDS = (
+    "exposures",
+    "conditions",
+    "outcomes",
+    "objective",
+    "catalogue_data_sources",
+    "protocol_listed",
+    "protocol_text_layer",
+)
 CATEGORY_GUIDANCE = (
     "Catalogue records often name only a category, so give each concept category_terms too: the ICD-10 "
     "block or chapter title (e.g. systemic connective tissue disorders for SLE, ischaemic heart diseases for "
@@ -63,7 +72,9 @@ CLIENT_EXPANSION_INSTRUCTION = (
     + ICD10_SYNONYM_GUIDANCE
     + " "
     + CATEGORY_GUIDANCE
-    + " For medicines give English INN or product names. For a requested medicine class, put the class name "
+    + " For medicines give the English INN and the EU and US product names (each query is matched as one whole "
+    "name), plus abbreviations (TNFi, JAKi, DOACs), noun variants (drugs/medicines/medications) and spellings "
+    "with and without hyphens; for an absent medicine also give its 5th-level ATC code. For a requested medicine class, put the class name "
     "and its ATC 3rd/4th-level code (e.g. N03A) in queries; the server adds the member medicines that the "
     "catalogue and the EMA medicines dictionary code under it (medicine_expansion). Keep outcome, exposure "
     "and comorbidity roles apart."
@@ -597,6 +608,9 @@ class Service:
                 row["study_id"]: row
                 for row in screen(search, self._with_medicines(blocks, medicines, sources))
             }
+            if not unique and len(blocks) == 1:
+                # An absent medicine: offer the catalogue's members of the class its ATC code belongs to.
+                analogous = [*(analogous or []), *self._atc_analogues(blocks[0].queries)]
             for row in unique.values():
                 # Server-added medicine names say where they came from, not that the caller typed them.
                 for term, source in row["matched_term_sources"].items():
@@ -700,6 +714,24 @@ class Service:
             out.append(block.model_copy(update={"queries": queries, "category_terms": category}))
         return out
 
+    def _atc_analogues(self, queries: list[str]) -> list[AnalogousTerm]:
+        """Analogous concepts for a medicine with no study: its 4th-level ATC class (broader) and the class
+        members the catalogue records (sibling), from the 5th-level codes the caller typed. Names only."""
+        labels = self.repo.atc_labels()
+        terms = []
+        for query in queries:
+            code = query.strip().upper()
+            if not re.fullmatch(r"[A-Z]\d{2}[A-Z]{2}\d{2}", code):
+                continue
+            parent = code[:5]
+            members = [
+                labels[c] for c in sorted(labels) if len(c) == 7 and c.startswith(parent) and c != code
+            ]
+            for name, relation in [(labels.get(parent), "broader"), *((m, "sibling") for m in members)]:
+                if name and name.isascii() and len(name) <= 150 and not GENERIC.fullmatch(name):
+                    terms.append(AnalogousTerm(term=name, relation=relation))
+        return terms[:10]
+
     async def _check_protocols(self, rows: list[dict]) -> int:
         """Mark whether each top candidate's Study documents list a protocol (no PDF download). A study
         without one cannot answer a definition question; it is ranked last, never removed."""
@@ -795,9 +827,15 @@ class Service:
                     "study_url": study.source_url,
                 },
             )
+            layer = await asyncio.to_thread(text_layer, pdf)
             result["protocol"].update(
-                protocol_id=archived["protocol_id"], local_filename=archived["local_filename"]
+                protocol_id=archived["protocol_id"],
+                local_filename=archived["local_filename"],
+                text_layer=layer,
             )
+            if layer and study.protocol_text_layer != layer:
+                # Remembered so that later searches rank an image-only protocol after readable ones.
+                self.repo.upsert(study.model_copy(update={"protocol_text_layer": layer}))
         return result
 
     async def _context(self, study_id: str, force_refresh: bool = False):
