@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.2 (2026-10-01)
+
+- Bundled catalogue rebuilt from the 2026-10-01 official exports alone: 3,314 Non-interventional
+  studies; claims 819, ehr 916, registry 559, untagged 1,511. Wheel installs refresh their catalogue
+  tables on start, keeping cached analyses and answers.
+
 ## 0.3.1 (2026-09-28)
 
 - Wheel installs (`uvx`) refresh the catalogue tables of the user's database when a newer package
