@@ -44,6 +44,8 @@ ICD10_SYNONYM_GUIDANCE = (
     "relation=broader; complications or related conditions are relation=associated. National modifications "
     "(ICD-10-CM, ICD-10-GM, Japanese adaptations) may differ from WHO ICD-10."
 )
+# Study fields the detail-page parser does not (fully) read; a page refresh keeps the stored values.
+CATALOGUE_FIELDS = ("exposures", "conditions", "outcomes", "objective", "catalogue_data_sources")
 CATEGORY_GUIDANCE = (
     "Catalogue records often name only a category, so give each concept category_terms too: the ICD-10 "
     "block or chapter title (e.g. systemic connective tissue disorders for SLE, ischaemic heart diseases for "
@@ -743,6 +745,12 @@ class Service:
         parsed.data_source_types_checked_at = parsed.detail_checked_at or now()
         # Persist current type even when excluded, so outdated CSV entries disappear from search.
         parsed.detail_checked_at = now()
+        if study:
+            # The detail pages are parsed for scope, types and documents only: fields that only the CSV
+            # export supplies (medicines, conditions, outcomes, objective) must survive the refresh.
+            for name in CATALOGUE_FIELDS:
+                if not getattr(parsed, name):
+                    setattr(parsed, name, getattr(study, name))
         self.repo.upsert(parsed)
         self._in_scope(parsed)
         return parsed

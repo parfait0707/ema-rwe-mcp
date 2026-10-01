@@ -299,3 +299,22 @@ async def test_a_term_with_stop_words_matches_its_own_text(service, term):
     service.repo.upsert(study("1", title=term.capitalize()))
     assert (await service.compare_protocols("q", [term]))["search"]["total_matches"] == 1
     assert service.search_studies(term, darwin_only=False)["total_matches"] == 1
+
+
+async def test_protocol_retrieval_keeps_catalogue_only_fields(service):
+    # Given study 123 imported from the CSV with medicines, conditions, outcomes, objective and sources
+    fields = {
+        "exposures": ["(N02AA01) morphine"],
+        "conditions": ["Pain"],
+        "outcomes": "Falls",
+        "objective": "Assess falls",
+        "catalogue_data_sources": ["CPRD"],
+    }
+    service.repo.upsert(study("123", title="Opioid safety", **fields))
+    # When its protocol is retrieved, which re-reads the detail pages that lack those fields
+    await service.get_protocol("123")
+    # Then the page refresh is recorded and the catalogue fields, and their search, survive
+    kept = service.repo.get("123")
+    assert kept.detail_checked_at
+    assert {name: getattr(kept, name) for name in fields} == fields
+    assert [r["study_id"] for r in service.repo.search("morphine", None, False, None)] == ["123"]

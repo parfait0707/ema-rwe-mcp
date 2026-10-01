@@ -393,6 +393,13 @@ PDF 取得先ディレクトリ名から X/Y が推測可能だった（P）、�
 - 独立レビュー（サブエージェント）の指摘を修正した：単独では意味のない名称（`combinations` など）を検索語にしていた、100 語の上限が質問単位でなかった、上限でクラス自身の名称が落ちえた、別ブロックで呼出元が書いた語の出所を付け替えていた、ATC の形をしただけの非 ATC コード（Read の `C10E` など）を解決していた、小文字のコードを解決しなかった。
 - 未検証：正解集合での影響。クラス名の表記揺れ（カタログの名称と完全一致しないクラス名は、呼出元が ATC コードを渡す必要がある）。
 
+## 2026-10-01 プロトコル取得で CSV 由来のカタログ項目が消える不具合の修正
+
+- 症状：`get_protocol`（内部で `get_study`）を呼んだ研究は、exposures・conditions・outcomes・objective が空になり、一部は catalogue_data_sources も空になった。そのため医薬品・疾患・アウトカムの検索に一致しなくなった。医薬品入力の検索テストで PDF を取得した 60 研究すべてで確認した（exposures 60/60、objective 60/60、outcomes 52/52、conditions 49/49、catalogue_data_sources 11/30 が空）。
+- 原因：`get_study` は研究ページとタブから `parse_study` で新しい Study を作るが、`parse_study` はこれらの項目を読み取らない。保存は `INSERT OR REPLACE` でレコード全体を置き換えるため、CSV にしかない値が失われ、全文索引も空の値で作り直された。
+- 修正：ページから値が得られなかった項目は、保存済みの値を残す（`CATALOGUE_FIELDS`）。
+- テスト：`tests/test_screening.py::test_protocol_retrieval_keeps_catalogue_only_fields`（修正前は失敗することを確認した）。
+
 ## 未検証事項（継続）
 
 - 外部LLM API呼出しの実認証検証は未実施。キーなしの呼出元LLM方式は合成PDFで保存・再利用まで検証。
