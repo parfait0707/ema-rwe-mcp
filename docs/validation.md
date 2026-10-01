@@ -400,6 +400,14 @@ PDF 取得先ディレクトリ名から X/Y が推測可能だった（P）、�
 - 修正：ページから値が得られなかった項目は、保存済みの値を残す（`CATALOGUE_FIELDS`）。
 - テスト：`tests/test_screening.py::test_protocol_retrieval_keeps_catalogue_only_fields`（修正前は失敗することを確認した）。
 
+## 2026-10-01 合わせ剤の入力が単剤に解決される不具合の修正（spec v1.0）
+
+- 症状：医薬品入力の検索テストで、"empagliflozin and metformin"・"nirmatrelvir and ritonavir" が単剤の ATC にも解決され、単剤名（empagliflozin）が検索語に加わった。
+- 原因：EMA 医薬品辞書の照合（`drug_expansion`）が入力文字列の中の各成分名に個別に一致し、`expand_medicine` がその結果をそのまま使っていた。
+- 修正：成分をつないだ入力は成分の集合として扱い、集合全体が一致する合わせ剤にだけ解決する。`drug_expansion` も、入力全体がある合わせ剤の成分構成と一致するときはその合わせ剤だけを返す。
+- 実データ：empagliflozin and metformin → A10BD20 のみ。nirmatrelvir and ritonavir → J05AE30 のみ。Synjardy → A10BD20。metformin・apixaban・antiepileptics は変化なし。
+- テスト：`tests/test_drugs.py::test_combination_query_resolves_only_to_the_whole_ingredient_set`。
+
 ## 未検証事項（継続）
 
 - 外部LLM API呼出しの実認証検証は未実施。キーなしの呼出元LLM方式は合成PDFで保存・再利用まで検証。

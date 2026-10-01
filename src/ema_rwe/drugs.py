@@ -132,6 +132,15 @@ def load_dictionary():
     return [], {"coverage": "none; call refresh_drug_dictionary"}, "missing", _index([])
 
 
+# Separators of a combination written as one name ('empagliflozin and metformin', 'A / B', 'A + B').
+COMBINATION = re.compile(r"\s*(?:/|\+|,|;|\band\b|\bwith\b)\s*", re.IGNORECASE)
+
+
+def ingredient_set(text: str) -> frozenset[str]:
+    """The ingredients named by one medicine name, order-free; a single name gives a one-element set."""
+    return frozenset(c for part in COMBINATION.split(text) if (c := canonical(part)))
+
+
 def drug_expansion(query):
     """Products sharing the full ingredient set of any name/INN/ATC in an English (or code) query.
 
@@ -141,6 +150,13 @@ def drug_expansion(query):
     records, meta, digest, (terms, pattern) = load_dictionary()
     seed = canonical(query)
     indices = {i for match in pattern.finditer(seed) for i in terms[match.group()]} if pattern else set()
+    whole = ingredient_set(query)
+    if len(whole) > 1:
+        # A query that names a whole combination means that combination, not each of its ingredients.
+        combination = {
+            i for i, r in enumerate(records) if frozenset(map(canonical, r["ingredients"])) == whole
+        }
+        indices = combination or indices
     # Only expand to products with the SAME FULL ingredient tuple; no class-member or single/combination equivalence.
     groups = {tuple(sorted(canonical(v) for v in records[i]["ingredients"])) for i in indices}
     matched = (
