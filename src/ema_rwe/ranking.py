@@ -21,7 +21,7 @@ class ScreeningBlock(Model):
         default_factory=list,
         max_length=20,
         description="Umbrella terms a record may use instead of the specific name (ICD-10 block or chapter "
-        "title, MACE/AESI-style composite, ATC group); ranked below specific matches",
+        "title, MACE/AESI-style composite); the server adds medicine classes itself. Ranked below specific matches",
     )
 
     @field_validator("queries", "category_terms")

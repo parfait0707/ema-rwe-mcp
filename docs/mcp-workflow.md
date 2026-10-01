@@ -36,11 +36,17 @@ the model that drives the tools; the rest of `docs/` is in Japanese.
   union.
 - `category_terms`: the umbrella a catalogue record may use instead of the specific name — the ICD-10
   block or chapter title, composite outcomes (MACE, cardiovascular events, adverse events of special
-  interest, immune-related adverse events, pregnancy outcomes) and ATC group names for medicines. Keep
-  them specific to the concept; generic phrases such as "adverse drug reactions" only add noise.
-- The server adds the ATC 4th-level class (code and the catalogue's own name) of every medicine the EMA
-  medicines dictionary recognises as category terms of that block, and reports them in `atc_class_terms`.
-  A class match is not the medicine itself: confirm the exposure in the PDF.
+  interest, immune-related adverse events, pregnancy outcomes). Keep them specific to the concept;
+  generic phrases such as "adverse drug reactions" only add noise.
+- Medicines: the server resolves each query to ATC codes (catalogue entries such as `(B01AF02) apixaban`
+  and the EMA medicines dictionary) and searches names only; ATC is a join key, not an answer.
+  - A medicine adds its catalogue name as a query and its 4th-level class (code and catalogue name) as
+    category terms. A class match is not the medicine itself: confirm the exposure in the PDF.
+  - A requested class (pass its name and its 3rd/4th-level ATC code, e.g. `N03A`, as queries) adds the
+    names of every member coded under it as queries, labelled `catalogue_atc` or `ema_medicines`.
+  - `medicine_expansion` lists what was added per query (at most 100 names per question, class names
+    first; `omitted` counts the rest). Medicines in neither source get no expansion:
+    give their names (and class members) yourself.
 - Every column is searched. `role` ranks matches in that role's catalogue columns (Outcomes, Medicinal
   condition, INN/ATC) first instead of filtering, because 19% of records have an empty Outcomes field.
 - Candidates are ranked, never cut: specific matches before category-only ones, role-column matches

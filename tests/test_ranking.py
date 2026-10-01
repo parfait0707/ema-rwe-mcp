@@ -150,8 +150,8 @@ async def test_out_of_scope_studies_rank_last(service, monkeypatch):
 
 
 @pytest.mark.usefixtures("drug_file")
-async def test_medicine_adds_its_atc_class_as_a_category_term(service):
-    # Given studies naming apixaban, only its ATC class (code or catalogue name), or a sibling medicine
+async def test_medicine_adds_its_class_as_a_category_term(service):
+    # Given studies naming apixaban, only its class (code or catalogue name), or a sibling medicine
     service.repo.upsert(study("1", exposures=["(B01AF02) apixaban"]))
     service.repo.upsert(study("2", exposures=["(B01AF) Direct factor Xa inhibitors"]))
     service.repo.upsert(study("3", title="Bleeding with direct factor Xa inhibitors"))
@@ -163,37 +163,46 @@ async def test_medicine_adds_its_atc_class_as_a_category_term(service):
     order = ids(result)
     # Then class-only studies are candidates ranked below every specific match, labelled as category
     assert {"2", "3"} == set(order[-2:])
-    assert result["candidates"][-1]["matched_term_sources"].keys() <= {"B01AF", "Direct factor Xa inhibitors"}
     assert set(result["candidates"][-1]["matched_term_sources"].values()) == {"category"}
-    assert result["atc_class_terms"] == [
-        {
-            "block": 0,
-            "code": "B01AF",
-            "label": "Direct factor Xa inhibitors",
-            "terms": ["B01AF", "Direct factor Xa inhibitors"],
-        }
-    ]
+    (added,) = result["medicine_expansion"]
+    assert added["category_terms"] == ["B01AF", "Direct factor Xa inhibitors"] and added["queries"] == []
     # And a sibling member of the class is not equated with the requested medicine
     assert "4" not in order
 
 
 @pytest.mark.usefixtures("drug_file")
-async def test_atc_class_terms_are_not_added_for_non_medicines_or_duplicates(service):
-    for i in range(1, 8):
-        service.repo.upsert(study(str(i), title=f"Pancreatitis after apixaban {i}"))
-    result = await service.compare_protocols("q", ["pancreatitis"])
-    assert result["atc_class_terms"] == []
-    # A class the caller already gave is not added twice
-    service.repo.upsert(study("8", exposures=["(B01AF) Direct factor Xa inhibitors"]))
-    result = await service.compare_protocols("q", ["apixaban"], category_terms=["b01af"])
-    assert result["atc_class_terms"] == [
-        {
-            "block": 0,
-            "code": "B01AF",
-            "label": "Direct factor Xa inhibitors",
-            "terms": ["Direct factor Xa inhibitors"],
-        }
-    ]
+async def test_class_query_searches_member_names_even_without_codes(service):
+    # Given a class-coded study, a member named without any code, and a member known only to the catalogue
+    service.repo.upsert(study("1", exposures=["(B01AF) Direct factor Xa inhibitors"]))
+    service.repo.upsert(study("2", title="Rivaroxaban users in primary care"))
+    service.repo.upsert(study("3", exposures=["(B01AF07) edoxaban"]))
+    service.repo.upsert(study("4", title="Warfarin users"))
+    for i in range(5, 11):
+        service.repo.upsert(study(str(i), title=f"Direct factor Xa inhibitors cohort {i}"))
+    # When the caller searches the class by its name
+    result = await service.compare_protocols("q", ["Direct factor Xa inhibitors"], role="exposure")
+    # Then every member found by name is a specific match, with the member's origin
+    assert {"1", "2", "3"} <= set(ids(result)) and "4" not in ids(result)
+    rows = {c["study_id"]: c for c in result["candidates"]}
+    assert rows["2"]["matched_term_sources"] == {"rivaroxaban": "ema_medicines"}
+    assert rows["3"]["matched_term_sources"]["edoxaban"] == "catalogue_atc"
+    assert rows["2"]["rank_features"]["specific_blocks"] == 1
+    (added,) = result["medicine_expansion"]
+    assert {"apixaban", "rivaroxaban", "edoxaban"} <= set(added["queries"]) and added["category_terms"] == []
+
+
+@pytest.mark.usefixtures("drug_file")
+async def test_medicine_outside_the_ema_dictionary_resolves_through_the_catalogue(service):
+    service.repo.upsert(study("1", exposures=["(A10BA02) metformin"]))
+    service.repo.upsert(study("2", exposures=["(A10BA) Biguanides"]))
+    for i in range(3, 9):
+        service.repo.upsert(study(str(i), title=f"Metformin cohort {i}"))
+    result = await service.compare_protocols("q", ["metformin"])
+    assert "2" in ids(result)
+    assert result["medicine_expansion"][0]["category_terms"] == ["A10BA", "Biguanides"]
+    # Non-medicine queries add nothing
+    result = await service.compare_protocols("q", ["cohort"])
+    assert result["medicine_expansion"] == []
 
 
 def test_category_only_match_is_not_reported_as_the_requested_concept():
@@ -204,3 +213,26 @@ def test_category_only_match_is_not_reported_as_the_requested_concept():
     assert match_cell({"basis": "concept", "terms": ["apixaban", "B01AF"], "sources": sources}, {}) == (
         "依頼概念での一致: apixaban, B01AF（カテゴリー語）"
     )
+
+
+@pytest.mark.usefixtures("drug_file")
+async def test_added_medicine_names_are_capped_per_question_and_never_relabel_caller_terms(
+    service, monkeypatch
+):
+    monkeypatch.setattr("ema_rwe.service.MAX_NAMES", 3)
+    service.repo.upsert(study("1", title="Edoxaban and pancreatitis"))
+    # Members known to the catalogue only: apixaban, edoxaban, rivaroxaban, zifaxaban -> one over the cap
+    service.repo.upsert(study("9", exposures=["(B01AF07) edoxaban", "(B01AF99) zifaxaban"]))
+    for i in range(2, 9):
+        service.repo.upsert(study(str(i), title=f"Apixaban and pancreatitis {i}"))
+    blocks = [
+        ScreeningBlock(role="exposure", queries=["B01AF"]),
+        ScreeningBlock(role="outcome", queries=["pancreatitis", "edoxaban"]),
+    ]
+    result = await service.compare_protocols("q", [], blocks=blocks)
+    added = next(e for e in result["medicine_expansion"] if e["block"] == 0)
+    # Three names fit the cap; the rest are counted, not silently lost
+    assert added["queries"] == ["apixaban", "edoxaban", "rivaroxaban"] and added["omitted"] == 1
+    # edoxaban (catalogue only) was typed by the caller in another block: it stays the caller's query
+    row = next(c for c in result["candidates"] if c["study_id"] == "1")
+    assert row["matched_term_sources"]["edoxaban"] == "query"

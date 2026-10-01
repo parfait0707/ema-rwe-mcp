@@ -164,7 +164,7 @@ def create_server(service: Service | None = None):
         category_terms: Annotated[
             list[str] | None,
             Field(
-                description="Umbrella terms (ICD-10 block/chapter, MACE-style composite, ATC group); ranked lower"
+                description="Umbrella terms (ICD-10 block/chapter, MACE-style composite); ranked lower. Medicine classes are added by the server"
             ),
         ] = None,
         blocks: Annotated[
