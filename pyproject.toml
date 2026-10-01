@@ -26,9 +26,9 @@ llm = ["litellm>=1.63,<2"]
 dev = ["pytest>=8,<9", "pytest-asyncio>=0.26,<1", "ruff>=0.11,<1"]
 
 [project.urls]
-Homepage = "https://github.com/parfait0707/rwd-catalogue-mcp"
-Repository = "https://github.com/parfait0707/rwd-catalogue-mcp"
-Issues = "https://github.com/parfait0707/rwd-catalogue-mcp/issues"
+Homepage = "https://github.com/parfait0707/ema-rwe-mcp"
+Repository = "https://github.com/parfait0707/ema-rwe-mcp"
+Issues = "https://github.com/parfait0707/ema-rwe-mcp/issues"
 
 [project.scripts]
 ema-rwe = "ema_rwe.cli:main"

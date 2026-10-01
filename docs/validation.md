@@ -365,6 +365,11 @@ PDF 取得先ディレクトリ名から X/Y が推測可能だった（P）、�
 - 結果：研究 3,314 件、claims 819 件、ehr 916 件、registry 559 件、タグなし 1,511 件、解析 0 件、`integrity_check` は ok、スキーマ版 4。
 - `catalogue-status` は `status: current`。テスト全体は 281 passed。
 
+## 2026-10-01 リポジトリ名の変更
+
+- GitHub のリポジトリ名を `rwd-catalogue-mcp` から `ema-rwe-mcp` に変更し、パッケージ名・MCP 名と揃えた。現在の案内（README、sample、`pyproject.toml`、`docs/release.md`）の URL を新しい名前にした。過去の記録は旧名のまま残す。
+- GitHub は旧 URL を新 URL へ転送する。`rwd-catalogue-mcp` という名前で新しいリポジトリを作ると転送が止まるため、作らない。
+
 ## 未検証事項（継続）
 
 - 外部LLM API呼出しの実認証検証は未実施。キーなしの呼出元LLM方式は合成PDFで保存・再利用まで検証。
