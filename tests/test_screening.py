@@ -326,6 +326,8 @@ async def test_protocol_text_layer_is_recorded_and_survives_a_page_refresh(servi
     service.repo.upsert(study("123", title="Opioid safety", protocol_listed=True))
     result = await service.get_protocol("123")
     assert result["protocol"]["text_layer"] == "full"
+    # A forced page refresh rebuilds the study from the detail pages, which carry neither field
+    await service.get_study("123", refresh=True)
     kept = service.repo.get("123")
     assert kept.protocol_text_layer == "full" and kept.protocol_listed is True
 

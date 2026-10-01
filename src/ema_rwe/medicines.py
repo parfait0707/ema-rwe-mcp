@@ -82,7 +82,8 @@ def expand_medicine(query: str, labels: dict[str, str]) -> dict | None:
         if len(code) == 7:
             if label := name(code):
                 own.setdefault(label, "catalogue_atc")
-            if any(c.startswith(code[:5]) for c in labels):  # only a class the catalogue itself records
+            # Only a class the catalogue itself records (its name or another member), not the drug's own code.
+            if any(c.startswith(code[:5]) and c != code for c in labels):
                 category |= {t: "catalogue_atc" for t in (code[:5], name(code[:5])) if t}
             continue
         if label := name(code):

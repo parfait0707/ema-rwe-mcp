@@ -14,7 +14,7 @@ from .selection import filter_rows
 from .terminology import analogous_phrases, labelled_phrases, term_source
 from .vocabulary import canonical, expand
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5  # 5: Study.protocol_listed / protocol_text_layer
 FTS_COLUMNS = (
     "id UNINDEXED",
     "title",
@@ -241,8 +241,8 @@ class Repository:
             raise RWEError("INVALID_INPUT", "role must be one of any, outcome, condition, exposure.")
         if scope not in ("concept", "analogous"):
             raise RWEError("INVALID_INPUT", "scope must be concept or analogous.")
-        # A single-phrase query (compare_protocols) is one medicine name, matched whole: a name inside a
-        # longer one ('glucagon' in 'glucagon-like peptide-1 receptor agonists') is not that medicine.
+        # A single-phrase query (compare_protocols) is one medicine name for dictionary expansion: a name
+        # inside a longer one ('glucagon' in 'glucagon-like peptide-1 receptor agonists') is not expanded.
         expansion = expand(query, synonyms, codes, whole_term=not split_long)
         columns = ROLE_COLUMNS[role]
         phrases = (

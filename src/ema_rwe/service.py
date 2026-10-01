@@ -584,6 +584,8 @@ class Service:
         role = blocks[0].role if len(blocks) == 1 else role
         medicines: list[dict] = []
         if match_scope == "analogous":
+            # The ATC class offered on a zero-hit result is searched on rerun, as the fallback said.
+            analogous = [*(analogous or []), *self._atc_analogues(queries)]
             # Query variants are explicit search terms: keep each as one phrase, however long.
             unique = self._union(
                 queries, darwin_only, synonyms, codes, filters, role, match_scope, analogous, split_long=False
@@ -653,7 +655,8 @@ class Service:
             "blocks": [b.model_dump() for b in blocks],
             "medicine_expansion": medicines,
             "ranking": "Candidates are ordered, never cut: specific-term matches before category-only matches, "
-            "matches in the role's own columns first, secondary-use data before surveys, then fused BM25 rank"
+            "matches in the role's own columns first, studies whose export lists a protocol before unlisted ones, "
+            "secondary-use data before surveys, then fused BM25 rank; studies with an image-only protocol go last"
             + ("; studies checked to have no published protocol go last." if checked else "."),
             "protocols_checked": checked,
             "selected_study_ids": study_ids,
@@ -733,7 +736,7 @@ class Service:
             for name, relation in [(labels.get(parent), "broader"), *((m, "sibling") for m in members)]:
                 if name and name.isascii() and len(name) <= 150 and not GENERIC.fullmatch(name):
                     terms.append(AnalogousTerm(term=name, relation=relation))
-        return terms[:10]
+        return terms
 
     async def _check_protocols(self, rows: list[dict]) -> int:
         """Mark whether each top candidate's Study documents list a protocol (no PDF download). A study
@@ -830,7 +833,9 @@ class Service:
                     "study_url": study.source_url,
                 },
             )
-            layer = await asyncio.to_thread(text_layer, pdf)
+            # A cached PDF of known layer is not parsed again; a new download is.
+            known = study.protocol_text_layer if meta.get("cached") else None
+            layer = known or await asyncio.to_thread(text_layer, pdf)
             result["protocol"].update(
                 protocol_id=archived["protocol_id"],
                 local_filename=archived["local_filename"],
@@ -954,7 +959,12 @@ class Service:
             dict.fromkeys(
                 clinical["english_terms"]
                 + clinical["related_terms"]
-                + [v for c in clinical["code_candidates"] for v in c["search_variants"]]
+                + [
+                    v
+                    for c in clinical["code_candidates"]
+                    if c["origin"] != "official_dictionary"  # an EMA record's code is no catalogue query
+                    for v in c["search_variants"]
+                ]
             )
         )
         if not queries:

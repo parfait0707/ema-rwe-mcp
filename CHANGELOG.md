@@ -16,6 +16,9 @@
 - Fix: retrieving a protocol no longer erases the catalogue's medicines, conditions, outcomes and
   objective from the study (the detail pages do not carry them).
 - The caller instructions ask for EU and US product names, abbreviations and spelling variants.
+- Database schema 5 (the two new study fields). 0.4.0 upgrades a version-4 database in place; an older
+  server sharing the same data directory then stops with "Database schema is newer than this server
+  supports" and must be updated.
 
 ## 0.3.3 (2026-10-01)
 

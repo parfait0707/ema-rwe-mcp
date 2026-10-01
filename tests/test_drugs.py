@@ -235,7 +235,10 @@ def test_atc_code_is_never_a_cross_source_key(drug_file):
     # The EMA dictionary does not turn a code into names: its record may label the code differently
     assert expand("B01AF02")["clinical"]["english_terms"] == []
     # A code resolves to names only through the catalogue's own '(code) name' entries
-    assert set(expand_medicine("B01AF02", {"B01AF02": "apixaban"})["category_terms"]) == {"B01AF"}
+    labels = {"B01AF02": "apixaban", "B01AF01": "rivaroxaban"}
+    assert set(expand_medicine("B01AF02", labels)["category_terms"]) == {"B01AF"}
+    # A class the catalogue records only through the drug's own code adds no category term
+    assert expand_medicine("B01AF02", {"B01AF02": "apixaban"})["category_terms"] == {}
     # An EMA record whose code the catalogue gives to another medicine is not a class member
     found = expand_medicine("B01AF", {"B01AF02": "edoxaban", "B01AF01": "rivaroxaban"})
     assert "apixaban" not in found["queries"] and {"edoxaban", "rivaroxaban"} <= set(found["queries"])
@@ -258,4 +261,9 @@ def test_salt_name_finds_the_base_medicine_but_ema_codes_are_not_search_terms(dr
     expansion = expand("apixaban", whole_term=True)
     assert "Eliquis" in expansion["clinical"]["english_terms"]
     assert any(c["code"] == "B01AF02" for c in expansion["clinical"]["code_candidates"])
-    assert all("b01af02" not in group for _, group in labelled_phrases("apixaban", expansion, False))
+    groups = labelled_phrases("apixaban", expansion, False)
+    assert all("b01af02" not in [w.casefold() for w in group] for _, group in groups)
+    # A code the caller passes keeps its origin and stays a catalogue search term
+    passed = expand("apixaban", None, [CodeCandidate(system="ATC", code="B01AF02")], whole_term=True)
+    groups = labelled_phrases("apixaban", passed, False)
+    assert any("b01af02" in [w.casefold() for w in group] for _, group in groups)

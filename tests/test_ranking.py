@@ -263,3 +263,15 @@ async def test_absent_medicine_offers_its_atc_class_as_analogous_concepts(servic
     assert result["total_matches"] == 0 and fallback["status"] == "available"
     offered = {t["term"]: t["relation"] for t in fallback["analogous_terms"]}
     assert offered == {"SGLT2 inhibitors": "broader", "dapagliflozin": "sibling", "empagliflozin": "sibling"}
+
+
+@pytest.mark.usefixtures("drug_file")
+async def test_analogous_rerun_searches_the_offered_atc_class(service):
+    service.repo.upsert(study("1", exposures=["(A10BK01) dapagliflozin", "(A10BK) SGLT2 inhibitors"]))
+    for i in range(2, 8):
+        service.repo.upsert(study(str(i), exposures=["(A10BK03) empagliflozin"]))
+    # Rerunning with the same queries and match_scope=analogous, as the fallback instructs
+    result = await service.compare_protocols(
+        "q", ["ipragliflozin", "A10BK05"], role="exposure", match_scope="analogous"
+    )
+    assert result["total_matches"] == 7 and result["match_scope"] == "analogous"

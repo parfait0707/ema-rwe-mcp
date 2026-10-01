@@ -160,7 +160,10 @@ def clinical_expansion(
         for code in r["atc_codes"]
     ]
     candidates = [*inputs, *(v for c in matched for v in c.code_candidates), *drug_codes]
-    candidates = list({(c.system, c.code, c.vocabulary_version): c for c in candidates}.values())
+    unique: dict = {}
+    for c in candidates:  # the first source wins: a caller's code keeps its origin over the EMA record's
+        unique.setdefault((c.system, c.code, c.vocabulary_version), c)
+    candidates = list(unique.values())
     # Where each expansion term came from, so a search result can say why a study matched.
     term_sources = {}
     for c in matched:
