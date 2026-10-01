@@ -13,13 +13,13 @@ uvがあれば、cloneせずにMCPクライアントへ登録できます。カ�
   "mcpServers": {
     "ema-rwe": {
       "command": "uvx",
-      "args": ["--from", "git+https://github.com/parfait0707/rwd-catalogue-mcp", "ema-rwe-mcp"]
+      "args": ["--from", "git+https://github.com/parfait0707/ema-rwe-mcp", "ema-rwe-mcp"]
     }
   }
 }
 ```
 
-同じ内容を[`.mcp.json.sample`](.mcp.json.sample)に置いています。版を固定するには `git+https://github.com/parfait0707/rwd-catalogue-mcp@v0.3.2` のようにタグを付けてください。
+同じ内容を[`.mcp.json.sample`](.mcp.json.sample)に置いています。版を固定するには `git+https://github.com/parfait0707/ema-rwe-mcp@v0.3.2` のようにタグを付けてください。
 
 **必要なもの**: [uv](https://docs.astral.sh/uv/) と git。Python 3.12 は uv が自動で用意します。初回起動時にパッケージのビルドと同梱データ（約50 MB）の複製が走るため、数十秒かかることがあります。追加のAPIキーは不要です（サーバー側抽出を使う場合のみ、後述の`LLM_*`を設定します）。
 
@@ -122,7 +122,7 @@ flowchart TD
 
 ## 不具合報告
 
-[GitHub Issues](https://github.com/parfait0707/rwd-catalogue-mcp/issues) へ、質問文・研究ID・`missing_information`の内容を添えて報告してください。ライセンスは [MIT](LICENSE) です。
+[GitHub Issues](https://github.com/parfait0707/ema-rwe-mcp/issues) へ、質問文・研究ID・`missing_information`の内容を添えて報告してください。ライセンスは [MIT](LICENSE) です。
 
 ## 詳細ドキュメント
 
