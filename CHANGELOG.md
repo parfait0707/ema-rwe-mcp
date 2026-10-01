@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.4.0 (2026-10-02)
+
+- Medicine search is keyed on names (spec v1.0, v1.1). `compare_protocols` resolves each medicine query
+  through the catalogue's own `(ATC code) name` entries and the EMA medicines dictionary: an ingredient
+  adds its 4th-level ATC class as category terms, a class (catalogue class name or 3rd/4th-level code)
+  adds the names of its members, and the response reports what was added in `medicine_expansion`. An EMA
+  record's ATC code is never a catalogue search key. Each query is matched as one whole medicine name
+  (trailing salt words aside); a combination resolves only to the whole ingredient set.
+- Ranking puts studies whose export lists no protocol (`protocol_listed=false`) after listed ones, and a
+  study whose downloaded protocol has no text layer (`protocol_text_layer=none`) last. No candidate is
+  removed. The bundled catalogue DB records `protocol_listed`.
+- A medicine with no study offers its ATC class and the class members the catalogue records as analogous
+  concepts when the caller passes its 5th-level code.
+- Fix: retrieving a protocol no longer erases the catalogue's medicines, conditions, outcomes and
+  objective from the study (the detail pages do not carry them).
+- The caller instructions ask for EU and US product names, abbreviations and spelling variants.
+- Database schema 5 (the two new study fields). 0.4.0 upgrades a version-4 database in place; an older
+  server sharing the same data directory then stops with "Database schema is newer than this server
+  supports" and must be updated.
+
 ## 0.3.3 (2026-10-01)
 
 - `NOTICE` states the source of the bundled EMA data (catalogue DB, medicines dictionary, a test HTML

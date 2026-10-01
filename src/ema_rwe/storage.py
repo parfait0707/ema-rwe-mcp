@@ -14,7 +14,7 @@ from .selection import filter_rows
 from .terminology import analogous_phrases, labelled_phrases, term_source
 from .vocabulary import canonical, expand
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5  # 5: Study.protocol_listed / protocol_text_layer
 FTS_COLUMNS = (
     "id UNINDEXED",
     "title",
@@ -204,7 +204,12 @@ class Repository:
     ) -> set[str]:
         """Index matches of the requested concept before any filter: the analogous-scope exclusion and
         the evidence that a zero-hit result came from filters rather than from the catalogue."""
-        groups = [group for _, group in labelled_phrases(query, expand(query, synonyms, codes), split_long)]
+        groups = [
+            group
+            for _, group in labelled_phrases(
+                query, expand(query, synonyms, codes, whole_term=not split_long), split_long
+            )
+        ]
         match = fts_match(groups, ROLE_COLUMNS[role])
         if not match:
             return set()
@@ -236,7 +241,9 @@ class Repository:
             raise RWEError("INVALID_INPUT", "role must be one of any, outcome, condition, exposure.")
         if scope not in ("concept", "analogous"):
             raise RWEError("INVALID_INPUT", "scope must be concept or analogous.")
-        expansion = expand(query, synonyms, codes)
+        # A single-phrase query (compare_protocols) is one medicine name for dictionary expansion: a name
+        # inside a longer one ('glucagon' in 'glucagon-like peptide-1 receptor agonists') is not expanded.
+        expansion = expand(query, synonyms, codes, whole_term=not split_long)
         columns = ROLE_COLUMNS[role]
         phrases = (
             labelled_phrases(query, expansion, split_long)
@@ -435,6 +442,9 @@ def import_csv(
             "Required CSV columns: Study ID, Official title and acronym, "
             "Study type. Use --column-map for alternate headers. Found: " + str(fieldnames),
         )
+    protocol_columns = [
+        headers[h] for h in ("protocol file s", "protocol file s uri", "protocol url") if h in headers
+    ]
     other_sources_column = headers.get("other linked data sources")
     other_design_column = headers.get("non interventional study design other")
     search_columns = [headers[key] for key in SEARCH_COLUMNS if key in headers]
@@ -471,6 +481,8 @@ def import_csv(
             v.get("darwin_eu", "").lower()
         )
         v["eupas_number"] = v.get("eupas_number") or None
+        if protocol_columns:
+            v["protocol_listed"] = any((row.get(c) or "").strip() for c in protocol_columns)
         studies.append(Study(**v, source_url=f"{BASE}/study/{sid}", metadata_source=f"CSV SHA256:{checksum}"))
         search_text_by_id[sid] = "\n".join(
             dict.fromkeys((row.get(column) or "").strip() for column in search_columns)

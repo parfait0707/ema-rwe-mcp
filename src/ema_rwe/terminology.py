@@ -110,7 +110,9 @@ def load_dictionaries() -> tuple[list[tuple[str, Concept]], str, list[str]]:
     return concepts, ":".join(digests), [p.name for p in paths]
 
 
-def clinical_expansion(query: str, codes: list[CodeCandidate] | None = None) -> dict:
+def clinical_expansion(
+    query: str, codes: list[CodeCandidate] | None = None, whole_terms: list[str] | None = None
+) -> dict:
     from .drugs import drug_expansion
 
     sourced, digest, dictionary_names = load_dictionaries()
@@ -135,16 +137,16 @@ def clinical_expansion(query: str, codes: list[CodeCandidate] | None = None) -> 
     ]
     # English names of matched concepts reach the medicines dictionary too, so a sourced dictionary
     # entry for a Japanese medicine name expands to every EMA product with the same ingredient set.
-    drugs = drug_expansion(
-        " ".join(
-            [
-                query,
-                *(t for c in matched for t in c.english_terms),
-                *(c.code for c in inputs if canonical(c.system) == "atc"),
-            ]
-        )
+    english = [t for c in matched for t in c.english_terms]
+    drugs = (
+        drug_expansion([*whole_terms, *english], whole_term=True)
+        if whole_terms is not None
+        else drug_expansion(" ".join([query, *english]))
     )
     revision += ":" + drugs["dictionary_revision"]
+    # The EMA record's ATC codes stay hints for searching inside a protocol PDF, where a code list defines
+    # the exposure and every hit is read and quoted. The catalogue screening never uses them (see
+    # _content_words): the catalogue may give the same code to another medicine.
     drug_codes = [
         CodeCandidate(
             system="ATC",
@@ -158,7 +160,10 @@ def clinical_expansion(query: str, codes: list[CodeCandidate] | None = None) -> 
         for code in r["atc_codes"]
     ]
     candidates = [*inputs, *(v for c in matched for v in c.code_candidates), *drug_codes]
-    candidates = list({(c.system, c.code, c.vocabulary_version): c for c in candidates}.values())
+    unique: dict = {}
+    for c in candidates:  # the first source wins: a caller's code keeps its origin over the EMA record's
+        unique.setdefault((c.system, c.code, c.vocabulary_version), c)
+    candidates = list(unique.values())
     # Where each expansion term came from, so a search result can say why a study matched.
     term_sources = {}
     for c in matched:
@@ -211,7 +216,7 @@ def clinical_expansion(query: str, codes: list[CodeCandidate] | None = None) -> 
 
 def search_units(query: str, expansion: dict) -> list[str]:
     """English phrases + whole code strings; never search the '9' from J84.9 alone."""
-    words, code_terms, _ = _content_words(query, expansion)
+    words, code_terms, _ = _content_words(query, expansion, catalogue=False)
     return list(
         dict.fromkeys(
             [
@@ -225,12 +230,18 @@ def search_units(query: str, expansion: dict) -> list[str]:
     )[:350]
 
 
-def _content_words(query: str, expansion: dict) -> tuple[list[str], list[str], int]:
+def _content_words(query: str, expansion: dict, catalogue: bool = True) -> tuple[list[str], list[str], int]:
     """Query words minus codes, code-system names and stop words, plus the whole code strings, and the
     number of tokens between the first and last content word in the query text (stop words included:
     the index keeps them, so NEAR must allow for them)."""
     remainder = query
-    code_terms = [v for c in expansion["clinical"]["code_candidates"] for v in c["search_variants"]]
+    code_terms = [
+        v
+        for c in expansion["clinical"]["code_candidates"]
+        # EMA codes are not a cross-source key into the catalogue; inside a PDF they remain hints.
+        if not catalogue or c["origin"] != "official_dictionary"
+        for v in c["search_variants"]
+    ]
     for term in sorted(code_terms, key=len, reverse=True):
         remainder = re.sub(r"(?<!\w)" + re.escape(term) + r"(?!\w)", " ", remainder, flags=re.IGNORECASE)
     remainder = re.sub(

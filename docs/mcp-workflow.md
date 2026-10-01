@@ -39,7 +39,9 @@ the model that drives the tools; the rest of `docs/` is in Japanese.
   interest, immune-related adverse events, pregnancy outcomes). Keep them specific to the concept;
   generic phrases such as "adverse drug reactions" only add noise.
 - Medicines: the server resolves each query to ATC codes (catalogue entries such as `(B01AF02) apixaban`
-  and the EMA medicines dictionary) and searches names only; ATC is a join key, not an answer.
+  and the EMA medicines dictionary) and searches names only; ATC is a join key, not an answer. An EMA
+  record's ATC code is never a catalogue search term (the catalogue may give that code to another
+  medicine); it remains a hint for `search_protocol_text` inside a protocol PDF.
   - A medicine adds its catalogue name as a query and its 4th-level class (code and catalogue name) as
     category terms. A class match is not the medicine itself: confirm the exposure in the PDF.
   - A requested class (pass its name and its 3rd/4th-level ATC code, e.g. `N03A`, as queries) adds the
@@ -54,6 +56,16 @@ the model that drives the tools; the rest of `docs/` is in Japanese.
   `rank_features`, `matched_terms` and `matched_term_sources` (`category` for umbrella matches).
 - `check_protocols=N` (0–20) checks the Study documents of the top N listed candidates (no PDF) and
   ranks studies without a protocol last. Use it before asking the user to pick `study_ids`.
+- Without any request, candidates whose export lists no protocol (`protocol_listed=false`) rank after
+  listed ones of the same specificity and role, and a study whose downloaded protocol has no text layer
+  (`protocol_text_layer=none`, image-only, needs OCR) ranks last. Nothing is removed: when a selected study
+  turns out to have no protocol or an unreadable one, say so and take the next candidate.
+- Medicines: give the INN and the EU and US product names (each query is matched as one whole name), plus
+  abbreviations (TNFi, JAKi, DOACs), noun variants (drugs/medicines/medications) and hyphenated and
+  unhyphenated spellings. For a medicine absent from the catalogue also give its 5th-level ATC code: a
+  zero-hit result then offers its ATC class and the members the catalogue records as analogous concepts.
+  When a product was requested, tell the user which candidates matched only its ingredient (another
+  product of the same substance).
 - Matching is local FTS5: the words of a multi-word term must co-occur in one column (`NEAR`, distance
   max(3, words - 1); a query's own distance also covers its stop words). Each query variant stays one
   phrase however long. `search_studies` still splits a query of five or more content words into single

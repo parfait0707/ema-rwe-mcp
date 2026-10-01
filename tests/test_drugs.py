@@ -10,7 +10,7 @@ from ema_rwe.medicines import catalogue_atc, expand_medicine
 from ema_rwe.pdf import Page, search_sections, sections
 from ema_rwe.service import Service
 from ema_rwe.storage import import_csv
-from ema_rwe.terminology import inline_codes
+from ema_rwe.terminology import inline_codes, labelled_phrases
 from ema_rwe.vocabulary import expand
 
 
@@ -61,7 +61,6 @@ def japanese_drug_terms(tmp_path, monkeypatch):
     [
         ("Eliquis", "apixaban"),
         ("apixaban", "Eliquis"),
-        ("B01AF02", "Eliquis"),
         ("rivaroxaban", "Xarelto"),
     ],
 )
@@ -172,7 +171,8 @@ async def test_llm_translation_expands_official_drug_names(drug_file, settings, 
     try:
         plan = await service.plan_study_search("未登録の日本語商品名", use_llm=True)
         assert "Eliquis" in plan["queries"]
-        assert any(q["query"] == "B01AF02" for q in plan["code_searches"])
+        # The EMA record's ATC code is not offered as a catalogue code search (names join the sources)
+        assert all(q["query"] != "B01AF02" for q in plan["code_searches"])
     finally:
         await service.close()
 
@@ -202,11 +202,8 @@ def test_both_ema_and_catalogue_codes_are_used_when_they_differ(drug_file):
     # The EMA dictionary and the catalogue may carry different ATC versions for the same medicine
     found = expand_medicine("apixaban", {"B01AX99": "apixaban", "B01AX": "Other antithrombotics"})
     assert found["atc_codes"] == ["B01AF02", "B01AX99"]
-    assert found["category_terms"] == {
-        "B01AF": "catalogue_atc",
-        "B01AX": "catalogue_atc",
-        "Other antithrombotics": "catalogue_atc",
-    }
+    # Only classes the catalogue itself records become category terms (B01AF is unknown to it here)
+    assert found["category_terms"] == {"B01AX": "catalogue_atc", "Other antithrombotics": "catalogue_atc"}
 
 
 def test_class_expansion_skips_generic_leaf_names_and_lists_the_class_first(drug_file):
@@ -232,3 +229,41 @@ def test_combination_query_resolves_only_to_the_whole_ingredient_set(drug_file):
     assert expand_medicine("empagliflozin and metformin", labels)["atc_codes"] == ["A10BD20"]
     # A combination known to no source resolves to nothing rather than to its ingredients
     assert expand_medicine("sitagliptin and empagliflozin", labels) is None
+
+
+def test_atc_code_is_never_a_cross_source_key(drug_file):
+    # The EMA dictionary does not turn a code into names: its record may label the code differently
+    assert expand("B01AF02")["clinical"]["english_terms"] == []
+    # A code resolves to names only through the catalogue's own '(code) name' entries
+    labels = {"B01AF02": "apixaban", "B01AF01": "rivaroxaban"}
+    assert set(expand_medicine("B01AF02", labels)["category_terms"]) == {"B01AF"}
+    # A class the catalogue records only through the drug's own code adds no category term
+    assert expand_medicine("B01AF02", {"B01AF02": "apixaban"})["category_terms"] == {}
+    # An EMA record whose code the catalogue gives to another medicine is not a class member
+    found = expand_medicine("B01AF", {"B01AF02": "edoxaban", "B01AF01": "rivaroxaban"})
+    assert "apixaban" not in found["queries"] and {"edoxaban", "rivaroxaban"} <= set(found["queries"])
+
+
+def test_whole_term_matching_never_finds_a_name_inside_a_longer_one(drug_file):
+    phrase = "apixaban-like anticoagulants"
+    assert [m["product_name"] for m in drug_expansion(phrase)["matches"]] == ["Eliquis"]
+    assert drug_expansion(phrase, whole_term=True)["matches"] == []
+    assert [m["product_name"] for m in drug_expansion("Eliquis", whole_term=True)["matches"]] == ["Eliquis"]
+    assert expand_medicine(phrase, {}) is None
+
+
+def test_salt_name_finds_the_base_medicine_but_ema_codes_are_not_search_terms(drug_file):
+    # A salt or ester name still finds the products of its base ingredient under whole-term matching
+    assert [
+        m["product_name"] for m in drug_expansion("apixaban hydrochloride", whole_term=True)["matches"]
+    ] == ["Eliquis"]
+    # The EMA record's ATC code is kept for PDF text search but never becomes a catalogue search term
+    expansion = expand("apixaban", whole_term=True)
+    assert "Eliquis" in expansion["clinical"]["english_terms"]
+    assert any(c["code"] == "B01AF02" for c in expansion["clinical"]["code_candidates"])
+    groups = labelled_phrases("apixaban", expansion, False)
+    assert all("b01af02" not in [w.casefold() for w in group] for _, group in groups)
+    # A code the caller passes keeps its origin and stays a catalogue search term
+    passed = expand("apixaban", None, [CodeCandidate(system="ATC", code="B01AF02")], whole_term=True)
+    groups = labelled_phrases("apixaban", passed, False)
+    assert any("b01af02" in [w.casefold() for w in group] for _, group in groups)

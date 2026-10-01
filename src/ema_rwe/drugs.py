@@ -104,7 +104,9 @@ def _index(records):
         return {}, None
     terms = {}
     for i, row in enumerate(records):
-        for term in [row["product_name"], " / ".join(row["ingredients"]), *row["atc_codes"]]:
+        # Names only: an ATC code is never a cross-source key (the EMA record and the catalogue may label
+        # the same code differently). Codes resolve to names through the catalogue (medicines.py).
+        for term in [row["product_name"], " / ".join(row["ingredients"])]:
             terms.setdefault(canonical(term), []).append(i)
     pattern = re.compile(
         r"(?<![a-z0-9_])(?:"
@@ -136,27 +138,79 @@ def load_dictionary():
 COMBINATION = re.compile(r"\s*(?:/|\+|,|;|\band\b|\bwith\b)\s*", re.IGNORECASE)
 
 
+SALT_WORDS = frozenset(
+    [
+        "acetate",
+        "besilate",
+        "besylate",
+        "bromide",
+        "calcium",
+        "citrate",
+        "dihydrochloride",
+        "dipropionate",
+        "disodium",
+        "etexilate",
+        "fumarate",
+        "hydrobromide",
+        "hydrochloride",
+        "hydrogen",
+        "magnesium",
+        "maleate",
+        "mesilate",
+        "mesylate",
+        "monohydrate",
+        "phosphate",
+        "potassium",
+        "sodium",
+        "succinate",
+        "sulfate",
+        "sulphate",
+        "tartrate",
+        "trifenatate",
+    ]
+)
+
+
+def without_salt(name: str) -> str:
+    """The canonical name without trailing salt or ester words ('filgotinib maleate' -> 'filgotinib')."""
+    words = canonical(name).split()
+    while len(words) > 1 and words[-1] in SALT_WORDS:
+        words.pop()
+    return " ".join(words)
+
+
 def ingredient_set(text: str) -> frozenset[str]:
     """The ingredients named by one medicine name, order-free; a single name gives a one-element set."""
     return frozenset(c for part in COMBINATION.split(text) if (c := canonical(part)))
 
 
-def drug_expansion(query):
-    """Products sharing the full ingredient set of any name/INN/ATC in an English (or code) query.
+def drug_expansion(query, whole_term: bool = False):
+    """Products sharing the full ingredient set of any product name or INN in an English query.
+
+    whole_term=True treats the query (or each item of a list) as one medicine name matched as a whole,
+    never a name found inside a longer phrase.
 
     Japanese medicine names are translated before this step: by a sourced concept in the terminology
     dictionary (clinical_expansion feeds its English terms here) or by the caller/configured LLM.
     """
     records, meta, digest, (terms, pattern) = load_dictionary()
-    seed = canonical(query)
-    indices = {i for match in pattern.finditer(seed) for i in terms[match.group()]} if pattern else set()
-    whole = ingredient_set(query)
-    if len(whole) > 1:
-        # A query that names a whole combination means that combination, not each of its ingredients.
-        combination = {
-            i for i, r in enumerate(records) if frozenset(map(canonical, r["ingredients"])) == whole
-        }
-        indices = combination or indices
+    items = query if isinstance(query, list) else [query]
+    if whole_term:
+        # Each item is one medicine name: it must equal a product name or an ingredient set as a whole,
+        # apart from trailing salt or ester words ('tofacitinib citrate' finds tofacitinib products). This
+        # is a retrieval hint only: a salt is never reported as the same formulation.
+        indices = {i for item in items for i in terms.get(canonical(item), terms.get(without_salt(item), []))}
+    else:
+        seed = canonical(" ".join(items))
+        indices = {i for match in pattern.finditer(seed) for i in terms[match.group()]} if pattern else set()
+    for item in items:
+        whole = ingredient_set(item)
+        if len(whole) > 1:
+            # A query that names a whole combination means that combination, not each of its ingredients.
+            combination = {
+                i for i, r in enumerate(records) if frozenset(map(canonical, r["ingredients"])) == whole
+            }
+            indices = indices | combination if whole_term else combination or indices
     # Only expand to products with the SAME FULL ingredient tuple; no class-member or single/combination equivalence.
     groups = {tuple(sorted(canonical(v) for v in records[i]["ingredients"])) for i in indices}
     matched = (

@@ -40,3 +40,6 @@ docs/work_log/
 
 # Gold-set pools quote catalogue records and hold labels; kept local, not published.
 tests/fixtures/gold/pool/
+
+# Local-only research notes: a nested Git repository without a remote (never published).
+docs/research/private/

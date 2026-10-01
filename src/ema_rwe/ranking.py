@@ -105,9 +105,12 @@ def order_key(row: dict) -> tuple:
     f = row["rank_features"]
     available = row.get("protocol_available")
     return (
-        available is False,  # a study without a published protocol cannot answer; keep it, but last
+        # A study without a published protocol, or whose protocol has no text layer, cannot answer a
+        # definition question: keep it, but last.
+        available is False or row.get("protocol_text_layer") == "none",
         -f["specific_blocks"],
         -f["role_blocks"],
+        row.get("protocol_listed") is False,  # the export lists no protocol: usually none to read
         -f["type_fit"],
         -f["fused_score"],
         row["study_id"],
