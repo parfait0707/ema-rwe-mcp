@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.3 (2026-10-01)
+
+- `NOTICE` states the source of the bundled EMA data (catalogue DB, medicines dictionary, a test HTML
+  excerpt) with © EMA, the access month and the applicable EMA legal notices, and that the MIT License
+  covers the source code only. It ships in the wheel (`dist-info/licenses/NOTICE`) and the sdist.
+- The repository is renamed to `ema-rwe-mcp`; the old `rwd-catalogue-mcp` URLs redirect.
+- The gold-set pools (`tests/fixtures/gold/pool/`), which quote catalogue records, are no longer
+  tracked.
+
 ## 0.3.2 (2026-10-01)
 
 - Bundled catalogue rebuilt from the 2026-10-01 official exports alone: 3,314 Non-interventional
