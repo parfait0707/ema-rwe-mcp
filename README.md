@@ -1,6 +1,6 @@
 # EMA RWE MCP
 
-**バージョン 0.3.1**。EMA Catalogueの **Non-interventional study**（介入を伴わない研究として明示的に分類された研究のみ）を検索し、Study documentsの最新プロトコルPDFから、研究デザイン・疾患定義・データソースを出典付き（PDFの物理ページ番号・逐語引用）で抽出・比較するPython MCPサーバーです。検索はローカルSQLite FTSと保存済み解析だけで行い、PDFの取得は選択した研究に限られます。EMAサイトの検索結果ページを無制限にクロールする仕組みではありません。
+**バージョン 0.3.2**。EMA Catalogueの **Non-interventional study**（介入を伴わない研究として明示的に分類された研究のみ）を検索し、Study documentsの最新プロトコルPDFから、研究デザイン・疾患定義・データソースを出典付き（PDFの物理ページ番号・逐語引用）で抽出・比較するPython MCPサーバーです。検索はローカルSQLite FTSと保存済み解析だけで行い、PDFの取得は選択した研究に限られます。EMAサイトの検索結果ページを無制限にクロールする仕組みではありません。
 
 開発者（このMCP自体を改修する人）向けの情報は [README_DEV.md](README_DEV.md) にまとめています。
 
@@ -19,7 +19,7 @@ uvがあれば、cloneせずにMCPクライアントへ登録できます。カ�
 }
 ```
 
-同じ内容を[`.mcp.json.sample`](.mcp.json.sample)に置いています。版を固定するには `git+https://github.com/parfait0707/rwd-catalogue-mcp@v0.3.1` のようにタグを付けてください。
+同じ内容を[`.mcp.json.sample`](.mcp.json.sample)に置いています。版を固定するには `git+https://github.com/parfait0707/rwd-catalogue-mcp@v0.3.2` のようにタグを付けてください。
 
 **必要なもの**: [uv](https://docs.astral.sh/uv/) と git。Python 3.12 は uv が自動で用意します。初回起動時にパッケージのビルドと同梱データ（約50 MB）の複製が走るため、数十秒かかることがあります。追加のAPIキーは不要です（サーバー側抽出を使う場合のみ、後述の`LLM_*`を設定します）。
 
@@ -99,7 +99,7 @@ flowchart TD
 
 ## カタログの更新（任意）
 
-同梱のカタログDBは**2026-09-13時点**のNon-interventional study全件です。最新の研究を検索対象に加えたい場合だけ、[EMA検索ページ](https://catalogues.ema.europa.eu/search?f%5B0%5D=content_type%3Adarwin_study)のExport ResultsでCSVを取得し、`import_catalogue_csv`で取り込みます。CSVを一度も取り込んでいない、または最新取込から`EMA_CATALOGUE_TTL_SECONDS`（既定30日）を過ぎて検索候補が0件だった場合は、Playwright MCPを併用して呼出元が表示ブラウザでEMA公式のExportを1回実行し、そのCSVを取り込む経路も使えます。手順の詳細（必須列・ファイル名規約・Playwright併用の理由）は[README_DEV.md](README_DEV.md)を参照してください。
+同梱のカタログDBは**2026-10-01時点**のNon-interventional study全件です。最新の研究を検索対象に加えたい場合だけ、[EMA検索ページ](https://catalogues.ema.europa.eu/search?f%5B0%5D=content_type%3Adarwin_study)のExport ResultsでCSVを取得し、`import_catalogue_csv`で取り込みます。CSVを一度も取り込んでいない、または最新取込から`EMA_CATALOGUE_TTL_SECONDS`（既定30日）を過ぎて検索候補が0件だった場合は、Playwright MCPを併用して呼出元が表示ブラウザでEMA公式のExportを1回実行し、そのCSVを取り込む経路も使えます。手順の詳細（必須列・ファイル名規約・Playwright併用の理由）は[README_DEV.md](README_DEV.md)を参照してください。
 
 ## できないこと・注意
 
@@ -113,7 +113,7 @@ flowchart TD
 
 ## データの出所とプライバシー
 
-- カタログのスナップショットは [EMA Catalogues of RWD studies](https://catalogues.ema.europa.eu/) の公式CSV export（2026-09-13）から作成しています。連絡先の列は取り込まず、索引にも含めていません。研究情報の利用条件はEMAサイトの規約に従ってください。
+- カタログのスナップショットは [EMA Catalogues of RWD studies](https://catalogues.ema.europa.eu/) の公式CSV export（2026-10-01）から作成しています。連絡先の列は取り込まず、索引にも含めていません。研究情報の利用条件はEMAサイトの規約に従ってください。
 - 医薬品辞書はEMA公式の医薬品データです（`data/`）。疾患名の辞書は同梱せず、日本語の質問はMCPクライアント（Claude Code、Codex等）がICD-10を手がかりに英語名・言い換え・コード候補へ翻訳します。独自の言い換えやマスターを使う場合は`data/dictionaries/`にJSON辞書を置きます（書式は`data/terminology.example.json`）。
 - プロトコルPDFは選択した研究についてのみ、間隔制御・robots確認付きでEMAサイトから取得し、あなたのPCに保存されます。本文はLLM（呼出元のClaude Code/Codex、または設定したサーバー側プロバイダ）へ送信されます。
 - このツールは研究デザインの参考情報を出典付きで整理するもので、出典の確認なしに研究設計へ転用しないでください。
