@@ -11,7 +11,7 @@ from .archive import ProtocolArchive
 from .comparison import Comparisons
 from .config import Settings
 from .domain import AnalogousTerm, CodeCandidate, Extraction, ProtocolAnswer, RWEError, SourcePreference, now
-from .drugs import refresh_dictionary
+from .drugs import drug_expansion, refresh_dictionary
 from .ema import BASE, is_non_interventional, parse_documents, parse_study, select_protocol
 from .exploration import Explorer
 from .http import EMAClient
@@ -48,7 +48,8 @@ CATEGORY_GUIDANCE = (
     "block or chapter title (e.g. systemic connective tissue disorders for SLE, ischaemic heart diseases for "
     "unstable angina), composite or umbrella outcomes studies use (MACE, cardiovascular events, adverse events "
     "of special interest, immune-related adverse events, pregnancy outcomes) and, for medicines, the ATC group "
-    "name (PD-1/PD-L1 inhibitors, direct factor Xa inhibitors, antimycotics for systemic use). Keep them "
+    "name (PD-1/PD-L1 inhibitors, direct factor Xa inhibitors, antimycotics for systemic use; the server adds "
+    "the ATC 4th-level class of EMA-dictionary medicines itself). Keep them "
     "specific to the concept: generic terms such as 'adverse drug reactions' only add noise. Category matches "
     "are ranked below specific ones. Codes rarely appear in catalogue records; they matter in the protocol PDFs."
 )
@@ -564,6 +565,7 @@ class Service:
                 ) from exc
         # The single block's role drives the analogous fallback, whichever form the caller used.
         role = blocks[0].role if len(blocks) == 1 else role
+        atc_classes: list[dict] = []
         if match_scope == "analogous":
             # Query variants are explicit search terms: keep each as one phrase, however long.
             unique = self._union(
@@ -586,7 +588,9 @@ class Service:
                 )
 
             # Every column, ranked: the role is a ranking signal, not a filter (empty Outcomes fields).
-            unique = {row["study_id"]: row for row in screen(search, blocks)}
+            unique = {
+                row["study_id"]: row for row in screen(search, self._with_atc_classes(blocks, atc_classes))
+            }
         candidates = list(unique.values())
         checked = 0
         listed = self.settings.max_screening_studies < len(candidates) <= self.settings.max_listed_candidates
@@ -619,6 +623,7 @@ class Service:
             "queries": queries,
             "role": role,
             "blocks": [b.model_dump() for b in blocks],
+            "atc_class_terms": atc_classes,
             "ranking": "Candidates are ordered, never cut: specific-term matches before category-only matches, "
             "matches in the role's own columns first, secondary-use data before surveys, then fused BM25 rank"
             + ("; studies checked to have no published protocol go last." if checked else "."),
@@ -652,6 +657,32 @@ class Service:
         if not 1 <= len(candidates) <= self.settings.max_screening_studies:
             return {**search, "network_requests": requests, "rows": [], "pdf_downloads": 0}
         return await self.comparisons.prepare(question, candidates, search)
+
+    def _with_atc_classes(self, blocks: list[ScreeningBlock], added: list[dict]) -> list[ScreeningBlock]:
+        """Blocks with the ATC 4th-level class of each EMA-dictionary medicine added as category terms.
+
+        Catalogue records often name only the class ('(B01AF) Direct factor Xa inhibitors'); a class is
+        never the medicine itself, so it only ranks as a category match. `added` records what was added.
+        """
+        out = []
+        for index, block in enumerate(blocks):
+            known = {t.casefold() for t in [*block.queries, *block.category_terms]}
+            codes = {
+                code[:5]
+                for query in block.queries
+                for match in drug_expansion(query)["matches"]
+                for code in match["atc_codes"]
+            }
+            terms = []
+            for code in sorted(codes):
+                label = self.repo.atc_label(code)
+                new = [t for t in (code, label) if t and t.casefold() not in known]
+                known |= {t.casefold() for t in new}
+                if new:
+                    added.append({"block": index, "code": code, "label": label, "terms": new})
+                    terms += new
+            out.append(block.model_copy(update={"category_terms": [*block.category_terms, *terms]}))
+        return out
 
     async def _check_protocols(self, rows: list[dict]) -> int:
         """Mark whether each top candidate's Study documents list a protocol (no PDF download). A study

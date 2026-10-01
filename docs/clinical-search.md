@@ -83,7 +83,7 @@ PDF検索にはさらに`protocol_id`を指定します。CLIも`--code "ICD-10:
 
 保存先は`EMA_DRUG_DICTIONARY_PATH`、未設定時はDBと同じフォルダの`ema-medicines.json`です。7日間は再利用し、`force=true`で再取得できます。取得した原本とSHA256を利用し、不正な応答で旧辞書を上書きしません。通常の研究・PDF検索はローカル辞書を読み、通信しません。未取得・7日経過は`clinical.drugs.needs_refresh`に表示します。別環境でセットアップする場合は最初に更新ツールを呼んでください。
 
-例：`Eliquis`→`apixaban`と`B01AF02`、`apixaban`→`Eliquis`等の同じ成分構成を持つ医薬品名、`B01AF02`→両方の名称。検索結果の`query_expansion.clinical.drugs`に候補製品、成分構成、出典、辞書版、件数と打切りの有無を返します。商品名の検索でも、本文にINNやATCしかない箇所を検索できます。ATCの上位クラスを単一成分と同義には扱いません。
+例：`Eliquis`→`apixaban`と`B01AF02`、`apixaban`→`Eliquis`等の同じ成分構成を持つ医薬品名、`B01AF02`→両方の名称。検索結果の`query_expansion.clinical.drugs`に候補製品、成分構成、出典、辞書版、件数と打切りの有無を返します。商品名の検索でも、本文にINNやATCしかない箇所を検索できます。ATCの上位クラスを単一成分と同義には扱いません。`compare_protocols`では、辞書で分かった成分のATC第4レベル（例：B01AF）と、カタログ上のその名称（Direct factor Xa inhibitors）をカテゴリー語に加えます。カタログにはクラス名だけで医薬品を記録した研究があるためです。クラスでの一致はカテゴリー語の一致として後方に並べ、`atc_class_terms`に何を加えたかを返します。
 
 日本語の医薬品名は内蔵していません。呼出元LLM、または`plan_study_search(use_llm=true)`が英語名を`synonyms`に渡すと、公式辞書で双方向展開します。出典のある日本語対応表を使う場合は、利用者の辞書（`data/dictionaries/`）の概念に日本語名を`input_terms`、INNを`english_terms`として登録します。一致した概念の英語名は医薬品辞書にも渡るため、同じ成分構成の製品名まで展開されます。医薬品辞書が見つからない場合は何も展開せず、`needs_refresh=true`を返します。
 

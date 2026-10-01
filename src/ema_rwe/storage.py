@@ -190,6 +190,15 @@ class Repository:
                 (hashlib.sha256(row["body"].encode()).hexdigest(), study_id, row["fingerprint"], row["body"]),
             )
 
+    def atc_label(self, code: str) -> str | None:
+        """The catalogue's own name for an ATC code, from exposures such as '(B01AF) Direct factor Xa inhibitors'."""
+        with self.connection() as db:
+            row = db.execute(
+                "SELECT j.value FROM studies, json_each(studies.body, '$.exposures') j WHERE j.value LIKE ? LIMIT 1",
+                (f"({code})%",),
+            ).fetchone()
+        return row[0][len(code) + 2 :].strip() or None if row else None
+
     def concept_ids(
         self, query: str, synonyms=None, codes=None, role: str = "any", split_long: bool = True
     ) -> set[str]:
