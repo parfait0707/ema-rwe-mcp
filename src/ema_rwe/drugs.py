@@ -138,6 +138,47 @@ def load_dictionary():
 COMBINATION = re.compile(r"\s*(?:/|\+|,|;|\band\b|\bwith\b)\s*", re.IGNORECASE)
 
 
+SALT_WORDS = frozenset(
+    [
+        "acetate",
+        "besilate",
+        "besylate",
+        "bromide",
+        "calcium",
+        "citrate",
+        "dihydrochloride",
+        "dipropionate",
+        "disodium",
+        "etexilate",
+        "fumarate",
+        "hydrobromide",
+        "hydrochloride",
+        "hydrogen",
+        "magnesium",
+        "maleate",
+        "mesilate",
+        "mesylate",
+        "monohydrate",
+        "phosphate",
+        "potassium",
+        "sodium",
+        "succinate",
+        "sulfate",
+        "sulphate",
+        "tartrate",
+        "trifenatate",
+    ]
+)
+
+
+def without_salt(name: str) -> str:
+    """The canonical name without trailing salt or ester words ('filgotinib maleate' -> 'filgotinib')."""
+    words = canonical(name).split()
+    while len(words) > 1 and words[-1] in SALT_WORDS:
+        words.pop()
+    return " ".join(words)
+
+
 def ingredient_set(text: str) -> frozenset[str]:
     """The ingredients named by one medicine name, order-free; a single name gives a one-element set."""
     return frozenset(c for part in COMBINATION.split(text) if (c := canonical(part)))
@@ -155,8 +196,10 @@ def drug_expansion(query, whole_term: bool = False):
     records, meta, digest, (terms, pattern) = load_dictionary()
     items = query if isinstance(query, list) else [query]
     if whole_term:
-        # Each item is one medicine name: it must equal a product name or an ingredient set as a whole.
-        indices = {i for item in items for i in terms.get(canonical(item), [])}
+        # Each item is one medicine name: it must equal a product name or an ingredient set as a whole,
+        # apart from trailing salt or ester words ('tofacitinib citrate' finds tofacitinib products). This
+        # is a retrieval hint only: a salt is never reported as the same formulation.
+        indices = {i for item in items for i in terms.get(canonical(item), terms.get(without_salt(item), []))}
     else:
         seed = canonical(" ".join(items))
         indices = {i for match in pattern.finditer(seed) for i in terms[match.group()]} if pattern else set()

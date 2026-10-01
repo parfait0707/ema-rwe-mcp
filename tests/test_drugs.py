@@ -10,7 +10,7 @@ from ema_rwe.medicines import catalogue_atc, expand_medicine
 from ema_rwe.pdf import Page, search_sections, sections
 from ema_rwe.service import Service
 from ema_rwe.storage import import_csv
-from ema_rwe.terminology import inline_codes
+from ema_rwe.terminology import inline_codes, labelled_phrases
 from ema_rwe.vocabulary import expand
 
 
@@ -171,7 +171,8 @@ async def test_llm_translation_expands_official_drug_names(drug_file, settings, 
     try:
         plan = await service.plan_study_search("未登録の日本語商品名", use_llm=True)
         assert "Eliquis" in plan["queries"]
-        assert any(q["query"] == "B01AF02" for q in plan["code_searches"])
+        # The EMA record's ATC code is not offered as a catalogue code search (names join the sources)
+        assert all(q["query"] != "B01AF02" for q in plan["code_searches"])
     finally:
         await service.close()
 
@@ -201,11 +202,8 @@ def test_both_ema_and_catalogue_codes_are_used_when_they_differ(drug_file):
     # The EMA dictionary and the catalogue may carry different ATC versions for the same medicine
     found = expand_medicine("apixaban", {"B01AX99": "apixaban", "B01AX": "Other antithrombotics"})
     assert found["atc_codes"] == ["B01AF02", "B01AX99"]
-    assert found["category_terms"] == {
-        "B01AF": "catalogue_atc",
-        "B01AX": "catalogue_atc",
-        "Other antithrombotics": "catalogue_atc",
-    }
+    # Only classes the catalogue itself records become category terms (B01AF is unknown to it here)
+    assert found["category_terms"] == {"B01AX": "catalogue_atc", "Other antithrombotics": "catalogue_atc"}
 
 
 def test_class_expansion_skips_generic_leaf_names_and_lists_the_class_first(drug_file):
@@ -249,3 +247,15 @@ def test_whole_term_matching_never_finds_a_name_inside_a_longer_one(drug_file):
     assert drug_expansion(phrase, whole_term=True)["matches"] == []
     assert [m["product_name"] for m in drug_expansion("Eliquis", whole_term=True)["matches"]] == ["Eliquis"]
     assert expand_medicine(phrase, {}) is None
+
+
+def test_salt_name_finds_the_base_medicine_but_ema_codes_are_not_search_terms(drug_file):
+    # A salt or ester name still finds the products of its base ingredient under whole-term matching
+    assert [
+        m["product_name"] for m in drug_expansion("apixaban hydrochloride", whole_term=True)["matches"]
+    ] == ["Eliquis"]
+    # The EMA record's ATC code is kept for PDF text search but never becomes a catalogue search term
+    expansion = expand("apixaban", whole_term=True)
+    assert "Eliquis" in expansion["clinical"]["english_terms"]
+    assert any(c["code"] == "B01AF02" for c in expansion["clinical"]["code_candidates"])
+    assert all("b01af02" not in group for _, group in labelled_phrases("apixaban", expansion, False))

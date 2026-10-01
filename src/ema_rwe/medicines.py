@@ -61,7 +61,13 @@ def expand_medicine(query: str, labels: dict[str, str]) -> dict | None:
     if combination:
         # Never resolve a combination through one of its ingredients.
         matches = [m for m in matches if frozenset(map(canonical, m["ingredients"])) == whole]
-    codes |= {c for m in matches for c in m["atc_codes"]}
+    # Join by name: an EMA code the catalogue gives to another medicine is that record's error, not a link.
+    codes |= {
+        c
+        for m in matches
+        for c in m["atc_codes"]
+        if c not in labels or same_medicine(labels[c], m["ingredients"])
+    }
     if not codes:
         return None
 
@@ -76,7 +82,8 @@ def expand_medicine(query: str, labels: dict[str, str]) -> dict | None:
         if len(code) == 7:
             if label := name(code):
                 own.setdefault(label, "catalogue_atc")
-            category |= {t: "catalogue_atc" for t in (code[:5], name(code[:5])) if t}
+            if any(c.startswith(code[:5]) for c in labels):  # only a class the catalogue itself records
+                category |= {t: "catalogue_atc" for t in (code[:5], name(code[:5])) if t}
             continue
         if label := name(code):
             own.setdefault(label, "catalogue_atc")

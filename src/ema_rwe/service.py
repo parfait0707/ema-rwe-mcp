@@ -488,7 +488,9 @@ class Service:
             instruction = (
                 "No study matched the requested concept and no analogous concept is known. Propose clinically "
                 "analogous English concepts (broader category, sibling disease, associated condition) and rerun "
-                "with match_scope='analogous' and analogous_terms. " + ICD10_SYNONYM_GUIDANCE
+                "with match_scope='analogous' and analogous_terms. For a medicine, pass its 5th-level ATC code "
+                "in queries (the server then offers its class and the class members the catalogue records) or "
+                "propose medicines of the same pharmacological class. " + ICD10_SYNONYM_GUIDANCE
             )
         elif rows:
             state = "available"
@@ -625,7 +627,8 @@ class Service:
             checked = await self._check_protocols(candidates[:check_protocols])
             requests = getattr(self.client, "requests_made", 0) - before
             candidates.sort(key=order_key)
-        expansions = [expand(q, synonyms, codes) for q in queries]
+        # Reported as matched: each variant is one whole name, as in the search itself.
+        expansions = [expand(q, synonyms, codes, whole_term=True) for q in queries]
         for query, expansion in zip(queries, expansions):
             record_unmatched(self.unmatched_log_path, query, "compare_protocols", expansion)
         if study_ids is not None:
@@ -1056,6 +1059,7 @@ class Service:
         plan["code_searches"] = [
             {"query": c["code"], "codes": [{k: v for k, v in c.items() if k != "search_variants"}]}
             for c in plan["query_expansion"]["clinical"]["code_candidates"]
+            if c["origin"] != "official_dictionary"  # catalogue searches never key on an EMA record's code
         ]
         return plan
 

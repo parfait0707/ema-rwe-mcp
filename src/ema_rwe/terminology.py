@@ -144,6 +144,9 @@ def clinical_expansion(
         else drug_expansion(" ".join([query, *english]))
     )
     revision += ":" + drugs["dictionary_revision"]
+    # The EMA record's ATC codes stay hints for searching inside a protocol PDF, where a code list defines
+    # the exposure and every hit is read and quoted. The catalogue screening never uses them (see
+    # _content_words): the catalogue may give the same code to another medicine.
     drug_codes = [
         CodeCandidate(
             system="ATC",
@@ -210,7 +213,7 @@ def clinical_expansion(
 
 def search_units(query: str, expansion: dict) -> list[str]:
     """English phrases + whole code strings; never search the '9' from J84.9 alone."""
-    words, code_terms, _ = _content_words(query, expansion)
+    words, code_terms, _ = _content_words(query, expansion, catalogue=False)
     return list(
         dict.fromkeys(
             [
@@ -224,12 +227,18 @@ def search_units(query: str, expansion: dict) -> list[str]:
     )[:350]
 
 
-def _content_words(query: str, expansion: dict) -> tuple[list[str], list[str], int]:
+def _content_words(query: str, expansion: dict, catalogue: bool = True) -> tuple[list[str], list[str], int]:
     """Query words minus codes, code-system names and stop words, plus the whole code strings, and the
     number of tokens between the first and last content word in the query text (stop words included:
     the index keeps them, so NEAR must allow for them)."""
     remainder = query
-    code_terms = [v for c in expansion["clinical"]["code_candidates"] for v in c["search_variants"]]
+    code_terms = [
+        v
+        for c in expansion["clinical"]["code_candidates"]
+        # EMA codes are not a cross-source key into the catalogue; inside a PDF they remain hints.
+        if not catalogue or c["origin"] != "official_dictionary"
+        for v in c["search_variants"]
+    ]
     for term in sorted(code_terms, key=len, reverse=True):
         remainder = re.sub(r"(?<!\w)" + re.escape(term) + r"(?!\w)", " ", remainder, flags=re.IGNORECASE)
     remainder = re.sub(

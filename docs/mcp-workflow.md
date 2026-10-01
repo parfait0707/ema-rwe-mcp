@@ -39,7 +39,9 @@ the model that drives the tools; the rest of `docs/` is in Japanese.
   interest, immune-related adverse events, pregnancy outcomes). Keep them specific to the concept;
   generic phrases such as "adverse drug reactions" only add noise.
 - Medicines: the server resolves each query to ATC codes (catalogue entries such as `(B01AF02) apixaban`
-  and the EMA medicines dictionary) and searches names only; ATC is a join key, not an answer.
+  and the EMA medicines dictionary) and searches names only; ATC is a join key, not an answer. An EMA
+  record's ATC code is never a catalogue search term (the catalogue may give that code to another
+  medicine); it remains a hint for `search_protocol_text` inside a protocol PDF.
   - A medicine adds its catalogue name as a query and its 4th-level class (code and catalogue name) as
     category terms. A class match is not the medicine itself: confirm the exposure in the PDF.
   - A requested class (pass its name and its 3rd/4th-level ATC code, e.g. `N03A`, as queries) adds the
