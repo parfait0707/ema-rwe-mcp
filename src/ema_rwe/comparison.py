@@ -89,7 +89,14 @@ def match_cell(match: dict | None, relations: dict[str, str]) -> str | None:
     if match["basis"] == "analogous":
         terms = ", ".join(f"{t}（{relations.get(t.casefold(), 'relation不明')}）" for t in match["terms"])
         return f"類縁概念での一致（依頼された概念そのものではない）: {terms}"
-    return "依頼概念での一致: " + ", ".join(match["terms"])
+    sources = match.get("sources") or {}
+    category = [t for t in match["terms"] if sources.get(t) == "category"]
+    if category and len(category) == len(match["terms"]):
+        # An umbrella term (ATC class, composite outcome) is not the requested concept itself.
+        return "カテゴリー語だけでの一致（依頼概念そのものかはPDFで確認）: " + ", ".join(category)
+    return "依頼概念での一致: " + ", ".join(
+        f"{t}（カテゴリー語）" if t in category else t for t in match["terms"]
+    )
 
 
 def table(rows, relations: dict[str, str] | None = None):
@@ -191,7 +198,11 @@ class Comparisons:
             "rows": [
                 {
                     "study": row,
-                    "match": {"basis": row["match_basis"], "terms": row["matched_terms"]},
+                    "match": {
+                        "basis": row["match_basis"],
+                        "terms": row["matched_terms"],
+                        "sources": row.get("matched_term_sources", {}),
+                    },
                     "status": "pending",
                 }
                 for row in candidates

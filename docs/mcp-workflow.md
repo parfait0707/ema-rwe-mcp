@@ -38,6 +38,9 @@ the model that drives the tools; the rest of `docs/` is in Japanese.
   block or chapter title, composite outcomes (MACE, cardiovascular events, adverse events of special
   interest, immune-related adverse events, pregnancy outcomes) and ATC group names for medicines. Keep
   them specific to the concept; generic phrases such as "adverse drug reactions" only add noise.
+- The server adds the ATC 4th-level class (code and the catalogue's own name) of every medicine the EMA
+  medicines dictionary recognises as category terms of that block, and reports them in `atc_class_terms`.
+  A class match is not the medicine itself: confirm the exposure in the PDF.
 - Every column is searched. `role` ranks matches in that role's catalogue columns (Outcomes, Medicinal
   condition, INN/ATC) first instead of filtering, because 19% of records have an empty Outcomes field.
 - Candidates are ranked, never cut: specific matches before category-only ones, role-column matches

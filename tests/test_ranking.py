@@ -1,8 +1,10 @@
 """Tiered screening: every column retrieved, blocks AND-ed, candidates ranked without dropping any."""
 
 import pytest
+from test_drugs import drug_file  # noqa: F401  (fixture)
 from test_screening import study
 
+from ema_rwe.comparison import match_cell
 from ema_rwe.domain import AnalogousTerm, RWEError
 from ema_rwe.ranking import ScreeningBlock, type_fit
 
@@ -145,3 +147,60 @@ async def test_out_of_scope_studies_rank_last(service, monkeypatch):
     result = await service.compare_protocols("q", ["pancreatitis"], check_protocols=2)
     last = result["candidates"][-1]
     assert last["study_id"] == "1" and last["protocol_available"] is False and last["out_of_scope"] is True
+
+
+@pytest.mark.usefixtures("drug_file")
+async def test_medicine_adds_its_atc_class_as_a_category_term(service):
+    # Given studies naming apixaban, only its ATC class (code or catalogue name), or a sibling medicine
+    service.repo.upsert(study("1", exposures=["(B01AF02) apixaban"]))
+    service.repo.upsert(study("2", exposures=["(B01AF) Direct factor Xa inhibitors"]))
+    service.repo.upsert(study("3", title="Bleeding with direct factor Xa inhibitors"))
+    service.repo.upsert(study("4", exposures=["(B01AF01) rivaroxaban"]))
+    for i in range(5, 11):
+        service.repo.upsert(study(str(i), title=f"Apixaban cohort {i}"))
+    # When the caller searches the medicine only
+    result = await service.compare_protocols("q", ["apixaban"], role="exposure")
+    order = ids(result)
+    # Then class-only studies are candidates ranked below every specific match, labelled as category
+    assert {"2", "3"} == set(order[-2:])
+    assert result["candidates"][-1]["matched_term_sources"].keys() <= {"B01AF", "Direct factor Xa inhibitors"}
+    assert set(result["candidates"][-1]["matched_term_sources"].values()) == {"category"}
+    assert result["atc_class_terms"] == [
+        {
+            "block": 0,
+            "code": "B01AF",
+            "label": "Direct factor Xa inhibitors",
+            "terms": ["B01AF", "Direct factor Xa inhibitors"],
+        }
+    ]
+    # And a sibling member of the class is not equated with the requested medicine
+    assert "4" not in order
+
+
+@pytest.mark.usefixtures("drug_file")
+async def test_atc_class_terms_are_not_added_for_non_medicines_or_duplicates(service):
+    for i in range(1, 8):
+        service.repo.upsert(study(str(i), title=f"Pancreatitis after apixaban {i}"))
+    result = await service.compare_protocols("q", ["pancreatitis"])
+    assert result["atc_class_terms"] == []
+    # A class the caller already gave is not added twice
+    service.repo.upsert(study("8", exposures=["(B01AF) Direct factor Xa inhibitors"]))
+    result = await service.compare_protocols("q", ["apixaban"], category_terms=["b01af"])
+    assert result["atc_class_terms"] == [
+        {
+            "block": 0,
+            "code": "B01AF",
+            "label": "Direct factor Xa inhibitors",
+            "terms": ["Direct factor Xa inhibitors"],
+        }
+    ]
+
+
+def test_category_only_match_is_not_reported_as_the_requested_concept():
+    sources = {"apixaban": "query", "B01AF": "category"}
+    assert match_cell({"basis": "concept", "terms": ["B01AF"], "sources": sources}, {}).startswith(
+        "カテゴリー語だけでの一致"
+    )
+    assert match_cell({"basis": "concept", "terms": ["apixaban", "B01AF"], "sources": sources}, {}) == (
+        "依頼概念での一致: apixaban, B01AF（カテゴリー語）"
+    )

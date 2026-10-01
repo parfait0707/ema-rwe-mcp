@@ -115,7 +115,11 @@ async def test_comparison_labels_analogous_rows(service, dictionary):
         "How is opioid safety defined?", ["zzqx toxicity"], match_scope="analogous", analogous=caller
     )
     row = result["rows"][0]
-    assert row["match"] == {"basis": "analogous", "terms": [caller[0].term]}
+    assert row["match"] == {
+        "basis": "analogous",
+        "terms": [caller[0].term],
+        "sources": {caller[0].term: "caller"},
+    }
     assert f"{caller[0].term}（{caller[0].relation}）" in result["comparison_markdown"]
     assert "類縁概念での一致" in result["comparison_markdown"]
 
