@@ -1,0 +1,33 @@
+EMA RWE MCP
+Copyright (c) 2026 parfait0707
+
+The MIT License in LICENSE applies to the source code of this project only.
+It does not apply to the third-party data listed below, which keep their own terms.
+
+Bundled data
+------------
+data/ema.sqlite3 (shipped in the wheel as ema_rwe/data/ema.sqlite3)
+  Derived from the official Studies CSV exports of the HMA-EMA Catalogues of
+  real-world data sources and studies, https://catalogues.ema.europa.eu/,
+  accessed October 2026 (exports dated 2026-10-01). Contact-person columns
+  are not imported.
+  Source: European Medicines Agency (EMA). (c) EMA.
+  Study records are entered by marketing authorisation holders, researchers
+  and institutions; third parties may own copyright in that content. Reuse is
+  subject to the EMA legal notices:
+    https://catalogues.ema.europa.eu/legal-notice
+    https://www.ema.europa.eu/en/about-us/about-website/legal-notice
+
+data/ema-medicines.json (shipped in the wheel as ema_rwe/data/ema-medicines.json)
+  EMA medicines data, https://www.ema.europa.eu/, retrieved 2026-09-13.
+  Source: European Medicines Agency (EMA). (c) EMA.
+
+tests/fixtures/ema_protocol_cards.html
+  Markup excerpt of a study page of https://catalogues.ema.europa.eu/,
+  used as a parser test fixture. Source: EMA. (c) EMA.
+
+Study protocols and other documents are not bundled. They are downloaded on
+demand to the user's machine; copyright stays with their authors.
+
+This project is not affiliated with, endorsed by, or sponsored by the European
+Medicines Agency.

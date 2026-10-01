@@ -370,6 +370,12 @@ PDF 取得先ディレクトリ名から X/Y が推測可能だった（P）、�
 - GitHub のリポジトリ名を `rwd-catalogue-mcp` から `ema-rwe-mcp` に変更し、パッケージ名・MCP 名と揃えた。現在の案内（README、sample、`pyproject.toml`、`docs/release.md`）の URL を新しい名前にした。過去の記録は旧名のまま残す。
 - GitHub は旧 URL を新 URL へ転送する。`rwd-catalogue-mcp` という名前で新しいリポジトリを作ると転送が止まるため、作らない。
 
+## 2026-10-01 出典表示とデータの範囲
+
+- `NOTICE` を追加し、同梱の EMA データ（カタログ DB、医薬品辞書、テスト用 HTML 断片）の出典・取得年月・© EMA・適用される EMA の Legal notice と、MIT がコードだけに及ぶことを記載した。`license-files` に加え、wheel の `dist-info/licenses/NOTICE` と sdist に入ることを `uv build` で確認した。
+- カタログの登録内容を引用する `tests/fixtures/gold/pool/*.csv` を git 管理から外した（手元には残す）。テストは一時フォルダで動くため 281 passed のまま。過去のコミットには残る。
+- 根拠：`docs/research/202610011523_ema_terms_public_release.md`。
+
 ## 未検証事項（継続）
 
 - 外部LLM API呼出しの実認証検証は未実施。キーなしの呼出元LLM方式は合成PDFで保存・再利用まで検証。

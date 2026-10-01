@@ -115,14 +115,15 @@ flowchart TD
 
 ## データの出所とプライバシー
 
-- カタログのスナップショットは [EMA Catalogues of RWD studies](https://catalogues.ema.europa.eu/) の公式CSV export（2026-10-01）から作成しています。連絡先の列は取り込まず、索引にも含めていません。研究情報の利用条件はEMAサイトの規約に従ってください。
+- カタログのスナップショットは [HMA-EMA Catalogues of real-world data sources and studies](https://catalogues.ema.europa.eu/)（accessed October 2026）の公式CSV export（2026-10-01）から作成しています。出典：European Medicines Agency（© EMA）。連絡先の列は取り込まず、索引にも含めていません。
+- 研究の登録内容は製薬企業・研究者・機関が入力したもので、第三者が著作権を持つ場合があります。再利用には[カタログのLegal notice](https://catalogues.ema.europa.eu/legal-notice)と[EMAのLegal notice](https://www.ema.europa.eu/en/about-us/about-website/legal-notice)が適用されます。
 - 医薬品辞書はEMA公式の医薬品データです（`data/`）。疾患名の辞書は同梱せず、日本語の質問はMCPクライアント（Claude Code、Codex等）がICD-10を手がかりに英語名・言い換え・コード候補へ翻訳します。独自の言い換えやマスターを使う場合は`data/dictionaries/`にJSON辞書を置きます（書式は`data/terminology.example.json`）。
 - プロトコルPDFは選択した研究についてのみ、間隔制御・robots確認付きでEMAサイトから取得し、あなたのPCに保存されます。本文はLLM（呼出元のClaude Code/Codex、または設定したサーバー側プロバイダ）へ送信されます。
 - このツールは研究デザインの参考情報を出典付きで整理するもので、出典の確認なしに研究設計へ転用しないでください。
 
 ## 不具合報告
 
-[GitHub Issues](https://github.com/parfait0707/ema-rwe-mcp/issues) へ、質問文・研究ID・`missing_information`の内容を添えて報告してください。ライセンスは [MIT](LICENSE) です。
+[GitHub Issues](https://github.com/parfait0707/ema-rwe-mcp/issues) へ、質問文・研究ID・`missing_information`の内容を添えて報告してください。ライセンスは [MIT](LICENSE) で、ソースコードだけに適用されます。同梱のEMAデータ（`data/ema.sqlite3`、`data/ema-medicines.json`）とテスト用の断片には適用されず、出典と条件を[NOTICE](NOTICE)に記載しています。
 
 ## 詳細ドキュメント
 
