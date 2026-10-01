@@ -8,7 +8,8 @@ codes the catalogue and the EMA dictionary actually carry.
 
 import re
 
-from .drugs import drug_expansion, load_dictionary
+from .drugs import drug_expansion, ingredient_set, load_dictionary
+from .vocabulary import canonical
 
 CODED = re.compile(r"^\(([A-Z]\d{2}(?:[A-Z]{1,2}(?:\d{2})?)?)\)\s*(.+)$")
 # A typed class code must be 3rd/4th level: 2nd-level codes such as N03 are also ICD-10 categories.
@@ -33,16 +34,27 @@ def expand_medicine(query: str, labels: dict[str, str]) -> dict | None:
     A medicine (5th-level code) adds its catalogue name as a specific term and its 4th-level class as a
     category term. A class adds its own name, then every member name the EMA dictionary or the catalogue
     codes under it, as specific terms: a member is part of the class, not a synonym of another member.
-    Combination labels stay whole, so 'metformin' never resolves to 'metformin and empagliflozin'.
+    Combination labels stay whole, so 'metformin' never resolves to 'metformin and empagliflozin', and a
+    combination ('empagliflozin and metformin', any order) resolves only to that whole ingredient set.
     A typed code counts only when some known code starts with it (no non-ATC code of the same shape).
     """
     text = query.strip()
     records = load_dictionary()[0]
     known = {*labels, *(c for row in records for c in row["atc_codes"])}
-    codes = {c for c, label in labels.items() if label.casefold() == text.casefold()}
+    whole = ingredient_set(text)
+    combination = len(whole) > 1
+    codes = {
+        c
+        for c, label in labels.items()
+        if label.casefold() == text.casefold() or (combination and ingredient_set(label) == whole)
+    }
     if TYPED.fullmatch(text.upper()) and any(c.startswith(text.upper()) for c in known):
         codes.add(text.upper())
-    codes |= {c for m in drug_expansion(text)["matches"] for c in m["atc_codes"]}
+    matches = drug_expansion(text)["matches"]
+    if combination:
+        # Never resolve a combination through one of its ingredients.
+        matches = [m for m in matches if frozenset(map(canonical, m["ingredients"])) == whole]
+    codes |= {c for m in matches for c in m["atc_codes"]}
     if not codes:
         return None
 

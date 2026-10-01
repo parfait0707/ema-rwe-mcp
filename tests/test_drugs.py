@@ -220,3 +220,15 @@ def test_class_expansion_skips_generic_leaf_names_and_lists_the_class_first(drug
 def test_typed_code_must_exist_in_a_known_source(drug_file):
     # A Read-style or ICD-10-CM code with the same shape as an ATC class is not an ATC code
     assert expand_medicine("C10E", {"N03A": "ANTIEPILEPTICS"}) is None
+
+
+def test_combination_query_resolves_only_to_the_whole_ingredient_set(drug_file):
+    # The EMA dictionary has sitagliptin alone (Januvia) and with metformin (Janumet)
+    assert [m["product_name"] for m in drug_expansion("metformin + sitagliptin")["matches"]] == ["Janumet"]
+    found = expand_medicine("metformin and sitagliptin", {"A10BH01": "sitagliptin"})
+    assert found["atc_codes"] == ["A10BD07"] and "sitagliptin" not in found["queries"]
+    # Catalogue combination labels match in any order; a single ingredient's label never does
+    labels = {"A10BD20": "metformin and empagliflozin", "A10BK03": "empagliflozin"}
+    assert expand_medicine("empagliflozin and metformin", labels)["atc_codes"] == ["A10BD20"]
+    # A combination known to no source resolves to nothing rather than to its ingredients
+    assert expand_medicine("sitagliptin and empagliflozin", labels) is None
