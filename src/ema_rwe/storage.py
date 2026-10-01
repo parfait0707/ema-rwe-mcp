@@ -9,6 +9,7 @@ from pathlib import Path
 
 from .domain import RWEError, Study, now
 from .ema import BASE, is_non_interventional, norm
+from .medicines import catalogue_atc
 from .selection import filter_rows
 from .terminology import analogous_phrases, labelled_phrases, term_source
 from .vocabulary import canonical, expand
@@ -190,14 +191,13 @@ class Repository:
                 (hashlib.sha256(row["body"].encode()).hexdigest(), study_id, row["fingerprint"], row["body"]),
             )
 
-    def atc_label(self, code: str) -> str | None:
-        """The catalogue's own name for an ATC code, from exposures such as '(B01AF) Direct factor Xa inhibitors'."""
+    def atc_labels(self) -> dict[str, str]:
+        """ATC code -> the catalogue's own name, from exposures such as '(B01AF) Direct factor Xa inhibitors'."""
         with self.connection() as db:
-            row = db.execute(
-                "SELECT j.value FROM studies, json_each(studies.body, '$.exposures') j WHERE j.value LIKE ? LIMIT 1",
-                (f"({code})%",),
-            ).fetchone()
-        return row[0][len(code) + 2 :].strip() or None if row else None
+            rows = db.execute(
+                "SELECT DISTINCT j.value FROM studies, json_each(studies.body, '$.exposures') j WHERE j.value LIKE '(%'"
+            ).fetchall()
+        return catalogue_atc(r[0] for r in rows)
 
     def concept_ids(
         self, query: str, synonyms=None, codes=None, role: str = "any", split_long: bool = True

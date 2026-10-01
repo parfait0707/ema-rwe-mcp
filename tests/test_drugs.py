@@ -6,6 +6,7 @@ from pydantic import ValidationError
 
 from ema_rwe.domain import CodeCandidate, RWEError
 from ema_rwe.drugs import SOURCE_URL, drug_expansion, refresh_dictionary
+from ema_rwe.medicines import catalogue_atc, expand_medicine
 from ema_rwe.pdf import Page, search_sections, sections
 from ema_rwe.service import Service
 from ema_rwe.storage import import_csv
@@ -174,3 +175,48 @@ async def test_llm_translation_expands_official_drug_names(drug_file, settings, 
         assert any(q["query"] == "B01AF02" for q in plan["code_searches"])
     finally:
         await service.close()
+
+
+def test_catalogue_labels_keep_combinations_whole_and_skip_ambiguous_codes(drug_file):
+    labels = catalogue_atc(
+        [
+            "(A10BD20) metformin and empagliflozin",
+            "(N03A) ANTIEPILEPTICS",
+            "(N03AG01) valproic acid",
+            "Keppra",
+        ]
+    )
+    assert labels == {
+        "A10BD20": "metformin and empagliflozin",
+        "N03A": "ANTIEPILEPTICS",
+        "N03AG01": "valproic acid",
+    }
+    # A single ingredient never resolves to a combination
+    assert expand_medicine("metformin", labels) is None
+    # A typed 2nd-level code is also an ICD-10 category (N03 nephritic syndrome): not a medicine class
+    assert expand_medicine("N03", labels) is None
+    assert set(expand_medicine("N03A", labels)["queries"]) == {"ANTIEPILEPTICS", "valproic acid"}
+
+
+def test_both_ema_and_catalogue_codes_are_used_when_they_differ(drug_file):
+    # The EMA dictionary and the catalogue may carry different ATC versions for the same medicine
+    found = expand_medicine("apixaban", {"B01AX99": "apixaban", "B01AX": "Other antithrombotics"})
+    assert found["atc_codes"] == ["B01AF02", "B01AX99"]
+    assert found["category_terms"] == {
+        "B01AF": "catalogue_atc",
+        "B01AX": "catalogue_atc",
+        "Other antithrombotics": "catalogue_atc",
+    }
+
+
+def test_class_expansion_skips_generic_leaf_names_and_lists_the_class_first(drug_file):
+    labels = {"B01AF": "Direct factor Xa inhibitors", "B01AF30": "combinations", "B01AF07": "edoxaban"}
+    names = list(expand_medicine("b01af", labels)["queries"])
+    # Lowercase codes resolve; the class name comes first; 'combinations' alone is never a search name
+    assert names[0] == "Direct factor Xa inhibitors"
+    assert "combinations" not in names and {"apixaban", "rivaroxaban", "edoxaban"} <= set(names)
+
+
+def test_typed_code_must_exist_in_a_known_source(drug_file):
+    # A Read-style or ICD-10-CM code with the same shape as an ATC class is not an ATC code
+    assert expand_medicine("C10E", {"N03A": "ANTIEPILEPTICS"}) is None
