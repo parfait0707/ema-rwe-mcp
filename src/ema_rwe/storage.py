@@ -609,6 +609,43 @@ def latest_import(path: Path, immutable: bool = False) -> str | None:
         return None
 
 
+def merge_bundle_observations(bundled: Path, dest: Path) -> int:
+    """Add the bundle's protocol observations (backfill) the user does not have; the user's own win.
+    Returns how many were added; the added studies are re-indexed. Never raises."""
+    try:
+        repo = Repository(dest)
+        db = sqlite3.connect(dest.resolve().as_uri(), uri=True, timeout=30)
+        try:
+            db.execute("ATTACH DATABASE ? AS bundle", (f"{bundled.resolve().as_uri()}?mode=ro&immutable=1",))
+            if (
+                db.execute("PRAGMA bundle.user_version").fetchone()[0] != SCHEMA_VERSION
+                or not db.execute(
+                    "SELECT 1 FROM bundle.sqlite_master WHERE name='protocol_observations'"
+                ).fetchone()
+            ):
+                return 0
+            added = [
+                r[0]
+                for r in db.execute(
+                    "SELECT study_id FROM bundle.protocol_observations"
+                    " WHERE study_id NOT IN (SELECT study_id FROM main.protocol_observations)"
+                ).fetchall()
+            ]
+            db.execute(
+                "INSERT OR IGNORE INTO main.protocol_observations SELECT * FROM bundle.protocol_observations"
+            )
+            for study_id in added:
+                row = db.execute("SELECT body FROM studies WHERE id=?", (study_id,)).fetchone()
+                if row:
+                    repo._index(db, Study.model_validate_json(row[0]))
+            db.commit()
+            return len(added)
+        finally:
+            db.close()
+    except Exception:  # noqa: BLE001 - never block startup
+        return 0
+
+
 def refresh_from_bundle(bundled: Path, dest: Path) -> bool:
     """Replace the catalogue tables of `dest` with the bundled ones when the bundle holds a newer import.
 
@@ -617,7 +654,10 @@ def refresh_from_bundle(bundled: Path, dest: Path) -> bool:
     imported a CSV) is kept. Studies re-fetched by get_study revert to the bundled row.
     """
     new = latest_import(bundled, immutable=True)
-    if not new or not dest.is_file() or not (latest_import(dest) or "") < new:
+    if not new or not dest.is_file():
+        return False
+    if not (latest_import(dest) or "") < new:
+        merge_bundle_observations(bundled, dest)  # a newer package may ship backfill for the same catalogue
         return False
     try:
         repo = Repository(dest)  # brings an older user schema up to this package's version

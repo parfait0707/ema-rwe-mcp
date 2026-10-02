@@ -104,3 +104,21 @@ def test_bundle_with_another_schema_leaves_user_database_untouched(tmp_path):
     repo = catalogue(user, "2026-09-13", "User study")
     assert not refresh_from_bundle(bundled, user)
     assert repo.study_count() == 1 and repo.get("1").title == "User study"
+
+
+def test_bundle_observations_reach_a_user_whose_catalogue_is_current(tmp_path):
+    from ema_rwe.storage import refresh_from_bundle
+
+    bundled, user = tmp_path / "bundled.sqlite3", tmp_path / "user.sqlite3"
+    bundle = catalogue(bundled, "2026-10-01", "Beta blocker cohort", "Cohort")
+    mine = catalogue(user, "2026-10-01", "Beta blocker cohort", "Cohort")
+    mine.observe("1", text_layer="full")
+    bundle.observe(
+        "1", protocol_found=True, exposures=[{"term": "atenolol", "source": "protocol_pass_table"}]
+    )
+    bundle.observe("2", exposures=[{"term": "metoprolol", "source": "protocol_pass_table"}])
+    # Same catalogue: nothing is replaced, but the bundle's backfill is merged
+    assert not refresh_from_bundle(bundled, user)
+    user_repo = type(mine)(user)
+    assert user_repo.observation("1") == mine.observation("1")  # the user's own observation wins
+    assert [r["study_id"] for r in user_repo.search("metoprolol", None, False, None)] == ["2"]

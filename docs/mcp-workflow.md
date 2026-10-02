@@ -58,7 +58,8 @@ the model that drives the tools; the rest of `docs/` is in Japanese.
   ranks studies without a protocol last. Use it before asking the user to pick `study_ids`.
 - Without any request, candidates whose export lists no protocol (`protocol_listed=false`) rank after
   listed ones of the same specificity and role, and a study whose downloaded protocol has no text layer
-  (`protocol_text_layer=none`, image-only, needs OCR) ranks last. Nothing is removed: when a selected study
+  (`protocol_text_layer=none`, image-only, needs OCR) or whose retrieval found no protocol
+  (`protocol_found=false`) ranks last. Nothing is removed: when a selected study
   turns out to have no protocol or an unreadable one, say so and take the next candidate.
 - Medicines: give the INN and the EU and US product names (each query is matched as one whole name), plus
   abbreviations (TNFi, JAKi, DOACs), noun variants (drugs/medicines/medications) and hyphenated and
@@ -87,6 +88,9 @@ the model that drives the tools; the rest of `docs/` is in Japanese.
 - `status=concept_filtered_out`: studies of the requested concept exist in the index
   (`concept_index_matches_before_filters`) but filters, `darwin_only`, `status` or `analyzed_only` removed
   them. Say so and offer to relax those first; the analogous concepts are only an alternative.
+- Analogous candidates are screened and ranked like concept ones (one block of the analogous terms);
+  `matched_term_sources` says whether a term came from the server's ATC class (`catalogue_atc`), from
+  you (`caller`) or from a user dictionary (`dictionary`).
 - `status=no_analogous_terms`: propose clinically analogous English concepts yourself and pass them as
   `analogous_terms: [{term, relation}]` with `match_scope="analogous"`.
 - Present every analogous result as "defined this way for the analogous concept X (relation)", never as

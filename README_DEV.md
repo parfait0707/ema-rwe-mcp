@@ -2,7 +2,7 @@
 
 エンドユーザー（このMCPを使って研究を調べる人）向けの使い方は[README.md](README.md)を参照してください。本ファイルはこのMCPサーバー自体を開発・改修する人向けの内部仕様です。
 
-公開版は0.4.0（内部履歴では0.1〜1.1の仕様段階を経ている）。`docs/spec/v0.1.md`〜`v1.1.md`が仕様の正本、[docs/mcp-workflow.md](docs/mcp-workflow.md)が呼出元向け手順の正本、開発ルールは[AGENTS.md](AGENTS.md)です。
+公開版は0.5.0（内部履歴では0.1〜1.2の仕様段階を経ている）。`docs/spec/v0.1.md`〜`v1.2.md`が仕様の正本、[docs/mcp-workflow.md](docs/mcp-workflow.md)が呼出元向け手順の正本、開発ルールは[AGENTS.md](AGENTS.md)です。
 
 ## 開発用セットアップ（checkout）
 
@@ -30,7 +30,7 @@ $env:EMA_IMPORT_DIR = "<checkout>/data/imports"
 | `service.py` | Core service。`Service`クラスが全MCPツール／CLIコマンドの実処理を持つ |
 | `mcp/server.py` | MCPアダプタ。`FastMCP`で17ツールを公開し、Pydanticスキーマの`title`を除去して応答量を削減する |
 | `cli.py` | CLIエントリポイント（`ema-rwe`コマンド）。Coreと同じServiceを呼ぶ |
-| `storage.py` | SQLite永続化（`Repository`）、FTS5マッチ式生成（`fts_match`）、CSV取込（`import_csv`） |
+| `storage.py` | SQLite永続化（`Repository`、DBスキーマ6）、FTS5マッチ式生成（`fts_match`）、CSV取込（`import_csv`）。PDF取得で分かった事実（プロトコルの有無・テキスト層・補完した医薬品）は`protocol_observations`表に分けて保存し（`observe`）、索引の医薬品の列に入れる |
 | `archive.py` | ユーザー要求で保持する不変ID付きPDF（期限切れ削除の対象になるHTTPキャッシュとは別） |
 | `pdf.py` | ページ単位のネイティブPDF抽出。引用検証（`validate_evidence`）、未検証証拠の除去（`prune_unverifiable`） |
 | `llm.py` | OpenAI互換/LiteLLM経由のJSON補完呼出し、バッチ分割（`split_batches`）、複数バッチの統合（`merge_extractions`） |
@@ -61,7 +61,7 @@ uv build
 
 ## 配布
 
-`pyproject.toml`の`[tool.hatch.build.targets.wheel.force-include]`で`data/ema.sqlite3`・`data/ema-medicines.json`をwheel内の`ema_rwe/data/`へ同梱しています。`config.py`の`default_data_dir()`は、チェックアウト外（`pyproject.toml`が見つからない環境、つまりwheelインストール後）で起動された初回だけ、これらの同梱ファイルをOSのユーザーデータディレクトリ（`platformdirs.user_data_path("ema-rwe-mcp")`）へコピーします。2回目以降はユーザーデータディレクトリの既存ファイルを使います。ただしカタログDBは、同梱DBの最新取込日時（`imports.imported_at`の最大値）が手元のDBより新しいときだけ、カタログの表（`studies`・`imports`・`study_catalogue_search`・`study_fts`）だけを同梱DBの内容に置き換えます。置き換えは手元のDBの中で1回の書き込みトランザクションとして行うので、動作中の別サーバーからは新旧どちらかのカタログが見え、解析キャッシュ（`analyses`・`analysis_history`・`protocol_answers`）には触れません（`storage.refresh_from_bundle`、1プロセスにつき1回。失敗しても起動は止めず、元のカタログのまま使います）。同梱DBのスキーマ版が異なる場合は置き換えません。利用者が自分でCSVを取り込んで同梱DBより新しくなっている場合は置き換えません。`get_study`で再取得した研究の行は同梱DBの内容に戻ります。`get_protocol`が記録した`protocol_text_layer`も同様に失われ、次のPDF取得で再判定されます。医薬品辞書は上書きしません（`refresh_drug_dictionary`で更新します）。
+`pyproject.toml`の`[tool.hatch.build.targets.wheel.force-include]`で`data/ema.sqlite3`・`data/ema-medicines.json`をwheel内の`ema_rwe/data/`へ同梱しています。`config.py`の`default_data_dir()`は、チェックアウト外（`pyproject.toml`が見つからない環境、つまりwheelインストール後）で起動された初回だけ、これらの同梱ファイルをOSのユーザーデータディレクトリ（`platformdirs.user_data_path("ema-rwe-mcp")`）へコピーします。2回目以降はユーザーデータディレクトリの既存ファイルを使います。ただしカタログDBは、同梱DBの最新取込日時（`imports.imported_at`の最大値）が手元のDBより新しいときだけ、カタログの表（`studies`・`imports`・`study_catalogue_search`・`study_fts`）だけを同梱DBの内容に置き換え、同梱DBの`protocol_observations`（補完の結果）のうち手元に無いものを加えます（カタログの取込日が同じでも加えます。手元の観測が優先）。置き換えは手元のDBの中で1回の書き込みトランザクションとして行うので、動作中の別サーバーからは新旧どちらかのカタログが見え、解析キャッシュ（`analyses`・`analysis_history`・`protocol_answers`）には触れません（`storage.refresh_from_bundle`、1プロセスにつき1回。失敗しても起動は止めず、元のカタログのまま使います）。同梱DBのスキーマ版が異なる場合は置き換えません。利用者が自分でCSVを取り込んで同梱DBより新しくなっている場合は置き換えません。`get_study`で再取得した研究の行は同梱DBの内容に戻ります。`get_protocol`が記録した事実は`protocol_observations`にあるので失われません。医薬品辞書は上書きしません（`refresh_drug_dictionary`で更新します）。
 
 `.mcp.json`（このリポジトリ直下、Git管理外）は開発用で、`uv run --directory /path/to/repo ema-rwe-mcp`によりチェックアウトを直接起動します。作業ツリーの未コミット変更もそのまま反映されます。`.mcp.json.sample`（Git管理対象）はエンドユーザー向けで、`uvx --from git+https://...`によりcloneなしでリモートのコードを取得・起動します。両者は起動対象（ローカル作業ツリー vs. リモートのgit ref）が異なる点に注意してください。
 
@@ -82,6 +82,7 @@ PyPI公開やGitHub Releaseへのwheel添付など他の配布経路の比較検
 - **区切り**: 複数値の区切りは`|`・`;`・改行です。値内部のカンマは分割しません。
 - **プロトコル所在（`protocol_listed`）**: `Protocol file(s)`・`Protocol file(s) - URI`・`Protocol URL`のいずれかに値があれば`true`、すべて空なら`false`、列が無ければ未設定です。順位付けにだけ使い、最新版の選択には使いません（最新版はStudy documentsで選びます）。
 - **再構築**: `data/imports/{studies,source_type}/`にexportを置いて`uv run ema-rwe import-all`を実行すると、`studies/`、`source_type/`の順にすべて取り込みます。
+- **医薬品欄の補完**: `uv run ema-rwe backfill-protocols [--interval 60] [--limit N] [--no-download]`。医薬品欄が空の研究に、題名・説明・目的の既知の医薬品名（通信なし）と、CSVにプロトコルの所在がある研究のプロトコルのPASS情報表（Active substance・Medicinal product）の既知の医薬品名・ATC・ページを補います（spec v1.2）。1件ずつ、研究の間を`--interval`秒空け、429で止まり、試した研究は飛ばして再開します。同梱DBを作るときは、作業用のDBで実行し、`protocol_observations`表だけを同梱DBへ移します。
 - **upsert**: 研究ID単位のupsertです。今回のCSVにない既存研究は削除しません。元CSVのバイト列、SHA256、ファイル名、取込時刻を保存します。
 - **連絡先の非索引化**: 原本CSVに連絡先が含まれる場合があります。原本は検索対象から分離され、連絡先専用列はDB／FTS／検索結果には入れません。
 - **Data Sources CSVは不要**: カタログの種別タグはローカル候補の絞り込みだけに使い、定義ごとのデータタイプは候補PDFの該当用途からLLMで判定して公式のStudy分類と分けて保存します（[docs/source-types.md](docs/source-types.md)）。
@@ -172,7 +173,7 @@ PDF保存は「サイト全体のPDFを収集する」処理ではありませ�
 | `EMA_MAX_SCREENING_STUDIES` | `5`（1〜1000） | 一次判定でPDF取得・全件解析へ進める最大研究数 |
 | `EMA_MAX_COMPARISON_STUDIES` | `5`（1〜1000） | 比較表へ掲載する最大研究数 |
 | `EMA_MAX_LISTED_CANDIDATES` | `50`（1〜1000） | `needs_narrowing`時に`candidates`一覧を返す最大件数 |
-| `EMA_USER_AGENT` | `ema-rwe-mcp/0.4.0` | EMAへのHTTPリクエストのUser-Agent |
+| `EMA_USER_AGENT` | `ema-rwe-mcp/0.5.0` | EMAへのHTTPリクエストのUser-Agent |
 | `EMA_RESEARCH_BUDGET_CHARS` | `40000` | 呼出元向けの追加探索応答の文字数予算 |
 | `EMA_SEARCH_BUDGET_CHARS` | `20000` | 呼出元向けのPDF全文検索応答の文字数予算 |
 | `EMA_PROTOCOL_DIR` | DBと同じ親フォルダ内の`protocols` | 保持するPDF/JSONの保存先 |
@@ -237,7 +238,7 @@ MCPの`instructions`文字列は要点のみに短縮しており、完全な手
 
 | ファイル | 内容 |
 |---|---|
-| [docs/spec/v0.1.md](docs/spec/v0.1.md)〜[v1.1.md](docs/spec/v1.1.md) | 仕様の正本（段階的な追加要件。v0.5：一致語の出所と類縁概念フォールバック、v0.6：クライアント翻訳の既定化、v0.7：長い検索語の扱い、v0.8：全列・階層つきの一次検索と順位付け、v0.9：ATC上位クラスのカテゴリー語（v1.0で置換）、v1.0：カタログ由来の医薬品名展開と`medicine_expansion`、v1.1：プロトコル所在・テキスト層による順位付け、名前を主キーにした医薬品の照合） |
+| [docs/spec/v0.1.md](docs/spec/v0.1.md)〜[v1.2.md](docs/spec/v1.2.md) | 仕様の正本（段階的な追加要件。v0.5：一致語の出所と類縁概念フォールバック、v0.6：クライアント翻訳の既定化、v0.7：長い検索語の扱い、v0.8：全列・階層つきの一次検索と順位付け、v0.9：ATC上位クラスのカテゴリー語（v1.0で置換）、v1.0：カタログ由来の医薬品名展開と`medicine_expansion`、v1.1：プロトコル所在・テキスト層による順位付け、名前を主キーにした医薬品の照合、v1.2：取得で分かった事実の別表保存・医薬品欄の補完・類縁概念の順位付け） |
 | [docs/mcp-workflow.md](docs/mcp-workflow.md) | 呼出元エージェント向けの完全な手順（英語） |
 | [docs/clinical-search.md](docs/clinical-search.md) | 日本語疾患名・薬剤名→英語・医療コードの展開、辞書の網羅性の限界 |
 | [docs/comparisons.md](docs/comparisons.md) | 複数プロトコルの比較・絞込ワークフロー |
