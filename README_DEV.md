@@ -30,7 +30,7 @@ $env:EMA_IMPORT_DIR = "<checkout>/data/imports"
 | `service.py` | Core service。`Service`クラスが全MCPツール／CLIコマンドの実処理を持つ |
 | `mcp/server.py` | MCPアダプタ。`FastMCP`で17ツールを公開し、Pydanticスキーマの`title`を除去して応答量を削減する |
 | `cli.py` | CLIエントリポイント（`ema-rwe`コマンド）。Coreと同じServiceを呼ぶ |
-| `storage.py` | SQLite永続化（`Repository`、DBスキーマ6）、FTS5マッチ式生成（`fts_match`）、CSV取込（`import_csv`）。PDF取得で分かった事実（プロトコルの有無・テキスト層・補完した医薬品）は`protocol_observations`表に分けて保存し（`observe`）、索引の医薬品の列に入れる |
+| `storage.py` | SQLite永続化（`Repository`、DBスキーマ6）、FTS5マッチ式生成（`fts_match`）、CSV取込（`import_csv`）。PDF取得で分かった事実（プロトコルの有無・テキスト層・補完した医薬品と出所ごとの抽出規則の版`exposure_rules`）は`protocol_observations`表に分けて保存し（`observe`）、補完した医薬品の名前とATCコードを索引の医薬品の列に入れる。同梱DBの観測の統合（`merge_bundle_observations`、`_merge_observations`）は項目単位で手元を優先し、医薬品だけは出所ごとに、同梱DBの方が新しい規則の版ならその出所の値を置き換える（`_with_newer_exposures`） |
 | `archive.py` | ユーザー要求で保持する不変ID付きPDF（期限切れ削除の対象になるHTTPキャッシュとは別） |
 | `pdf.py` | ページ単位のネイティブPDF抽出。引用検証（`validate_evidence`）、未検証証拠の除去（`prune_unverifiable`） |
 | `llm.py` | OpenAI互換/LiteLLM経由のJSON補完呼出し、バッチ分割（`split_batches`）、複数バッチの統合（`merge_extractions`） |
@@ -38,7 +38,7 @@ $env:EMA_IMPORT_DIR = "<checkout>/data/imports"
 | `comparison.py` | 永続的な全候補比較エクスポート。未完了研究を隠さない |
 | `terminology.py` | 利用者の概念辞書（`data/dictionaries/*.json`または`EMA_TERMINOLOGY_PATH`、既定ではなし）の読み込み、語の出所（`term_sources`）、コード表記の展開、FTS用の語群と類縁語群。プロトコル由来の定義とは別概念として保持 |
 | `drugs.py` | 公式EMA医薬品（商品名/INN・common name/ATC）の対応表。オフラインキャッシュ。照合は名前（製品名・成分の組み合わせ）だけで行い、ATCコードでは引かない。`whole_term=True`は検索語を1つの医薬品名として語全体で照合し、合わせ剤は成分の組み合わせ全体が一致する製品にだけ解決する |
-| `medicines.py` | カタログのexposures欄の「(ATCコード) 名称」とEMA医薬品辞書から、成分の上位クラス（カテゴリー語）とクラスの所属薬（検索語）を名前で展開する（`expand_medicine`、応答の`medicine_expansion`）。コードから名前を引くのはカタログの記載だけ |
+| `medicines.py` | カタログのexposures欄の「(ATCコード) 名称」とEMA医薬品辞書から、成分の上位クラス（カテゴリー語）とクラスの所属薬（検索語）を名前で展開する（`expand_medicine`、応答の`medicine_expansion`）。コードから名前を引くのはカタログの記載だけ。補完の抽出規則もここにある：文章の既知の医薬品名（`find_medicines`。研究の略称・測定される物質を除く）、PASS情報表の医薬品欄の名前・カタログのクラス名・ATCコード（`pass_table_medicines`、`known_class_names`。コードは実在する第2レベルの群だけ、第2レベルは「ATC」の語か名称があるときだけ、隣のコードを越えて名前に付けない）。規則を変えたら`EXPOSURE_RULES`の出所の版を上げる |
 | `vocabulary.py` | 研究デザイン・手法・集団の語だけの小さな展開表。臨床語は持たない（翻訳は呼出元か利用者辞書） |
 | `selection.py` | 検索フィルタの明示的な定義と、切り詰めのない候補集計 |
 | `ranking.py` | 一次検索の概念ブロック（`ScreeningBlock`）、全列での取得、候補の順位付け（公開プロトコルなし・テキスト層なしを最後に、固有語・役割の列・CSVのプロトコル所在・研究タイプ・統合順位。候補は削らない） |
@@ -61,7 +61,7 @@ uv build
 
 ## 配布
 
-`pyproject.toml`の`[tool.hatch.build.targets.wheel.force-include]`で`data/ema.sqlite3`・`data/ema-medicines.json`をwheel内の`ema_rwe/data/`へ同梱しています。`config.py`の`default_data_dir()`は、チェックアウト外（`pyproject.toml`が見つからない環境、つまりwheelインストール後）で起動された初回だけ、これらの同梱ファイルをOSのユーザーデータディレクトリ（`platformdirs.user_data_path("ema-rwe-mcp")`）へコピーします。2回目以降はユーザーデータディレクトリの既存ファイルを使います。ただしカタログDBは、同梱DBの最新取込日時（`imports.imported_at`の最大値）が手元のDBより新しいときだけ、カタログの表（`studies`・`imports`・`study_catalogue_search`・`study_fts`）だけを同梱DBの内容に置き換え、同梱DBの`protocol_observations`（補完の結果）で手元の観測に無い項目を研究ごとに補います（カタログの取込日が同じでも補います。手元の項目が優先）。置き換えは手元のDBの中で1回の書き込みトランザクションとして行うので、動作中の別サーバーからは新旧どちらかのカタログが見え、解析キャッシュ（`analyses`・`analysis_history`・`protocol_answers`）には触れません（`storage.refresh_from_bundle`、1プロセスにつき1回。失敗しても起動は止めず、元のカタログのまま使います）。同梱DBのスキーマ版が異なる場合は置き換えません。利用者が自分でCSVを取り込んで同梱DBより新しくなっている場合は置き換えません。`get_study`で再取得した研究の行は同梱DBの内容に戻ります。`get_protocol`が記録した事実は`protocol_observations`にあるので失われません。医薬品辞書は上書きしません（`refresh_drug_dictionary`で更新します）。
+`pyproject.toml`の`[tool.hatch.build.targets.wheel.force-include]`で`data/ema.sqlite3`・`data/ema-medicines.json`をwheel内の`ema_rwe/data/`へ同梱しています。`config.py`の`default_data_dir()`は、チェックアウト外（`pyproject.toml`が見つからない環境、つまりwheelインストール後）で起動された初回だけ、これらの同梱ファイルをOSのユーザーデータディレクトリ（`platformdirs.user_data_path("ema-rwe-mcp")`）へコピーします。2回目以降はユーザーデータディレクトリの既存ファイルを使います。ただしカタログDBは、同梱DBの最新取込日時（`imports.imported_at`の最大値）が手元のDBより新しいときだけ、カタログの表（`studies`・`imports`・`study_catalogue_search`・`study_fts`）だけを同梱DBの内容に置き換え、同梱DBの`protocol_observations`（補完の結果）で手元の観測に無い項目を研究ごとに補います（カタログの取込日が同じでも補います。手元の項目が優先）。ただし補完した医薬品（`exposures`）は出所（`catalogue_text`・`protocol_pass_table`）ごとに抽出規則の版（`exposure_rules`、`medicines.EXPOSURE_RULES`）を持ち、同梱DBの方が新しい版で抽出した出所は、手元のその出所の値を同梱DBの値で置き換えます。抽出規則を直した版を配ると、既存の利用者にも修正が届きます。置き換えは手元のDBの中で1回の書き込みトランザクションとして行うので、動作中の別サーバーからは新旧どちらかのカタログが見え、解析キャッシュ（`analyses`・`analysis_history`・`protocol_answers`）には触れません（`storage.refresh_from_bundle`、1プロセスにつき1回。失敗しても起動は止めず、元のカタログのまま使います）。同梱DBのスキーマ版が異なる場合は置き換えません。利用者が自分でCSVを取り込んで同梱DBより新しくなっている場合は置き換えません。`get_study`で再取得した研究の行は同梱DBの内容に戻ります。`get_protocol`が記録した事実は`protocol_observations`にあるので失われません。医薬品辞書は上書きしません（`refresh_drug_dictionary`で更新します）。
 
 `.mcp.json`（このリポジトリ直下、Git管理外）は開発用で、`uv run --directory /path/to/repo ema-rwe-mcp`によりチェックアウトを直接起動します。作業ツリーの未コミット変更もそのまま反映されます。`.mcp.json.sample`（Git管理対象）はエンドユーザー向けで、`uvx --from git+https://...`によりcloneなしでリモートのコードを取得・起動します。両者は起動対象（ローカル作業ツリー vs. リモートのgit ref）が異なる点に注意してください。
 
