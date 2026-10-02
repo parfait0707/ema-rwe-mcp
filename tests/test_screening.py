@@ -492,3 +492,126 @@ async def test_text_matches_step_aside_once_the_catalogue_lists_medicines(servic
     service.repo.upsert(study("1", title="Apixaban users", exposures=["(B01AF01) rivaroxaban"]))
     row = service.repo.search("rivaroxaban", None, False, None)[0]
     assert row["observed_exposures"] == []
+
+
+def test_pass_table_keeps_classes_and_written_codes_but_no_free_text():
+    from ema_rwe.medicines import known_class_names, pass_table_medicines
+    from ema_rwe.pdf import Page
+
+    labels = {
+        "C03": "DIURETICS",
+        "C03AA": "Thiazides, plain",
+        "C07": "BETA BLOCKING AGENTS",
+        "N05A": "ANTIPSYCHOTICS",
+    }
+    names, classes = {"vizamyl": "flutemetamol (18F)"}, known_class_names(labels)
+
+    def fields(substance, product="Not applicable"):
+        page = Page(
+            2, f"Active substance: {substance}\nMedicinal product: {product}\nProduct reference: N/A\n"
+        )
+        return [(m["term"], m["atc_codes"]) for m in pass_table_medicines([page], names, classes, labels)]
+
+    # Class names with the codes written after them; a trademark sign does not hide a product name
+    assert fields("Drug class ATC code Diuretics C03 Beta blocking agents C07") == [
+        ("DIURETICS", ["C03"]),
+        ("BETA BLOCKING AGENTS", ["C07"]),
+    ]
+    assert fields("Radionuclide imaging", "VIZAMYL™") == [("flutemetamol (18F)", [])]
+    # An unknown medicine is kept by its written code, never by its free-text name
+    assert fields("Loperamide (INN common name) Pharmacotherapeutic group ATC code: A07DA03") == [
+        ("A07DA03", ["A07DA03"])
+    ]
+    # Nothing to record: 'not applicable', a code-shaped 2nd-level token without ATC context
+    assert fields("Not applicable") == []
+    assert fields("Patients with C03 coded events") == []
+
+
+def test_text_medicines_skip_study_acronyms_and_measured_substances():
+    from ema_rwe.medicines import find_medicines
+
+    names = {"sonata": "zaleplon", "nitric oxide": "nitric oxide", "letrozole": "letrozole"}
+    text = "Early breast cancer in Greece (SONATA study). SONATA is a research collaboration on letrozole."
+    assert find_medicines(text, names) == ["letrozole"]
+    assert find_medicines("Value of fractional exhaled Nitric Oxide in asthma", names) == []
+    assert find_medicines("Serum letrozole levels", names) == []
+    assert find_medicines("Inhaled nitric oxide in preterm infants", names) == ["nitric oxide"]
+
+
+def test_pass_table_reads_code_first_fields_split_codes_and_receptor_classes():
+    from ema_rwe.medicines import pass_table_medicines
+    from ema_rwe.pdf import Page
+
+    names = {
+        "enzalutamide": "enzalutamide",
+        "fosphenytoin": "fosphenytoin",
+        "angiotensin ii": "angiotensin II",
+    }
+    labels = {"C09C": "ANGIOTENSIN II RECEPTOR BLOCKERS (ARBs), PLAIN", "B05": "BLOOD SUBSTITUTES"}
+
+    def fields(substance):
+        page = Page(1, f"Active substance: {substance}\nProduct reference: N/A\n")
+        return [(m["term"], m["atc_codes"]) for m in pass_table_medicines([page], names, {}, labels)]
+
+    # A field that writes the code first gives each code to the name after it, never to an earlier one
+    assert fields("L02BB04 (enzalutamide) L02BX03 (abiraterone)") == [
+        ("enzalutamide", ["L02BB04"]),
+        ("L02BX03", ["L02BX03"]),
+    ]
+    # 'N03A B05' is N03AB05 broken across a line, not the 2nd-level code B05
+    assert fields("Fosphenytoin sodium ATC code: N03A B05") == [("fosphenytoin", ["N03AB05"])]
+    # 'Angiotensin II receptor blocker' is a class, not the medicine angiotensin II
+    assert fields("Angiotensin II receptor blocker (ARB) - ATC C09C") == [
+        ("ANGIOTENSIN II RECEPTOR BLOCKERS (ARBs), PLAIN", ["C09C"])
+    ]
+
+
+def test_pass_table_codes_never_cross_neighbours_or_take_icd_or_variant_codes():
+    from ema_rwe.medicines import known_class_names, pass_table_medicines
+    from ema_rwe.pdf import Page
+
+    names = {
+        "enzalutamide": "enzalutamide",
+        "pembrolizumab": "pembrolizumab",
+        "nivolumab": "nivolumab",
+        "tofacitinib": "tofacitinib",
+        "sotorasib": "sotorasib",
+        "heparin": "heparin",
+    }
+    labels = {
+        "M05BA": "Bisphosphonates",
+        "J06BA": "Immunoglobulins, normal human",
+        "B05BA10": "combinations",
+        "B01AC": "Platelet aggregation inhibitors excl. heparin",
+        "C10AA": "HMG CoA reductase inhibitors",
+    }
+
+    def fields(substance):
+        page = Page(1, f"Active substance: {substance}\nProduct reference: N/A\n")
+        found = pass_table_medicines([page], names, known_class_names(labels), labels)
+        return [(m["term"], m["atc_codes"]) for m in found]
+
+    # An unknown medicine's code stays its own, whichever side the names are written on
+    assert fields("L02BX03 (abiraterone) L02BB04 (enzalutamide)") == [
+        ("enzalutamide", ["L02BB04"]),
+        ("L02BX03", ["L02BX03"]),
+    ]
+    assert fields("enzalutamide (L02BB04), abiraterone (L02BX03)") == [
+        ("enzalutamide", ["L02BB04"]),
+        ("L02BX03", ["L02BX03"]),
+    ]
+    # 'INN code (brand)' with unknown brands is still 'name, code'
+    assert fields("Pembrolizumab L01FF02 (Brand X), nivolumab L01FF01 (Brand Y)") == [
+        ("pembrolizumab", ["L01FF02"]),
+        ("nivolumab", ["L01FF01"]),
+    ]
+    # ICD-10 categories with no catalogue name and no 'ATC' context, and a gene variant, are no codes
+    assert fields("tofacitinib for rheumatoid arthritis (M05) and J06 infections") == [("tofacitinib", [])]
+    assert fields("sotorasib for KRAS G12C mutated NSCLC") == [("sotorasib", [])]
+    # Codes listed with commas are not joined into another code
+    assert [c for _, c in fields("ATC codes: B01A, C10")] == [["B01A"], ["C10"]]
+    # A generic leaf name is not a term; a name inside a class name is part of the class
+    assert fields("B05BA10") == [("B05BA10", ["B05BA10"])]
+    assert fields("Platelet aggregation inhibitors excl. heparin") == [
+        ("Platelet aggregation inhibitors excl. heparin", [])
+    ]

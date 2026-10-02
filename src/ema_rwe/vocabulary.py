@@ -62,6 +62,8 @@ GROUPS = {
 
 
 def canonical(text: str) -> str:
+    # NFKC turns '™'/'℠' into letters ('VIZAMYL™' -> 'vizamyltm'); they are marks, not part of a word.
+    text = re.sub(r"[™℠]", " ", text)
     return re.sub(r"[^\w]+", " ", unicodedata.normalize("NFKC", text).casefold()).strip()
 
 

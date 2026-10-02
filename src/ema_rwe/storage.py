@@ -154,8 +154,10 @@ class Repository:
             "SELECT body FROM protocol_observations WHERE study_id=?", (study.study_id,)
         ).fetchone()
         # Medicines found in the protocol or the catalogue text when the export lists none (backfill).
+        # The codes written next to them are indexed too, as the catalogue writes '(B01AF02) apixaban'.
         observed_exposures = " ".join(
-            e["term"] for e in current_exposures(json.loads(observed[0]) if observed else {}, study)
+            " ".join([e["term"], *e.get("atc_codes", [])])
+            for e in current_exposures(json.loads(observed[0]) if observed else {}, study)
         )
         db.execute("DELETE FROM study_fts WHERE id=?", (study.study_id,))
 
@@ -620,7 +622,7 @@ def current_exposures(observation: dict, study: Study) -> list[dict]:
     ]
 
 
-SHAREABLE_OBSERVATIONS = ("protocol_found", "text_layer", "exposures", "backfill_done")
+SHAREABLE_OBSERVATIONS = ("protocol_found", "text_layer", "exposures", "exposure_rules", "backfill_done")
 
 
 def shareable(body: str) -> str:
@@ -629,16 +631,31 @@ def shareable(body: str) -> str:
     return json.dumps({k: data[k] for k in SHAREABLE_OBSERVATIONS if k in data})
 
 
+def _with_newer_exposures(merged: dict, bundle: dict, current: dict) -> dict:
+    """Take the bundle's exposures of each source it extracted with newer rules than `current` (a parser
+    fix then reaches databases holding the older result); the local entries of other sources stay."""
+    rules = current.get("exposure_rules", {})
+    for source, version in bundle.get("exposure_rules", {}).items():
+        if version > rules.get(source, 1):
+            merged["exposures"] = [e for e in merged.get("exposures", []) if e["source"] != source] + [
+                e for e in bundle.get("exposures", []) if e["source"] == source
+            ]
+            merged["exposure_rules"] = rules = {**rules, source: version}
+    return merged
+
+
 def _merge_observations(db, alias: str = "bundle") -> list[str]:
     """Fill each study's observation with the fields of `alias`'s that it lacks (the local fields win,
-    field by field) and return the studies changed. Only shareable fields travel."""
+    field by field, except exposures extracted with older rules) and return the studies changed. Only
+    shareable fields travel."""
     changed = []
     for study_id, body in db.execute(f"SELECT study_id, body FROM {alias}.protocol_observations").fetchall():
         row = db.execute(
             "SELECT body FROM main.protocol_observations WHERE study_id=?", (study_id,)
         ).fetchone()
         current = json.loads(row[0]) if row else None
-        merged = {**json.loads(shareable(body)), **(current or {})}
+        bundle = json.loads(shareable(body))
+        merged = _with_newer_exposures({**bundle, **(current or {})}, bundle, current or {})
         if merged != current:
             db.execute(
                 "INSERT OR REPLACE INTO main.protocol_observations VALUES (?,?)",

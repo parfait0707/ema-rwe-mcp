@@ -154,3 +154,23 @@ def test_bundle_fills_missing_fields_of_an_existing_observation_and_cli_merge_is
     assert observed["text_layer"] == "full" and observed["exposures"][0]["term"] == "atenolol"
     with pytest.raises(RWEError):  # the CLI reports a wrong source instead of "0 added"
         merge_bundle_observations(tmp_path / "missing.sqlite3", user, strict=True)
+
+
+def test_bundle_exposures_from_newer_rules_replace_only_that_source(tmp_path):
+    """A parser fix reaches users who already merged the older bundle; their other sources stay."""
+    from ema_rwe.storage import merge_bundle_observations
+
+    bundled, user = tmp_path / "bundled.sqlite3", tmp_path / "user.sqlite3"
+    bundle = catalogue(bundled, "2026-10-01", "Cohort (SONATA study)")
+    mine = catalogue(user, "2026-10-01", "Cohort (SONATA study)")
+    pass_table = {"term": "letrozole", "source": "protocol_pass_table"}
+    mine.observe("1", exposures=[{"term": "sonatamab", "source": "catalogue_text"}, pass_table])
+    bundle.observe("1", exposures=[], exposure_rules={"catalogue_text": 2})
+
+    assert merge_bundle_observations(bundled, user) == 1
+    observed = type(mine)(user).observation("1")
+    assert observed["exposures"] == [pass_table] and observed["exposure_rules"] == {"catalogue_text": 2}
+    assert not type(mine)(user).search("sonatamab", None, False, None, role="exposure")
+    # Same rules on both sides: the local entries win again
+    mine.observe("1", exposures=[pass_table, {"term": "anastrozole", "source": "catalogue_text"}])
+    assert merge_bundle_observations(bundled, user) == 0

@@ -26,10 +26,12 @@ from .exploration import Explorer
 from .http import EMAClient
 from .llm import EXTRACTION_PROMPT, complete_json, configured, extract_with_provider, merge_extractions
 from .medicines import (
+    EXPOSURE_RULES,
     GENERIC,
     MAX_NAMES,
     expand_medicine,
     find_medicines,
+    known_class_names,
     known_medicine_names,
     pass_table_medicines,
 )
@@ -315,7 +317,12 @@ class Service:
         """
         if interval < 0 or (limit is not None and limit < 1):
             raise RWEError("INVALID_INPUT", "interval must be >= 0 and limit >= 1.")
-        names = known_medicine_names(self.repo.atc_labels())
+        labels = self.repo.atc_labels()
+        names, classes = known_medicine_names(labels), known_class_names(labels)
+
+        def rules(observed: dict, source: str) -> dict:
+            return {**observed.get("exposure_rules", {}), source: EXPOSURE_RULES[source]}
+
         with self.repo.connection() as db:
             bodies = [r[0] for r in db.execute("SELECT body FROM studies").fetchall()]
         studies = [s for s in map(Study.model_validate_json, bodies) if is_non_interventional(s.study_type)]
@@ -334,9 +341,14 @@ class Service:
             # The catalogue's own medicines replace text matches once an export lists them.
             text = f"{study.title} {study.description} {study.objective}" if not study.exposures else ""
             in_text = [{"term": n, "source": "catalogue_text"} for n in find_medicines(text, names)]
+            old = [e for e in observed.get("exposures", []) if e["source"] == "catalogue_text"]
             kept = [e for e in observed.get("exposures", []) if e["source"] != "catalogue_text"]
-            if observed.get("exposures", []) != kept + in_text:
-                self.repo.observe(study.study_id, exposures=kept + in_text)
+            if old != in_text or (
+                in_text and observed.get("exposure_rules") != rules(observed, "catalogue_text")
+            ):
+                self.repo.observe(
+                    study.study_id, exposures=kept + in_text, exposure_rules=rules(observed, "catalogue_text")
+                )
             summary["named_in_text"] += bool(in_text)
         if reextract:  # read the PASS tables of protocols already kept again (after a parser fix); no network
             summary["reextracted"] = 0
@@ -350,7 +362,11 @@ class Service:
                 except RWEError:
                     continue
                 kept = [e for e in observed.get("exposures", []) if e["source"] != "protocol_pass_table"]
-                self.repo.observe(study.study_id, exposures=kept + pass_table_medicines(pages, names))
+                self.repo.observe(
+                    study.study_id,
+                    exposures=kept + pass_table_medicines(pages, names, classes, labels),
+                    exposure_rules=rules(observed, "protocol_pass_table"),
+                )
                 summary["reextracted"] += 1
         if not download:
             return summary
@@ -381,10 +397,15 @@ class Service:
                     self.repo.observe(study.study_id, backfill_done=True, backfill_error=exc.code)
                     summary["errors"][exc.code] = summary["errors"].get(exc.code, 0) + 1
                 continue
-            found = pass_table_medicines(pages, names)
+            found = pass_table_medicines(pages, names, classes, labels)
             observed = self.repo.observation(study.study_id)
             kept = [e for e in observed.get("exposures", []) if e["source"] != "protocol_pass_table"]
-            self.repo.observe(study.study_id, exposures=kept + found, backfill_done=True)
+            self.repo.observe(
+                study.study_id,
+                exposures=kept + found,
+                exposure_rules=rules(observed, "protocol_pass_table"),
+                backfill_done=True,
+            )
             summary["from_protocol"] += bool(found)
         return summary
 
