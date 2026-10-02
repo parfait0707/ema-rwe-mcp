@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.5.1 (2026-10-03)
+
+- The backfill also records, from a PASS information table's medicine fields, the catalogue's own class
+  names and the ATC codes written there (a code split across a line is rejoined; 'code (name)' fields
+  give each code to the name after it); a code with no known name is kept under the catalogue's name for
+  it or as the code. Codes in the protocol body are not used: they also define exclusions, outcomes and
+  covariates. Recorded codes are indexed with the medicine names.
+- Names followed by receptor/inhibitor/antagonist/agonist/block… ('angiotensin II receptor blockers')
+  are not taken as that medicine; text matches skip a study's acronym ('SONATA study') and measured
+  substances ('fractional exhaled nitric oxide'); '™'/'℠' no longer stick to a name ('VIZAMYL™').
+- Observations carry `exposure_rules` (per-source extraction version); a bundle extracted with newer
+  rules replaces that source's entries in existing user databases. The bundled database now fills 215
+  of the 712 studies without medicines (76 from PASS tables).
+
 ## 0.5.0 (2026-10-02)
 
 - Facts learnt by retrieving a protocol (whether it exists, its text layer, medicines filled from it)

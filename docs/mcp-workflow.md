@@ -63,7 +63,8 @@ the model that drives the tools; the rest of `docs/` is in Japanese.
   turns out to have no protocol or an unreadable one, say so and take the next candidate.
 - `observed_exposures` lists medicines filled in for studies whose export lists none, with their source
   (`catalogue_text`: the title or description, possibly a comparator; `protocol_pass_table`: the
-  protocol's PASS information table, with page). Confirm the role in the protocol before reporting it.
+  protocol's PASS information table, with page; a class name or an ATC code written there may stand
+  for a medicine the dictionaries lack). Confirm the role in the protocol before reporting it.
 - Medicines: give the INN and the EU and US product names (each query is matched as one whole name), plus
   abbreviations (TNFi, JAKi, DOACs), noun variants (drugs/medicines/medications) and hyphenated and
   unhyphenated spellings. For a medicine absent from the catalogue also give its 5th-level ATC code: a
