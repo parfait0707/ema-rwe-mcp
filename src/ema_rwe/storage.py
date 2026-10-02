@@ -154,8 +154,8 @@ class Repository:
             "SELECT body FROM protocol_observations WHERE study_id=?", (study.study_id,)
         ).fetchone()
         # Medicines found in the protocol or the catalogue text when the export lists none (backfill).
-        observed_exposures = (
-            " ".join(e["term"] for e in json.loads(observed[0]).get("exposures", [])) if observed else ""
+        observed_exposures = " ".join(
+            e["term"] for e in current_exposures(json.loads(observed[0]) if observed else {}, study)
         )
         db.execute("DELETE FROM study_fts WHERE id=?", (study.study_id,))
 
@@ -344,7 +344,7 @@ class Repository:
             result.update(
                 protocol_found=observed.get("protocol_found"),
                 protocol_text_layer=observed.get("text_layer"),
-                observed_exposures=observed.get("exposures", []),
+                observed_exposures=current_exposures(observed, study),
                 score=-row["rank"],
                 protocol_data_sources=(analysis["analysis"]["data_sources"] if analysis else []),
                 protocol_source_assessments=(
@@ -613,6 +613,13 @@ def latest_import(path: Path, immutable: bool = False) -> str | None:
         return None
 
 
+def current_exposures(observation: dict, study: Study) -> list[dict]:
+    """Observed medicines that still apply: text matches only while the export lists no medicine."""
+    return [
+        e for e in observation.get("exposures", []) if e["source"] != "catalogue_text" or not study.exposures
+    ]
+
+
 SHAREABLE_OBSERVATIONS = ("protocol_found", "text_layer", "exposures", "backfill_done")
 
 
@@ -622,30 +629,49 @@ def shareable(body: str) -> str:
     return json.dumps({k: data[k] for k in SHAREABLE_OBSERVATIONS if k in data})
 
 
-def merge_bundle_observations(bundled: Path, dest: Path) -> int:
-    """Add the bundle's protocol observations (backfill) the user does not have; the user's own win.
-    Returns how many were added; the added studies are re-indexed. Never raises."""
+def _merge_observations(db, alias: str = "bundle") -> list[str]:
+    """Fill each study's observation with the fields of `alias`'s that it lacks (the local fields win,
+    field by field) and return the studies changed. Only shareable fields travel."""
+    changed = []
+    for study_id, body in db.execute(f"SELECT study_id, body FROM {alias}.protocol_observations").fetchall():
+        row = db.execute(
+            "SELECT body FROM main.protocol_observations WHERE study_id=?", (study_id,)
+        ).fetchone()
+        current = json.loads(row[0]) if row else None
+        merged = {**json.loads(shareable(body)), **(current or {})}
+        if merged != current:
+            db.execute(
+                "INSERT OR REPLACE INTO main.protocol_observations VALUES (?,?)",
+                (study_id, json.dumps(merged)),
+            )
+            changed.append(study_id)
+    return changed
+
+
+def merge_bundle_observations(bundled: Path, dest: Path, strict: bool = False) -> int:
+    """Fill `dest`'s protocol observations from another database's (the bundle's backfill, or a backfill
+    run when building the bundle); `dest`'s own fields win. Returns how many studies changed; they are
+    re-indexed. At startup (strict=False) it never raises; the CLI (strict=True) reports any failure."""
     try:
         repo = Repository(dest)
         db = sqlite3.connect(dest.resolve().as_uri(), uri=True, timeout=30)
         try:
-            db.execute("ATTACH DATABASE ? AS bundle", (f"{bundled.resolve().as_uri()}?mode=ro&immutable=1",))
-            if (
-                db.execute("PRAGMA bundle.user_version").fetchone()[0] != SCHEMA_VERSION
-                or not db.execute(
-                    "SELECT 1 FROM bundle.sqlite_master WHERE name='protocol_observations'"
-                ).fetchone()
-            ):
+            # The wheel's bundle is immutable; a working database may still have WAL pages to read.
+            mode = "mode=ro" if strict else "mode=ro&immutable=1"
+            db.execute("ATTACH DATABASE ? AS bundle", (f"{bundled.resolve().as_uri()}?{mode}",))
+            version = db.execute("PRAGMA bundle.user_version").fetchone()[0]
+            has_table = db.execute(
+                "SELECT 1 FROM bundle.sqlite_master WHERE name='protocol_observations'"
+            ).fetchone()
+            if version != SCHEMA_VERSION or not has_table:
+                if strict:
+                    raise RWEError(
+                        "DATABASE_ERROR",
+                        f"{bundled} has schema {version} without observations; expected {SCHEMA_VERSION}.",
+                    )
                 return 0
-            added = db.execute(
-                "SELECT study_id, body FROM bundle.protocol_observations"
-                " WHERE study_id NOT IN (SELECT study_id FROM main.protocol_observations)"
-            ).fetchall()
-            for study_id, body in added:
-                db.execute(
-                    "INSERT OR IGNORE INTO main.protocol_observations VALUES (?,?)",
-                    (study_id, shareable(body)),
-                )
+            changed = _merge_observations(db)
+            for study_id in changed:
                 row = db.execute("SELECT body FROM studies WHERE id=?", (study_id,)).fetchone()
                 try:
                     if row:
@@ -653,11 +679,17 @@ def merge_bundle_observations(bundled: Path, dest: Path) -> int:
                 except (KeyError, TypeError, ValueError):
                     continue  # one malformed row does not cost the others their backfill
             db.commit()
-            return len(added)
+            return len(changed)
         finally:
             db.close()
-    except Exception:  # noqa: BLE001 - never block startup
-        return 0
+    except Exception as exc:
+        if strict:
+            raise (
+                exc
+                if isinstance(exc, RWEError)
+                else RWEError("DATABASE_ERROR", f"Cannot merge observations from {bundled}: {exc}")
+            ) from exc
+        return 0  # never block startup
 
 
 def refresh_from_bundle(bundled: Path, dest: Path) -> bool:
@@ -698,13 +730,7 @@ def refresh_from_bundle(bundled: Path, dest: Path) -> bool:
                 if db.execute(
                     "SELECT 1 FROM bundle.sqlite_master WHERE name='protocol_observations'"
                 ).fetchone():
-                    for study_id, body in db.execute(
-                        "SELECT study_id, body FROM bundle.protocol_observations"
-                        " WHERE study_id NOT IN (SELECT study_id FROM main.protocol_observations)"
-                    ).fetchall():
-                        db.execute(
-                            "INSERT INTO main.protocol_observations VALUES (?,?)", (study_id, shareable(body))
-                        )
+                    _merge_observations(db)
                 analysed = db.execute(
                     "SELECT s.body FROM studies s WHERE s.id IN (SELECT study_id FROM analyses"
                     " UNION SELECT study_id FROM protocol_observations)"

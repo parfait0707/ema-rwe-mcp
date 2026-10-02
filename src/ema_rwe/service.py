@@ -302,7 +302,7 @@ class Service:
         return {**result, "source_path": str(path), "catalogue": self.catalogue_status()}
 
     async def backfill_protocols(
-        self, interval: float = 60.0, limit: int | None = None, download: bool = True
+        self, interval: float = 60.0, limit: int | None = None, download: bool = True, reextract: bool = False
     ):
         """Fill the medicines of studies whose export lists none (a user-run command, never part of a search).
 
@@ -338,6 +338,20 @@ class Service:
             if observed.get("exposures", []) != kept + in_text:
                 self.repo.observe(study.study_id, exposures=kept + in_text)
             summary["named_in_text"] += bool(in_text)
+        if reextract:  # read the PASS tables of protocols already kept again (after a parser fix); no network
+            summary["reextracted"] = 0
+            for study in empty:
+                observed = self.repo.observation(study.study_id)
+                if not observed.get("protocol_id"):
+                    continue
+                try:
+                    pdf, _ = self.archive.load(observed["protocol_id"])
+                    pages = await asyncio.to_thread(extract_pages, pdf)
+                except RWEError:
+                    continue
+                kept = [e for e in observed.get("exposures", []) if e["source"] != "protocol_pass_table"]
+                self.repo.observe(study.study_id, exposures=kept + pass_table_medicines(pages, names))
+                summary["reextracted"] += 1
         if not download:
             return summary
         # A study is done once its protocol was read (or found absent, or failed for good); a run

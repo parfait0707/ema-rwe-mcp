@@ -136,3 +136,21 @@ def test_shared_observations_carry_no_local_ids_or_errors(tmp_path):
     refresh_from_bundle(bundled, user)
     observed = type(bundle)(user).observation("1")
     assert {"protocol_id", "backfill_error"}.isdisjoint(observed) and observed["backfill_done"] is True
+
+
+def test_bundle_fills_missing_fields_of_an_existing_observation_and_cli_merge_is_strict(tmp_path):
+    import pytest
+
+    from ema_rwe.domain import RWEError
+    from ema_rwe.storage import merge_bundle_observations
+
+    bundled, user = tmp_path / "bundled.sqlite3", tmp_path / "user.sqlite3"
+    bundle = catalogue(bundled, "2026-10-01", "Cohort")
+    mine = catalogue(user, "2026-10-01", "Cohort")
+    mine.observe("1", text_layer="full")  # e.g. the user once retrieved this protocol
+    bundle.observe("1", text_layer="none", exposures=[{"term": "atenolol", "source": "protocol_pass_table"}])
+    assert merge_bundle_observations(bundled, user) == 1
+    observed = type(mine)(user).observation("1")
+    assert observed["text_layer"] == "full" and observed["exposures"][0]["term"] == "atenolol"
+    with pytest.raises(RWEError):  # the CLI reports a wrong source instead of "0 added"
+        merge_bundle_observations(tmp_path / "missing.sqlite3", user, strict=True)

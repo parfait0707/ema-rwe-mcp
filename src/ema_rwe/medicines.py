@@ -130,14 +130,14 @@ def known_medicine_names(labels: dict[str, str]) -> dict[str, str]:
     for row in load_dictionary()[0]:
         ingredients = " / ".join(row["ingredients"])
         names.setdefault(canonical(ingredients), ingredients)
-        product = canonical(row["product_name"])
+        product = canonical(row["product_name"].split(" (")[0])  # 'Spikevax (previously ...)'
         if " " not in product:
             names.setdefault(product, ingredients)
     return {n: v for n, v in names.items() if len(n) >= 5}
 
 
-def _medicine_spans(text: str, names: dict[str, str]) -> list[tuple[str, int]]:
-    """(name to record, position) of every known medicine name in canonical(text), longest first."""
+def _medicine_spans(text: str, names: dict[str, str]) -> list[tuple[str, int, int]]:
+    """(name to record, start, end) of every known medicine name in canonical(text)."""
     if not names:
         return []
     cached = _PATTERNS.get(id(names))
@@ -146,19 +146,19 @@ def _medicine_spans(text: str, names: dict[str, str]) -> list[tuple[str, int]]:
             r"(?<!\w)(" + "|".join(sorted(map(re.escape, names), key=len, reverse=True)) + r")(?!\w)"
         )
         _PATTERNS[id(names)] = cached = (names, pattern)
-    return [(names[m.group(1)], m.start()) for m in cached[1].finditer(canonical(text))]
+    return [(names[m.group(1)], m.start(), m.end()) for m in cached[1].finditer(canonical(text))]
 
 
 def find_medicines(text: str, names: dict[str, str]) -> list[str]:
     """Known medicine names written in the text (whole words), as names to record."""
-    return list(dict.fromkeys(name for name, _ in _medicine_spans(text, names)))
+    return list(dict.fromkeys(name for name, *_ in _medicine_spans(text, names)))
 
 
 def pass_table_medicines(pages, names: dict[str, str], max_pages: int = 8) -> list[dict]:
     """Medicines in the 'Active substance' and 'Medicinal product' fields of a PASS information table,
     with the ATC codes written next to each and the physical page. Known names only: no free text is
-    kept. Each code goes to the nearest medicine name in its field (within 60 characters), never to
-    every medicine of the field, so a list of ingredients is not merged into one combination."""
+    kept. Each code goes to the medicine name written just before it (within 60 characters), or to the
+    field's only medicine; never to every medicine of the field, so a list is not merged into one."""
     for page in pages[:max_pages]:
         parts = PASS_FIELDS.split(page.text)
         labels = {" ".join(label.casefold().split())[:16] for label in parts[1::2]}
@@ -170,15 +170,24 @@ def pass_table_medicines(pages, names: dict[str, str], max_pages: int = 8) -> li
                 continue
             text = canonical(value[:MAX_FIELD])
             spans = _medicine_spans(value[:MAX_FIELD], names)
-            for name, _ in spans:
+            for name, *_ in spans:
                 found.setdefault(
                     name, {"term": name, "atc_codes": [], "page": page.page, "source": "protocol_pass_table"}
                 )
+            single = {name for name, *_ in spans}
             for code in CODE.finditer(text):
-                near = min(spans, key=lambda s: abs(s[1] - code.start()), default=None)
-                if near and abs(near[1] - code.start()) <= 60:
-                    entry = found[near[0]]
-                    entry["atc_codes"] = sorted({*entry["atc_codes"], code.group(1).upper()})
+                # 'name (code), name (code)': a code belongs to the name just before it. Only a field
+                # with one medicine takes a code written elsewhere ('ATC code N06AX21, duloxetine').
+                before = [s for s in spans if s[2] <= code.start() and code.start() - s[2] <= 60]
+                owner = (
+                    max(before, key=lambda s: s[2])[0]
+                    if before
+                    else next(iter(single))
+                    if len(single) == 1
+                    else None
+                )
+                if owner:
+                    found[owner]["atc_codes"] = sorted({*found[owner]["atc_codes"], code.group(1).upper()})
         if found:
             return list(found.values())
     return []

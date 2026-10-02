@@ -440,3 +440,55 @@ async def test_backfill_retries_a_study_interrupted_after_its_documents_page(ser
     monkeypatch.setattr(service.archive, "load", real_load)
     summary = await service.backfill_protocols(interval=0)
     assert summary["tried"] == 1 and service.repo.observation("123")["backfill_done"] is True
+
+
+def test_atc_codes_go_to_the_medicine_written_just_before_them():
+    from ema_rwe.medicines import pass_table_medicines
+    from ema_rwe.pdf import Page
+
+    names = {
+        "dulaglutide": "dulaglutide",
+        "liraglutide": "liraglutide",
+        "abiraterone acetate": "abiraterone acetate",
+        "enzalutamide": "enzalutamide",
+        "docetaxel": "docetaxel",
+    }
+    page = Page(
+        1,
+        "Active substance  Dulaglutide (A10BJ05), Liraglutide (A10BJ02)\nProduct reference  N/A\n"
+        "Medicinal product  abiraterone acetate (ATC code L02BX03); enzalutamide (ATC code L02BB04), docetaxel\n",
+    )
+    codes = {m["term"]: m["atc_codes"] for m in pass_table_medicines([page], names)}
+    assert codes == {
+        "dulaglutide": ["A10BJ05"],
+        "liraglutide": ["A10BJ02"],
+        "abiraterone acetate": ["L02BX03"],
+        "enzalutamide": ["L02BB04"],
+        "docetaxel": [],
+    }
+
+
+@pytest.mark.usefixtures("drug_file")
+async def test_backfill_records_a_permanent_http_error_as_done(service, monkeypatch):
+    service.repo.upsert(study("123", title="Opioid safety", protocol_listed=True))
+
+    async def gone(study_id, *args, **kwargs):
+        raise RWEError("EMA_HTTP_ERROR", "EMA returned HTTP 404.")
+
+    monkeypatch.setattr(service, "get_protocol", gone)
+    summary = await service.backfill_protocols(interval=0)
+    assert summary["stopped"] is None and summary["errors"] == {"EMA_HTTP_ERROR": 1}
+    assert service.repo.observation("123")["backfill_done"] is True
+
+
+@pytest.mark.usefixtures("drug_file")
+async def test_text_matches_step_aside_once_the_catalogue_lists_medicines(service):
+    service.repo.upsert(study("1", title="Apixaban users"))
+    await service.backfill_protocols(interval=0, download=False)
+    assert [r["study_id"] for r in service.repo.search("apixaban", None, False, None, role="exposure")] == [
+        "1"
+    ]
+    # A newer export fills the medicines: the text match no longer counts, even before a rerun
+    service.repo.upsert(study("1", title="Apixaban users", exposures=["(B01AF01) rivaroxaban"]))
+    row = service.repo.search("rivaroxaban", None, False, None)[0]
+    assert row["observed_exposures"] == []
