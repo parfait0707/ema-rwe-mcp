@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.5.2 (2026-10-03)
+
+- The caller procedure `docs/mcp-workflow.md` ships in the wheel and is served as the MCP resource
+  `ema-rwe://docs/mcp-workflow`; the server `instructions` point to it, so clients installed with
+  `uvx` can read it without a checkout.
+- Tool schemas state the ranges the server already enforced (`get_protocol_outline`,
+  `search_protocol_text`, `read_protocol_text`); `compare_protocols`/`search_studies` descriptions,
+  the `needs_narrowing` next action and CLI help match the actual ranking, narrowing and defaults.
+- Documentation brought in line with the implementation: medicine matching and expansion, backfill,
+  concept blocks, ranking, narrowing (`facets.conditions` is not a filter), analogous reruns, protocol
+  version selection, cache TTLs, server-side extraction conditions, `.env.example` LLM defaults (empty
+  integer values failed at startup) and the Codex sample (Playwright disabled until configured).
+
 ## 0.5.1 (2026-10-03)
 
 - The backfill also records, from a PASS information table's medicine fields, the catalogue's own class

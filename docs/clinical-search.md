@@ -13,7 +13,7 @@
 
 ## 呼出元LLMの手順
 
-1. 日本語の条件を英語の疾患・薬剤名、関連表現、適切なコード候補に展開。`plan_study_search`の計画を補い、`queries`と`code_searches`をそれぞれ検索します。後者はそのまま`search_studies`に渡せる引数です。EMA医薬品辞書の記録が持つATCコードは`code_searches`に含めません（カタログでは同じコードが別の薬に付いていることがあるため）。
+1. 日本語の条件を英語の疾患・薬剤名、関連表現、適切なコード候補に展開し、概念ごとのブロック（`blocks`：`role`、`queries`、`category_terms`）にして`compare_protocols`へ渡します（手順の正本は[呼出元の手順](mcp-workflow.md)）。`plan_study_search`の`queries`と`code_searches`は、そのまま`search_studies`にも渡せる引数です。EMA医薬品辞書の記録が持つATCコードは`code_searches`に含めません（カタログでは同じコードが別の薬に付いていることがあるため）。
 2. 候補研究の最新PDFを取得し、共通項目を抽出・保存。結果の`protocol_id`を使ってPDF全文を追加検索します。
 3. 疾患名で見つからなくてもコード単独で検索。Methods、outcome definitions、コード表・付録を読み、前後の章と親章を確認します。
 4. コードがアウトカム・曝露・併存疾患・除外基準のどれに使われたか、対象データソース、コード体系と版、回数・期間・除外条件を本文に基づいて回答します。不明な情報は不明として残します。
@@ -42,7 +42,7 @@ PDF検索にはさらに`protocol_id`を指定します。CLIも`--code "ICD-10:
 
 `analogous_terms`（`{term, relation}`）は、依頼概念とは**別の**臨床概念です。`relation`は`broader`（上位概念）、`sibling`（同じ上位概念に属する別疾患）、`associated`（合併症・関連病態）のいずれかです。通常の検索には含めず、依頼概念の研究が0件のときの`analogous_fallback`と、`match_scope=analogous`での明示的な検索にだけ使います。`related_terms`には同義語・表記揺れ・下位型・検索ヒントだけを置きます（例：1型糖尿病の`diabetes mellitus`は`related_terms`ではなく`analogous_terms`の`broader`）。
 
-検索結果の各行は`match_basis`（`concept`／`analogous`）、`matched_terms`（実際に一致した展開語）、`matched_term_sources`（語の出所：`query`＝検索クエリ文字列そのもの（クライアントが渡した英語名を含む）、`caller`＝クライアント生成、`llm`＝サーバー側LLM（`use_llm=true`）の提案、`vocabulary`＝デザイン語彙、`dictionary:<ファイル名>`、`ema_medicines`）を持ちます。類縁概念で見つかった研究の定義は、類縁概念の定義として提示してください。辞書にない疾患は、呼出元が類縁概念を`analogous_terms`引数で渡せます。
+検索結果の各行は`match_basis`（`concept`／`analogous`）、`matched_terms`（実際に一致した展開語）、`matched_term_sources`（語の出所：`query`＝検索クエリ文字列そのもの（クライアントが渡した英語名を含む）、`caller`＝クライアント生成、`llm`＝サーバー側LLM（`use_llm=true`）の提案、`vocabulary`＝デザイン語彙、`dictionary:<ファイル名>`、`ema_medicines`＝EMA医薬品辞書、`catalogue_atc`＝カタログの「(ATCコード) 名称」から加えた医薬品名・クラス名）を持ちます。類縁概念で見つかった研究の定義は、類縁概念の定義として提示してください。辞書にない疾患は、呼出元が類縁概念を`analogous_terms`引数で渡せます。
 
 疾患・医薬品以外の語は、`vocabulary.py`の同義語グループが英語へ展開します。対象は薬剤疫学プロトコールに頻出する研究デザイン・手法・集団の語です（例：交絡→confounding、インデックス日→index date、症例対照→case control / nested case control、小児→paediatric / pediatric / children、データリンケージ→record linkage）。疾患名や臨床語はここに置きません。以前あった広義の臨床語（diabetes、bleeding、cancer）は、「1型糖尿病」の中の「糖尿病」に反応して糖尿病全般の研究を拾うため削除しました。臨床語の翻訳はクライアントか利用者の辞書が担います。
 
@@ -73,18 +73,45 @@ PDF検索にはさらに`protocol_id`を指定します。CLIも`--code "ICD-10:
 
 ## 網羅性の限界
 
-サーバーは疾患名とICD-10の対応を持ちません。対応づけはクライアントの知識、または利用者の辞書に依存し、検証されていません。ICD-10／国別修正版のコード指定、小数点有無の展開、ATCの第1〜5レベルのコード指定に対応し、形式を検証します。形式検証はマスター上の実在確認ではありません。ATCの第5レベルと医薬品名の対応は、後述の公式EMA医薬品辞書を利用します。全疾患・全医療マスターの照会や階層の全子孫コード展開は未実装です。
+サーバーは疾患名とICD-10の対応を持ちません。対応づけはクライアントの知識、または利用者の辞書に依存し、検証されていません。ICD-10／国別修正版のコード指定、小数点有無の展開、ATCの第1〜5レベルのコード指定に対応し、形式を検証します。形式検証はマスター上の実在確認ではありません。WHO ATCの索引は同梱しません。ATCコードの名称はカタログ自身の「(ATCコード) 名称」の記載（例：`(B01AF02) apixaban`）から引き、クラスの所属薬はその記載とEMA医薬品辞書の記録が持つATCコードから名前で集めます（後述）。全疾患・全医療マスターの照会や階層の全子孫コード展開は未実装です。
 
-通常の研究検索はインポート済みのカタログ情報と保存済み抽出結果が対象です。カタログ情報には疾患名もコードもなく、未取得PDFにしか書かれていない研究は、この検索だけでは発見できません。候補条件を広げてPDFを取得する必要があります。保存PDFの追加検索は指定IDの全抽出テキストを対象にしますが、画像だけのコード表にはOCRが必要です。コード命中、原文引用の一致、章判定だけで医学的同等性やアウトカムとしての使用を保証するものではありません。
+通常の研究検索はインポート済みのカタログ情報と保存済み抽出結果が対象です。カタログ情報には疾患名もコードもなく、未取得PDFにしか書かれていない研究は、この検索だけでは発見できません。例外として、カタログの医薬品欄が空の研究の一部には、補完コマンドで題名などの医薬品名やプロトコルのPASS情報表の医薬品欄を補っています（後述）。候補条件を広げてPDFを取得する必要があります。保存PDFの追加検索は指定IDの全抽出テキストを対象にしますが、画像だけのコード表にはOCRが必要です。コード命中、原文引用の一致、章判定だけで医学的同等性やアウトカムとしての使用を保証するものではありません。
 
 ## 商品名 ⇄ INN／common name ⇄ ATC
 
+### EMA医薬品辞書
+
 `refresh_drug_dictionary()`（CLI: `ema-rwe refresh-drugs`）で[公式EMA医薬品JSON](https://www.ema.europa.eu/en/about-us/about-website/download-website-data-json-data-format)を取得します。ヒト用医薬品の`name_of_medicine`、`international_non_proprietary_name_common_name`、`atc_code_human`を対応付け、出典URLと更新日を保持します。EMAの欄名がINN／common nameなので、すべてを厳密なWHO INNと断定せず、その区別をJSONにも残します。
 
-保存先は`EMA_DRUG_DICTIONARY_PATH`、未設定時はDBと同じフォルダの`ema-medicines.json`です。7日間は再利用し、`force=true`で再取得できます。取得した原本とSHA256を利用し、不正な応答で旧辞書を上書きしません。通常の研究・PDF検索はローカル辞書を読み、通信しません。未取得・7日経過は`clinical.drugs.needs_refresh`に表示します。別環境でセットアップする場合は最初に更新ツールを呼んでください。
+保存先は`EMA_DRUG_DICTIONARY_PATH`、未設定時はDBと同じフォルダの`ema-medicines.json`です（チェックアウトとwheelには`data/ema-medicines.json`を同梱）。7日間は再利用し、`force=true`で再取得できます。取得した原本とSHA256を利用し、不正な応答で旧辞書を上書きしません。通常の研究・PDF検索はローカル辞書を読み、通信しません。未取得・7日経過は`clinical.drugs.needs_refresh`に表示します。
 
-例：`Eliquis`→`apixaban`、`apixaban`→`Eliquis`等の同じ成分構成を持つ医薬品名。照合は名前（製品名・成分の組み合わせ）だけで行い、ATCコードから辞書の製品を引くことはしません（v1.1）。検索結果の`query_expansion.clinical.drugs`に候補製品、成分構成、出典、辞書版、件数と打切りの有無を返します。辞書の記録が持つATCコードは、プロトコルPDFの本文検索（`search_protocol_text`）のヒントにだけ使うので、商品名の検索でもPDF本文にINNやATCしかない箇所を見つけられます。カタログの検索語にはしません。ATCの上位クラスを単一成分と同義には扱いません。`compare_protocols`での医薬品の展開は[仕様 v1.0](spec/v1.0.md)を参照してください。
+### 名前で照合する（v1.1）
 
-日本語の医薬品名は内蔵していません。呼出元LLM、または`plan_study_search(use_llm=true)`が英語名を`synonyms`に渡すと、公式辞書で双方向展開します。出典のある日本語対応表を使う場合は、利用者の辞書（`data/dictionaries/`）の概念に日本語名を`input_terms`、INNを`english_terms`として登録します。一致した概念の英語名は医薬品辞書にも渡るため、同じ成分構成の製品名まで展開されます。医薬品辞書が見つからない場合は何も展開せず、`needs_refresh=true`を返します。
+医薬品の照合の主キーは名前です。ATCコードは名前どうしをつなぐ内部の手がかりとしてだけ使い、情報源をまたいでコードで照合しません。カタログの検索に使うのは名前と、カタログに記載のある第4レベルのクラスコード（`category_terms`）だけです。
 
-配合剤は成分集合全体を保持します。例：Janumet→sitagliptin / metforminであり、sitagliptin単剤のJanuviaと同一扱いしません。塩や製剤を自動的に同一化せず、同じINNでも用量・投与経路・適応が一致するとは断定しません。収載範囲はEMAの中央審査品目で、国ごとの全商品名や全ATC割当てを網羅しません。
+- **EMA医薬品辞書**：製品名とINN／common nameを、成分の組み合わせ全体が同じ製品どうしで双方向に展開します（例：`Eliquis`→`apixaban`、`apixaban`→`Eliquis`）。`compare_protocols`では、検索語を1つの医薬品名として語全体で照合し、長い語の一部では展開しません（GLP-1受容体作動薬の語からglucagonの製品へは展開しない）。`search_studies`の5語以上の自由文では、文中の医薬品名も拾います。
+- **塩の語**：検索語や辞書の名前の末尾の塩・エステル・水和物の語（citrate、maleate、hydrochlorideなど。カタログとEMA辞書に「X W」と「X」がともに現れる語Wから作った一覧）は、語全体の照合のときだけ除いて照合します（例：tofacitinib citrate→tofacitinibの製品、dabigatran etexilate→dabigatran）。検索の手がかりで、塩と遊離体を同じ製剤とはみなしません。
+- **辞書のATCコード**：EMA辞書の記録が持つATCコードは、カタログの検索語や`code_searches`にしません（辞書のコードがカタログでは別の薬に付いていることがあるため）。取得したプロトコルPDFの本文検索（`search_protocol_text`）のヒントにだけ使うので、PDF本文にINNやATCしかない箇所は見つけられます。
+- 検索結果の`query_expansion.clinical.drugs`に候補製品、成分構成、出典、辞書版、件数と打切りの有無を返します。
+
+### カタログの記載による成分とクラスの展開（v1.0）
+
+カタログのexposures欄は医薬品を`(B01AF02) apixaban`や`(N03A) ANTIEPILEPTICS`のように「ATCコード 名称」で書くことがあります。`compare_protocols`はこの組とEMA辞書から、医薬品の検索語を名前へ展開し、加えた語を`medicine_expansion`（1問あたり100語まで。超過分は`omitted`）に返します（`medicines.expand_medicine`）。
+
+- **成分・製品**（第5レベル）：カタログ上の名称を検索語に加え、上位の第4レベルのクラス（コードと名称）を`category_terms`に加えます。カタログにそのクラス自身か別の所属薬の記載があるときだけです。
+- **クラス**（カタログのクラス名称と一致する語、または第3・第4レベルのATCコード）：クラスの名称と、カタログとEMA辞書でそのクラスに属する薬の名前を検索語に加えます。所属薬は同義語ではなく、クラスの一部として扱います。カタログの名称と矛盾するEMA辞書のコードを持つ記録は除きます。
+- 合わせ剤は成分集合全体で扱います（Janumet→sitagliptin / metformin。sitagliptin単剤のJanuviaとは同一扱いしない）。`metformin`が`metformin and empagliflozin`に解決されることはありません。
+- 依頼した薬の研究が0件で、呼出元が第5レベルのATCコードを`queries`に渡していた場合は（概念が1つの検索のときだけ）、同じクラス（第4レベルに名称が無ければ第3レベル）とカタログ上の所属薬を類縁概念（`broader`／`sibling`、出所`catalogue_atc`）として示します。
+
+日本語の医薬品名は内蔵していません。呼出元LLM、または`plan_study_search(use_llm=true)`が英語名を渡すと、上記の辞書とカタログで展開します。呼出元には、INN、EU・米国の製品名、略語（TNFi、DOACsなど）、語形やハイフン表記の変種を渡すよう`client_expansion`で指示し、カタログにもEMA辞書にも無い薬には第5レベルのATCコードも求めます。出典のある日本語対応表を使う場合は、利用者の辞書（`data/dictionaries/`）の概念に日本語名を`input_terms`、INNを`english_terms`として登録します。医薬品辞書が見つからない場合は、EMA辞書による製品名⇄INNの展開を行わず`needs_refresh=true`を返します。カタログの記載による展開は続けます。
+
+同じINNでも用量・投与経路・適応が一致するとは断定しません。EMA辞書の収載範囲は中央審査品目で、国ごとの全商品名や全ATC割当てを網羅しません。
+
+### 医薬品欄が空の研究の補完（v1.2、v1.3）
+
+カタログの医薬品欄が空の研究には、利用者が実行する`ema-rwe backfill-protocols`で医薬品を補っています。補った値はカタログとは別の`protocol_observations`表にあり、索引の医薬品の列（名前と記録したATCコード）で検索され、候補の`observed_exposures`に出所付きで返ります。同梱DBは、医薬品欄が空の712件のうち215件を補った結果を含みます。
+
+- **`catalogue_text`**：題名・説明・目的に書かれた既知の医薬品名（カタログの第5レベルの名称、EMA辞書のINNと1語の製品名）。研究の略称（`SONATA study`）、測定される物質（`fractional exhaled nitric oxide`）、受容体や阻害薬のクラス名の一部（`angiotensin II receptor blockers`）は除きます。比較対照や除外基準の薬であることがあります。
+- **`protocol_pass_table`**：プロトコルのPASS情報表の「Active substance」「Medicinal product」欄にある既知の医薬品名、カタログのクラス名、欄に書かれたATCコード（ページ付き）。辞書に無い薬は、欄のATCコードで記録します。欄の自由記述は保存しません。プロトコル本文のATCコードは、除外基準・アウトカム・共変量にも使われるため記録しません。
+
+どちらも検索の手がかりで、その研究で曝露として使われたかはプロトコルで確かめます。詳細は[仕様 v1.2](spec/v1.2.md)・[v1.3](spec/v1.3.md)を参照してください。

@@ -7,13 +7,15 @@
 ```json
 {
   "question": "NVAF患者のコホート定義を比較してください",
-  "queries": ["NVAF", "non-valvular atrial fibrillation", "nonvalvular atrial fibrillation"],
+  "blocks": [
+    {"role": "condition", "queries": ["NVAF", "non-valvular atrial fibrillation", "nonvalvular atrial fibrillation"]}
+  ],
   "darwin_only": false,
   "source_preference": {"types": ["claims"], "role": "cohort", "mode": "prefer"}
 }
 ```
 
-これは`compare_protocols`の引数。呼出元LLMは自然言語から希望タイプと定義の用途を指定する。`role`は`cohort`、`outcome`、`exposure`、`covariate`、`other`、`any`。複数の用途を尋ねる場合は`any`で取得し、回答では各用途を分ける。`any`の一致は研究中のいずれかの用途での一致であり、すべてのアウトカムが同じタイプで再現できる意味ではない。
+これは`compare_protocols`の引数。呼出元LLMは自然言語から希望タイプと定義の用途を指定する。`source_preference.role`は`cohort`、`outcome`、`exposure`、`covariate`、`other`、`any`。ブロックの`role`（outcome／condition／exposure／any）はカタログ検索の順位付けに使う別の項目である。複数の用途を尋ねる場合は`any`で取得し、回答では各用途を分ける。`any`の一致は研究中のいずれかの用途での一致であり、すべてのアウトカムが同じタイプで再現できる意味ではない。
 
 `mode=prefer`は同じタイプを優先し、他タイプも補足として残す。`mode=only`はユーザーが限定を明示した場合だけ使い、該当する用途に明示的な根拠があり、他タイプとの連結を必要としない行だけを比較表の候補にする。推定・不明・非掲載の研究もJSONと一次判定一覧に残す。`only`は「使用予定」も含み、完了研究限定ではない。
 
