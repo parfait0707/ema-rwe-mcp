@@ -64,7 +64,11 @@ def parser():
     search = commands.add_parser("search")
     search.add_argument("query")
     search.add_argument("--limit", type=int, default=5)
-    search.add_argument("--all-studies", action="store_true")
+    search.add_argument(
+        "--all-studies",
+        action="store_true",
+        help="Include non-DARWIN EU studies (the CLI search defaults to DARWIN EU only; MCP darwin_only=false).",
+    )
     search.add_argument("--status", action="append")
     search.add_argument("--analyzed-only", action="store_true")
     search.add_argument("--synonym", action="append")
@@ -106,7 +110,8 @@ def parser():
             "--role",
             choices=["any", "outcome", "condition", "exposure"],
             default="any",
-            help="Restrict matching to the catalogue columns for this role (plus title).",
+            help="search: restrict matching to this role's catalogue columns (plus title); "
+            "compare: rank matches in those columns first (every column is searched).",
         )
         cmd.add_argument("--country", action="append", default=[])
         cmd.add_argument(

@@ -2,7 +2,9 @@
 
 The MCP `instructions` string is deliberately short. This file is the full procedure that a calling
 agent (Claude Code, Codex, any MCP client) follows. It is written in English because it is read by
-the model that drives the tools; the rest of `docs/` is in Japanese.
+the model that drives the tools; the rest of `docs/` is in Japanese. The server serves this file as
+the MCP resource `ema-rwe://docs/mcp-workflow` (bundled in the wheel), so a client installed with
+`uvx` can read it without a checkout.
 
 ## 1. Plan
 
@@ -20,10 +22,13 @@ the model that drives the tools; the rest of `docs/` is in Japanese.
   `sibling` analogous terms, the block/chapter as `broader`. Your codes are unverified retrieval hints;
   confirm vocabulary, version and role in the PDF.
 - Result rows carry `matched_term_sources` (`query` = the query string itself, `caller` = your synonyms, `llm` = server LLM codes/synonyms, `vocabulary`, `dictionary:<file>`,
-  `ema_medicines`) so you can say which term, from where, retrieved each study.
+  `ema_medicines`, `catalogue_atc` = a medicine or class name the server added from the catalogue's
+  "(ATC code) name" entries, `category` = an umbrella term) so you can say which term, from where,
+  retrieved each study.
 - The unmatched-query log (`catalogue_status.unmatched_terms`) is written only while a user dictionary
   is configured.
-- Medicines: expand product names to INN/common names and ATC codes; never equate a class with a
+- Medicines: give English INN and product names (and a 5th-level ATC code for a medicine the server
+  does not know); the server expands names (section 2). Never equate a class with a
   member or a combination with one ingredient.
 
 ## 2. Screen with `compare_protocols`
@@ -39,7 +44,7 @@ the model that drives the tools; the rest of `docs/` is in Japanese.
   interest, immune-related adverse events, pregnancy outcomes). Keep them specific to the concept;
   generic phrases such as "adverse drug reactions" only add noise.
 - Medicines: the server resolves each query to ATC codes (catalogue entries such as `(B01AF02) apixaban`
-  and the EMA medicines dictionary) and searches names only; ATC is a join key, not an answer. An EMA
+  and the EMA medicines dictionary) and searches names, plus the 4th-level class code the catalogue records; ATC is a join key, not an answer. An EMA
   record's ATC code is never a catalogue search term (the catalogue may give that code to another
   medicine); it remains a hint for `search_protocol_text` inside a protocol PDF.
   - A medicine adds its catalogue name as a query and its 4th-level class (code and catalogue name) as
@@ -54,7 +59,8 @@ the model that drives the tools; the rest of `docs/` is in Japanese.
 - Candidates are ranked, never cut: specific matches before category-only ones, role-column matches
   first, secondary-use data before surveys, then fused BM25 rank. Each candidate carries
   `rank_features`, `matched_terms` and `matched_term_sources` (`category` for umbrella matches).
-- `check_protocols=N` (0–20) checks the Study documents of the top N listed candidates (no PDF) and
+- `check_protocols=N` (0–20; only when `needs_narrowing` lists candidates, without `study_ids`, with
+  `match_scope=concept`) checks the Study documents of the top N listed candidates (no PDF) and
   ranks studies without a protocol last. Use it before asking the user to pick `study_ids`.
 - Without any request, candidates whose export lists no protocol (`protocol_listed=false`) rank after
   listed ones of the same specificity and role, and a study whose downloaded protocol has no text layer
@@ -88,7 +94,9 @@ the model that drives the tools; the rest of `docs/` is in Japanese.
   analogous concepts with `relation` (broader/sibling/associated) and `study_count`. Tell the user that no
   study of the requested concept exists in the local index, show these concepts, and on agreement rerun
   `compare_protocols` with `match_scope="analogous"`, the same queries and filters, and a `question` that
-  names the analogous concept.
+  names the analogous concept. `match_scope="analogous"` does not combine with `blocks`: move the single
+  block's `queries`, `role` and `category_terms` to the top-level arguments. With two or more blocks the
+  fallback is `status=not_available_for_blocks`; rerun the concept that has no study on its own.
 - `status=concept_filtered_out`: studies of the requested concept exist in the index
   (`concept_index_matches_before_filters`) but filters, `darwin_only`, `status` or `analyzed_only` removed
   them. Say so and offer to relax those first; the analogous concepts are only an alternative.
@@ -110,18 +118,22 @@ Ask the user, in one message, for BOTH:
    exports), quoting `facets.data_source_types`;
 2. study countries, quoting the top of `facets.countries`.
 
-Also offer `facets.conditions` (Medicinal condition values), `facets.study_designs` and a narrower
-`role` as further filters. Pass the answers as `filters` and rerun with the SAME `queries`.
+Pass the answers as `filters` (`countries`, `data_source_types`, `study_designs` are the only filter
+fields) and rerun with the SAME blocks. `facets.study_designs` may narrow further through
+`filters.study_designs`. A `facets.conditions` value (Medicinal condition) is not a filter: to narrow by
+it, add it as another block with `role=condition` (blocks are AND-ed). In `compare_protocols` `role`
+only ranks; it narrows only in `search_studies`.
 
 When `candidates_listed=true` (total within `max_listed_candidates`, default 50) the response carries a
 compact `candidates` list. Show it and let the user choose explicit `study_ids` (at most
-`max_screening_studies`, default 5). Pass `study_ids` to `compare_protocols` with the same queries and
+`max_screening_studies`, default 5). Pass `study_ids` to `compare_protocols` with the same blocks and
 filters. Never pick a subset yourself.
 
 ## 4. Process within the screening limit
 
-- Every row has `pending_tools`. Run all of them: `analyze_protocol` (read every `next_offset`
-  batch), `cache_protocol_analysis`, `research_protocol`, `cache_protocol_answer`.
+- The response's top-level `pending_tools` lists `{tool, arguments}` calls of `analyze_protocol` and
+  `research_protocol`. Run all of them, each followed by `cache_protocol_analysis` (every
+  `next_offset` batch) or `cache_protocol_answer` as their status asks.
 - `analyze_protocol` may return `status=extracting` (server-side provider extraction running):
   call it again for the same study until it returns the analysis; do not extract client-side.
 - With `needs_client_extraction`, cache each batch via `cache_protocol_analysis(batch_offset=offset)`
@@ -132,7 +144,10 @@ filters. Never pick a subset yourself.
 - Quotes must be verbatim; pages are physical PDF pages; keep `usage` honest
   (`used`/`planned`/`candidate`/`unclear`). A planned source is never "used".
 - `source_preference` (types, definition role, `mode=prefer` by default) ranks PDF evidence after
-  screening. It is independent of the catalogue source-type filter.
+  screening. It is independent of the catalogue source-type filter and uses another vocabulary: types
+  `claims`, `registry`, `ehr`, `drug_dispensing_prescription`, `other`, and roles `cohort`, `outcome`,
+  `exposure`, `covariate`, `other`, `any` (the catalogue filter takes `claims`, `ehr`, `registry`,
+  `others`; a block's `role` takes `outcome`, `condition`, `exposure`, `any`).
 - Call `get_protocol_comparison`. If `selection_status=needs_selection`, show `screening_summary`
   and ask for `selected_study_ids` within `max_comparison_studies`.
 - Present the comparison table, JSON paths, failures and missing information.

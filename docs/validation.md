@@ -451,6 +451,14 @@ PDF 取得先ディレクトリ名から X/Y が推測可能だった（P）、�
 - テスト：PASS 表のクラス名とコード、商標記号、辞書に無い薬のコード、NA の欄、文脈の無い第2レベルの形、「コード (名前)」の書式、行で分かれたコード、receptor の語、略称と測定物質、新しい規則の版による置き換え（同じ版では手元の値を優先）、レビューの各再現例。全体 320 passed、ruff 合格。
 - 残る課題：検索時に zaleplon を製品名 Sonata へ展開すると、題名の「SONATA study」に一致する（題名は役割を問わず検索される）。これは補完ではなく検索語の展開の問題として残す。欄が 300 字で切れるとクラスのコードが落ちることがある（1000001065 の calcium channel blockers）。名前もコードも書かれていない欄（AZD1222、Gi(l)otrif® など）からは補えない。
 
+## 2026-10-03 ドキュメントと実装の照合、手順書の MCP リソース（spec v1.4）
+
+- 全ドキュメントの点検（サブエージェント2体。README／README_DEV と、その他の文書・設定例・ツールの説明・CLI のヘルプ）で見つかった食い違いを直した。主なもの：`.env.example` の空の整数値（`LLM_BATCH_CHARS=` など）で起動時に `ValueError` になる、`LLM_MAX_TOKENS` の既定値、`facets.conditions` と `compare_protocols` の `role` を絞り込みと書いていた、`pending_tools` の位置、類縁概念の再実行で `blocks` を併用できない、プロトコルの版の分類（Updated とそれ以外の2種類）、`EMA_CACHE_TTL_SECONDS` の用途、サーバー側抽出の条件（`compatible` でも `LLM_BASE_URL` があれば有効）、内部探索の全文ルートとタイムアウト、存在しない関数名（`preference_for`）、Codex 設定例の疾患辞書の同梱と、`<checkout>` を含んだまま有効な Playwright のブロック。
+- docs/clinical-search.md（医薬品の照合・展開・補完）と docs/comparisons.md（概念ブロック・順位付け・候補一覧・類縁概念）を、v1.0〜v1.3 の実装に合わせて書き直した。
+- 手順書を wheel に同梱し、MCP リソースとして返すようにした。`uv build` の wheel に `ema_rwe/docs/mcp-workflow.md` が入ること、実 stdio の MCP テストでリソースの一覧と読み出し、`instructions` の案内を確かめた。
+- テスト：`test_mcp.py`（リソース）、`test_distribution.py`（wheel への同梱とパスの切り替え）。全体 321 passed、ruff と `uv build` 合格。
+- コードの判断が要るもの（未対応）：CLI と MCP の引数の対応の欠け（`analyze --detail`、`cache-analysis --batch-offset` など）、CLI の `search` の既定が DARWIN EU のみ（ヘルプに明記した）、`get_study` の再取得が種別タグを詳細ページの F8.7 で置き換えること（AGENTS.md に明記した）、`.devcontainer` の旧名とインタープリタのパス。
+
 ## 未検証事項（継続）
 
 - 外部LLM API呼出しの実認証検証は未実施。キーなしの呼出元LLM方式は合成PDFで保存・再利用まで検証。

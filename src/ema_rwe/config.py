@@ -8,6 +8,9 @@ from platformdirs import user_cache_path, user_data_path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 BUNDLED_DATA = Path(__file__).resolve().parent / "data"
 SEEDED_FILES = ("ema.sqlite3", "ema-medicines.json")
+# The caller procedure, served as an MCP resource: docs/ in a checkout, bundled in the wheel otherwise.
+WORKFLOW_DOC = "mcp-workflow.md"
+WORKFLOW_URI = "ema-rwe://docs/mcp-workflow"
 _refreshed: set[Path] = set()
 
 
@@ -28,6 +31,11 @@ def default_data_dir() -> Path:
 
         refresh_from_bundle(BUNDLED_DATA / "ema.sqlite3", target / "ema.sqlite3")
     return target
+
+
+def workflow_doc_path() -> Path:
+    checkout = REPO_ROOT / "docs" / WORKFLOW_DOC
+    return checkout if checkout.is_file() else Path(__file__).resolve().parent / "docs" / WORKFLOW_DOC
 
 
 def default_db_path() -> Path:
@@ -61,7 +69,7 @@ class Settings:
     max_listed_candidates: int = field(
         default_factory=lambda: int(os.getenv("EMA_MAX_LISTED_CANDIDATES", "50"))
     )
-    user_agent: str = field(default_factory=lambda: os.getenv("EMA_USER_AGENT", "ema-rwe-mcp/0.5.1"))
+    user_agent: str = field(default_factory=lambda: os.getenv("EMA_USER_AGENT", "ema-rwe-mcp/0.5.2"))
     llm_base_url: str = field(default_factory=lambda: os.getenv("LLM_BASE_URL", ""))
     llm_api_key: str = field(default_factory=lambda: os.getenv("LLM_API_KEY", ""))
     llm_model: str = field(default_factory=lambda: os.getenv("LLM_MODEL", ""))

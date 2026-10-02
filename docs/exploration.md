@@ -2,11 +2,11 @@
 
 ## 検索語の十分性
 
-`search_studies` は元のqueryに加え、`vocabulary.py` の概念グループから同義語を展開する。例: 出血 → bleeding / haemorrhage / hemorrhage、new-user → incident user、欠測 → missing data / missingness / imputation。英語は単語境界を判定し、複数語の同義語はFTSでもフレーズとして保つ。例えばNOACの展開を単語分割して `non` だけで全研究をヒットさせない。
+`search_studies` は元のqueryに加え、`vocabulary.py` の概念グループから同義語を展開する。概念グループは研究デザイン・手法・集団の語だけで、臨床語（疾患名・薬剤名）は持たない（呼出元の翻訳か利用者の辞書が担う。[臨床概念の展開](clinical-search.md)）。例: new-user → incident user、欠測 → missing data / missingness / imputation。英語は単語境界を判定し、複数語の同義語はFTSでも近傍一致の1語句として保ち、単語に分割して一部の語だけで全研究をヒットさせない。
 
 薬剤クラスと個別薬、IPTWと傾向スコア全体などは同一概念とみなさない。曖昧なAF/PSは自動展開しない。辞書は網羅的な医学用語集ではなく、実際に用いた展開を `query_expansion` で確認できる。呼出元は `synonyms=[...]` を追加できる。
 
-`plan_study_search(question, use_llm=true)` は内部LLMに疾患・曝露・アウトカム・designを分けた最大5つの検索式と追加同義語を作らせる。`use_llm=false` はネット通信なしで辞書展開を返す。**このToolは検索計画を返すだけ。** 各queryを `search_studies` で確認し、不足した概念や過剰に広がった概念を修正する。全検索語を `compare_protocols` に渡して候補を統合・重複除去し、一次判定上限（既定5件）を超えたら追加条件をユーザーに確認し、上限以内なら全件を処理する。source_assessmentsでデータタイプと定義用途を根拠付きで保存する。[用途別分類](source-types.md)を参照。[比較ワークフロー](comparisons.md)を参照。取りこぼしがないことを保証するものではない。
+`plan_study_search(question, use_llm=true)` は内部LLMに疾患・曝露・アウトカム・designを分けた最大5つの検索式と追加同義語を作らせる。`use_llm=false` はネット通信なしで辞書展開を返す。**このToolは検索計画を返すだけ。** 呼出元は概念ごとのブロック（`blocks`）にまとめて `compare_protocols` に渡し（手順は[呼出元の手順](mcp-workflow.md)）、候補を統合・重複除去する。個々の語の当たり方は `search_studies` で確かめられる。一次判定上限（既定5件）を超えたら追加条件をユーザーに確認し、上限以内なら全件を処理する。source_assessmentsでデータタイプと定義用途を根拠付きで保存する。[用途別分類](source-types.md)を参照。[比較ワークフロー](comparisons.md)を参照。取りこぼしがないことを保証するものではない。
 
 ## 章構造
 
@@ -52,7 +52,7 @@ PDFは追加要望に従ってユーザーが削除するまで保持する。�
 
 `read_protocol_text` は `section_id` の代わりに `start_page` / `end_page` で物理PDFの1～5ページを指定できる。最大20,000文字／回で、`next_offset` があるときは同じ対象と次のoffsetで続きを読む。
 
-内部LLM未設定の `research_protocol` は `needs_client_exploration`、初期検索ヒット、回答schemaを返す。呼出元LLMは追加語で検索し、章一覧や前後ページを辿ってから保存する。回答schemaは `answers: [{value, evidence:[{page,section,quote}]}]` と `missing_information`。元の共通抽出schemaを上書きしない。質問別回答は別SQLiteテーブルに保存する。
+内部LLM未設定の `research_protocol` は `needs_client_exploration`、初期検索ヒット、回答schemaを返す。呼出元LLMは追加語で検索し、章一覧や前後ページを辿ってから保存する。回答schemaは `answers: [{value, evidence:[{page,section,quote}]}]`、`source_assessments`（データタイプと定義用途の判定。[用途別分類](source-types.md)）、`missing_information`。元の共通抽出schemaを上書きしない。質問別回答は別SQLiteテーブルに保存する。
 
 例:
 
@@ -85,9 +85,9 @@ CLIも共通Coreを使用する:
 uv sync --extra dev --extra llm
 ```
 
-`LLM_BACKEND=litellm` と `LLM_MODEL=<provider>/<model-id>` を設定する。内部の `research_protocol` はJSONで search / outline / read / finish を選び、観測結果を見て次の行動を決める。外部ページ・シェル・任意パスにはアクセスせず、指定IDのローカルPDFだけを探索する。通常の共通抽出も同じLiteLLM接続を使うが、共通抽出自体は関連章のバッチ処理。
+`LLM_BACKEND=litellm` と `LLM_MODEL=<provider>/<model-id>` を設定する。内部の `research_protocol` は、まず質問に関連する章をまとめて読み、一括で回答を求める（全文ルート。`LLM_CONCURRENCY`並列）。それで回答も判定も得られなかったときだけ、JSONで search / outline / read / finish を選び、観測結果を見て次の行動を決める段階的な探索に移る。外部ページ・シェル・任意パスにはアクセスせず、指定IDのローカルPDFだけを探索する。通常の共通抽出も同じLiteLLM接続を使うが、共通抽出自体は関連章のバッチ処理。
 
-`LLM_MAX_STEPS` は既定8、上限20。各API呼出しはタイムアウト180秒・出力上限6,000トークン、APIリトライ0回。上限に到達した場合は `exploration_limit_reached` と探索履歴を返し、未完了の回答は保存しない。回答の引用・ページ・セクションを検証してから保存し、同じPDF ID・質問・モデル／backend／parser版では再利用する。
+`LLM_MAX_STEPS` は既定8、上限20。各API呼出しのタイムアウトは、`LLM_BACKEND=litellm`で600秒、`compatible`で180秒。出力上限は`LLM_MAX_TOKENS`（0ならLiteLLMのモデル表、引けなければ16,000トークン）。APIリトライは0回。上限に到達した場合は `exploration_limit_reached` と探索履歴を返し、未完了の回答は保存しない。回答の引用・ページ・セクションを検証してから保存し、同じPDF ID・質問・モデル／backend／parser版では再利用する。
 
 MCP設定の `env` に入れる共通設定例（モデルIDは利用可能なものに置き換える）:
 
