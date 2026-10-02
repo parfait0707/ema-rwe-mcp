@@ -16,6 +16,15 @@ def test_wheel_bundles_every_seeded_file():
         assert (ROOT / "data" / name).is_file()
 
 
+def test_wheel_bundles_the_caller_workflow_served_as_a_resource(tmp_path, monkeypatch):
+    with (ROOT / "pyproject.toml").open("rb") as fh:
+        include = tomllib.load(fh)["tool"]["hatch"]["build"]["targets"]["wheel"]["force-include"]
+    assert include[f"docs/{config.WORKFLOW_DOC}"] == f"ema_rwe/docs/{config.WORKFLOW_DOC}"
+    assert config.workflow_doc_path() == ROOT / "docs" / config.WORKFLOW_DOC
+    monkeypatch.setattr(config, "REPO_ROOT", tmp_path / "no-checkout")  # an installed wheel
+    assert config.workflow_doc_path() == Path(config.__file__).resolve().parent / "docs" / config.WORKFLOW_DOC
+
+
 def test_checkout_uses_repo_data_dir():
     assert config.default_db_path() == ROOT / "data" / "ema.sqlite3"
     assert config.default_dictionary_dir() == ROOT / "data" / "dictionaries"

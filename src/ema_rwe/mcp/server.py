@@ -5,6 +5,7 @@ from typing import Annotated, Literal
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 
+from ..config import WORKFLOW_URI, workflow_doc_path
 from ..domain import AnalogousTerm, CodeCandidate, Extraction, ProtocolAnswer, RWEError, SourcePreference
 from ..ranking import ScreeningBlock
 from ..selection import SearchFilters
@@ -47,7 +48,7 @@ def create_server(service: Service | None = None):
             "sources used, cite PDF pages. When analyze_protocol returns needs_client_extraction and your "
             "client can run a cheaper subagent (e.g. Claude Code Agent with model sonnet), delegate that "
             "study's batch reading and caching to it and keep only cached results in the main context. "
-            "Full procedure and field semantics: docs/mcp-workflow.md."
+            f"Read the full procedure and field semantics first: MCP resource {WORKFLOW_URI}."
         ),
     )
 
@@ -59,6 +60,11 @@ def create_server(service: Service | None = None):
             return exc.as_dict()
         except OSError:
             return RWEError("CACHE_ERROR", "Local cache or filesystem operation failed.").as_dict()
+
+    @server.resource(WORKFLOW_URI, name="mcp-workflow", mime_type="text/markdown")
+    def mcp_workflow() -> str:
+        """The caller procedure and field semantics of this server's tools (docs/mcp-workflow.md)."""
+        return workflow_doc_path().read_text(encoding="utf-8")
 
     @server.tool()
     async def refresh_drug_dictionary(force: bool = False) -> dict:
@@ -90,7 +96,9 @@ def create_server(service: Service | None = None):
     @server.tool()
     async def search_studies(
         query: Annotated[str, Field(max_length=2000)],
-        limit: Annotated[int, Field(ge=1, le=20)] = 5,
+        limit: Annotated[
+            int, Field(ge=1, le=20, description="Rows returned, also capped by EMA_MAX_COMPARISON_STUDIES")
+        ] = 5,
         darwin_only: bool = False,
         status: list[str] | None = None,
         analyzed_only: bool = False,
@@ -170,14 +178,22 @@ def create_server(service: Service | None = None):
         blocks: Annotated[
             list[ScreeningBlock] | None,
             Field(
-                description="One per concept, AND-ed: {role, queries, category_terms}; replaces queries/role"
+                description="One per concept, AND-ed: {role, queries, category_terms}; not combined with queries, role, "
+                "synonyms, codes, category_terms or match_scope=analogous"
             ),
         ] = None,
         check_protocols: Annotated[
-            int, Field(ge=0, le=20, description="Check Study documents of the top N listed candidates")
+            int,
+            Field(
+                ge=0,
+                le=20,
+                description="Check Study documents of the top N listed candidates (only when needs_narrowing lists candidates, "
+                "listed, without study_ids, match_scope=concept)",
+            ),
         ] = 0,
     ) -> dict:
-        """Screen the union of all query variants in every column, ranked (role, specificity, study type).
+        """Screen the union of all query variants in every column, ranked (no protocol or text layer last,
+        specificity, role columns, protocol listed, study type, fused rank).
 
         needs_narrowing returns facets and, when few enough, ranked candidates: narrow via filters or pass
         the user's study_ids. source_preference ranks PDF evidence after screening. Zero hits return
@@ -282,7 +298,10 @@ def create_server(service: Service | None = None):
 
     @server.tool()
     async def get_protocol_outline(
-        protocol_id: str, offset: int = 0, limit: int = 100, detail: Literal["compact", "full"] = "compact"
+        protocol_id: str,
+        offset: Annotated[int, Field(ge=0)] = 0,
+        limit: Annotated[int, Field(ge=1, le=200)] = 100,
+        detail: Literal["compact", "full"] = "compact",
     ) -> dict:
         """List PDF section IDs, pages, titles and roles; detail=full adds parents, neighbours and structural warnings."""
         return await call("get_protocol_outline", protocol_id, offset, limit, detail)
@@ -291,7 +310,7 @@ def create_server(service: Service | None = None):
     async def search_protocol_text(
         protocol_id: str,
         query: str,
-        limit: int = 10,
+        limit: Annotated[int, Field(ge=1, le=30)] = 10,
         synonyms: Annotated[
             list[str] | None, Field(description="Extra English phrases OR-ed with the query")
         ] = None,
@@ -310,8 +329,8 @@ def create_server(service: Service | None = None):
         section_id: str | None = None,
         start_page: int = 1,
         end_page: int | None = None,
-        offset: int = 0,
-        max_chars: int = 12000,
+        offset: Annotated[int, Field(ge=0)] = 0,
+        max_chars: Annotated[int, Field(ge=1000, le=20000)] = 12000,
     ) -> dict:
         """Read a section chunk or 1..5 physical pages by immutable PDF ID. Follow next_offset for full text."""
         return await call(

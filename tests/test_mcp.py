@@ -43,7 +43,7 @@ async def test_stdio_discovery_validation_and_local_search(settings, csv_file, p
     )
     params = StdioServerParameters(command=sys.executable, args=["-m", "ema_rwe.mcp.server"], env=env)
     async with stdio_client(params) as (read, write), ClientSession(read, write) as session:
-        await session.initialize()
+        init = await session.initialize()
         tools = await session.list_tools()
         assert {t.name for t in tools.tools} == {
             "refresh_drug_dictionary",
@@ -64,6 +64,12 @@ async def test_stdio_discovery_validation_and_local_search(settings, csv_file, p
             "catalogue_status",
             "import_catalogue_csv",
         }
+        # The caller procedure is readable without a checkout (it ships in the wheel)
+        assert "ema-rwe://docs/mcp-workflow" in init.instructions
+        resources = await session.list_resources()
+        assert [str(r.uri) for r in resources.resources] == ["ema-rwe://docs/mcp-workflow"]
+        workflow = await session.read_resource("ema-rwe://docs/mcp-workflow")
+        assert workflow.contents[0].text.startswith("# MCP workflow for callers")
         catalogue = await session.call_tool("catalogue_status", {})
         assert json.loads(catalogue.content[0].text)["status"] == "current"
         assert json.loads(catalogue.content[0].text)["max_screening_studies"] == 5

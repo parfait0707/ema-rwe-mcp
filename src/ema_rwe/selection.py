@@ -169,8 +169,9 @@ def selection(rows, max_screening_studies=5, max_listed_candidates=50):
         "candidates_listed": listed,
         "max_listed_candidates": max_listed_candidates,
         "next_action": "Ask the user for a catalogue source type (claims, ehr, registry, others) AND study "
-        "countries, showing the facets counts; conditions, study design or a narrower role-scoped query "
-        "may narrow further. Pass the answers as filters. When candidates are listed, the user may instead "
+        "countries, showing the facets counts, and pass them as filters (study_designs may narrow further). "
+        "To narrow by a facets.conditions value, add it as another block (role=condition; blocks are AND-ed). "
+        "When candidates are listed, the user may instead "
         "pick study_ids within max_screening_studies. Do not silently select a subset."
         if total > max_screening_studies
         else "Process ALL matching studies using compare_protocols; do not pick one representative."
