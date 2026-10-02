@@ -61,6 +61,8 @@ def test_newer_bundle_refreshes_catalogue_and_keeps_user_caches(tmp_path):
     bundled, user = tmp_path / "bundled.sqlite3", tmp_path / "user.sqlite3"
     catalogue(bundled, "2026-10-01", "Pancreatitis cohort", "Newly registered stroke study")
     repo = catalogue(user, "2026-09-13", "Pancreatitis cohort")
+    repo.observe("1", protocol_found=True, text_layer="none")  # the user's own observation
+    type(repo)(bundled).observe("2", protocol_found=False)  # the bundle's backfill
     with repo.connection() as db:
         db.execute("INSERT INTO analyses VALUES ('1','fp',?)", ('{"analysis": {}}',))
         db.execute("CREATE TABLE protocol_answers (cache_key TEXT PRIMARY KEY, body TEXT NOT NULL)")
@@ -71,6 +73,9 @@ def test_newer_bundle_refreshes_catalogue_and_keeps_user_caches(tmp_path):
     assert refreshed.study_count() == 2
     assert [r["study_id"] for r in refreshed.search("stroke", None, False, None)] == ["2"]
     assert refreshed.analysis("1") == {"analysis": {}}
+    # Observations: the user's own survive the refresh, the bundle's are added
+    assert refreshed.observation("1")["text_layer"] == "none"
+    assert refreshed.observation("2")["protocol_found"] is False
     with refreshed.connection() as db:
         assert db.execute("SELECT body FROM protocol_answers").fetchone()[0] == "answer"
     assert not refresh_from_bundle(bundled, user)  # same import now: nothing to do
@@ -99,3 +104,53 @@ def test_bundle_with_another_schema_leaves_user_database_untouched(tmp_path):
     repo = catalogue(user, "2026-09-13", "User study")
     assert not refresh_from_bundle(bundled, user)
     assert repo.study_count() == 1 and repo.get("1").title == "User study"
+
+
+def test_bundle_observations_reach_a_user_whose_catalogue_is_current(tmp_path):
+    from ema_rwe.storage import refresh_from_bundle
+
+    bundled, user = tmp_path / "bundled.sqlite3", tmp_path / "user.sqlite3"
+    bundle = catalogue(bundled, "2026-10-01", "Beta blocker cohort", "Cohort")
+    mine = catalogue(user, "2026-10-01", "Beta blocker cohort", "Cohort")
+    mine.observe("1", text_layer="full")
+    bundle.observe(
+        "1", protocol_found=True, exposures=[{"term": "atenolol", "source": "protocol_pass_table"}]
+    )
+    bundle.observe("2", exposures=[{"term": "metoprolol", "source": "protocol_pass_table"}])
+    # Same catalogue: nothing is replaced, but the bundle's backfill is merged
+    assert not refresh_from_bundle(bundled, user)
+    user_repo = type(mine)(user)
+    assert user_repo.observation("1") == mine.observation("1")  # the user's own observation wins
+    assert [r["study_id"] for r in user_repo.search("metoprolol", None, False, None)] == ["2"]
+
+
+def test_shared_observations_carry_no_local_ids_or_errors(tmp_path):
+    from ema_rwe.storage import refresh_from_bundle
+
+    bundled, user = tmp_path / "bundled.sqlite3", tmp_path / "user.sqlite3"
+    bundle = catalogue(bundled, "2026-10-01", "Cohort")
+    catalogue(user, "2026-10-01", "Cohort")
+    bundle.observe(
+        "1", protocol_found=True, protocol_id="pdf_1_x", backfill_error="PDF_PARSE_FAILED", backfill_done=True
+    )
+    refresh_from_bundle(bundled, user)
+    observed = type(bundle)(user).observation("1")
+    assert {"protocol_id", "backfill_error"}.isdisjoint(observed) and observed["backfill_done"] is True
+
+
+def test_bundle_fills_missing_fields_of_an_existing_observation_and_cli_merge_is_strict(tmp_path):
+    import pytest
+
+    from ema_rwe.domain import RWEError
+    from ema_rwe.storage import merge_bundle_observations
+
+    bundled, user = tmp_path / "bundled.sqlite3", tmp_path / "user.sqlite3"
+    bundle = catalogue(bundled, "2026-10-01", "Cohort")
+    mine = catalogue(user, "2026-10-01", "Cohort")
+    mine.observe("1", text_layer="full")  # e.g. the user once retrieved this protocol
+    bundle.observe("1", text_layer="none", exposures=[{"term": "atenolol", "source": "protocol_pass_table"}])
+    assert merge_bundle_observations(bundled, user) == 1
+    observed = type(mine)(user).observation("1")
+    assert observed["text_layer"] == "full" and observed["exposures"][0]["term"] == "atenolol"
+    with pytest.raises(RWEError):  # the CLI reports a wrong source instead of "0 added"
+        merge_bundle_observations(tmp_path / "missing.sqlite3", user, strict=True)

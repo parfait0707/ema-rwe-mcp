@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.5.0 (2026-10-02)
+
+- Facts learnt by retrieving a protocol (whether it exists, its text layer, medicines filled from it)
+  are kept in a `protocol_observations` table apart from the catalogue, so re-imports and bundle
+  refreshes no longer erase them. A study whose retrieval found a protocol is not held back for an
+  export without a protocol location; one whose retrieval found none ranks last. Database schema 6.
+- `ema-rwe backfill-protocols` fills the medicines of studies whose export lists none: names written in
+  their title, description or objective, and the 'Active substance' / 'Medicinal product' fields of
+  their protocol's PASS information table (one study at a time, rate-limited, resumable, stops at a
+  rate limit or outage; `--reextract` re-reads kept protocols offline; the one exception to fetching
+  protocols for selected studies only). The bundled database ships the backfill (names, ATC codes and
+  pages only: 209 of the 712 studies without medicines) and fills missing fields of existing user
+  observations. `ema-rwe merge-observations` builds the bundle from a backfill run.
+- A permanent HTTP error (4xx other than 408/429) is reported as `EMA_HTTP_ERROR`, not
+  `EMA_UNAVAILABLE`.
+- Analogous concepts are screened and ranked like concept candidates, excluding studies that match the
+  requested concept in any column and skipping blank terms; matched terms are reported as written, and
+  those built from an ATC class are labelled `catalogue_atc`; the broader concept falls back to the 3rd
+  ATC level.
+- Salted ingredient names in the EMA dictionary (dabigatran etexilate, enoxaparin sodium) are found by
+  their base name under whole-term matching; the salt words are those observed in the data.
+
 ## 0.4.0 (2026-10-02)
 
 - Medicine search is keyed on names (spec v1.0, v1.1). `compare_protocols` resolves each medicine query

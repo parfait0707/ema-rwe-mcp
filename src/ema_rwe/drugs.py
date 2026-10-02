@@ -113,6 +113,15 @@ def _index(records):
         + "|".join(re.escape(t) for t in sorted(terms, key=len, reverse=True))
         + r")(?![a-z0-9_])"
     )
+    # Base names of salted ingredients ('dabigatran etexilate' -> 'dabigatran'), for whole-term lookups
+    # only: never scanned inside free text, where a short base word could match an unrelated phrase.
+    for i, row in enumerate(records):
+        for ingredient in row["ingredients"]:
+            base = without_salt(ingredient)
+            if len(row["ingredients"]) == 1 and base != canonical(ingredient):
+                terms.setdefault(base, [])
+                if i not in terms[base]:
+                    terms[base].append(i)
     return terms, pattern
 
 
@@ -138,19 +147,33 @@ def load_dictionary():
 COMBINATION = re.compile(r"\s*(?:/|\+|,|;|\band\b|\bwith\b)\s*", re.IGNORECASE)
 
 
+# Trailing salt, ester and hydrate words observed in the catalogue and the EMA dictionary (2026-10-02):
+# words W such that both "X W" and "X" occur as medicine names there, kept when W is a salt, ester or
+# hydrate. Excluded although they look alike: alafenamide, flufenamide, rinfabate (they name another
+# active substance or product) and seretide (a product name).
 SALT_WORDS = frozenset(
     [
         "acetate",
+        "benzoate",
         "besilate",
         "besylate",
+        "bitartrate",
         "bromide",
         "calcium",
+        "carbonate",
+        "chloride",
         "citrate",
+        "dihydrate",
         "dihydrochloride",
+        "dimaleate",
         "dipropionate",
         "disodium",
         "etexilate",
         "fumarate",
+        "furoate",
+        "gluconate",
+        "hemifumarate",
+        "hemihydrate",
         "hydrobromide",
         "hydrochloride",
         "hydrogen",
@@ -158,15 +181,23 @@ SALT_WORDS = frozenset(
         "maleate",
         "mesilate",
         "mesylate",
+        "methanesulfonate",
         "monohydrate",
         "phosphate",
         "potassium",
+        "propionate",
         "sodium",
+        "subcitrate",
         "succinate",
         "sulfate",
         "sulphate",
         "tartrate",
+        "tetrasodium",
+        "tosilate",
+        "tosylate",
         "trifenatate",
+        "trihydrate",
+        "xinafoate",
     ]
 )
 

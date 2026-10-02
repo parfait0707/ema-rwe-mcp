@@ -8,6 +8,7 @@ from pathlib import Path
 import pymupdf
 import pytest
 from test_comparison import extend_website, seed
+from test_drugs import drug_file  # noqa: F401  (fixture)
 
 from ema_rwe import terminology
 from ema_rwe.domain import RWEError, Study
@@ -326,10 +327,11 @@ async def test_protocol_text_layer_is_recorded_and_survives_a_page_refresh(servi
     service.repo.upsert(study("123", title="Opioid safety", protocol_listed=True))
     result = await service.get_protocol("123")
     assert result["protocol"]["text_layer"] == "full"
-    # A forced page refresh rebuilds the study from the detail pages, which carry neither field
+    # A forced page refresh rebuilds the study from the detail pages; observations live apart from it
     await service.get_study("123", refresh=True)
-    kept = service.repo.get("123")
-    assert kept.protocol_text_layer == "full" and kept.protocol_listed is True
+    assert service.repo.get("123").protocol_listed is True
+    observed = service.repo.observation("123")
+    assert observed["text_layer"] == "full" and observed["protocol_found"] is True
 
 
 def test_text_layer_of_an_image_only_pdf_is_none():
@@ -349,3 +351,144 @@ def test_import_records_whether_the_export_lists_a_protocol(settings, tmp_path):
     repo = Repository(settings.db_path)
     import_csv(repo, path)
     assert (repo.get("1").protocol_listed, repo.get("2").protocol_listed) == (True, False)
+
+
+def test_schema_5_text_layer_moves_to_the_observations(settings):
+    import sqlite3
+
+    repo = Repository(settings.db_path)
+    repo.upsert(study("1", title="Old"))
+    with sqlite3.connect(settings.db_path) as db:  # a version-5 database kept the layer in the study body
+        body = json.loads(db.execute("SELECT body FROM studies").fetchone()[0])
+        db.execute("UPDATE studies SET body=?", (json.dumps({**body, "protocol_text_layer": "none"}),))
+        db.execute("DROP TABLE protocol_observations")
+        db.execute("PRAGMA user_version=5")
+    migrated = Repository(settings.db_path)
+    assert migrated.get("1").title == "Old"
+    assert migrated.observation("1") == {"text_layer": "none"}
+
+
+def test_pass_table_medicines_keep_known_names_codes_and_page_only():
+    from ema_rwe.medicines import pass_table_medicines
+    from ema_rwe.pdf import Page
+
+    names = {"duloxetine": "duloxetine", "cymbalta": "duloxetine", "venlafaxine": "venlafaxine"}
+    pages = [
+        Page(1, "Title page"),
+        Page(
+            2,
+            "Active substance   ATC code N06AX21, duloxetine\nMedicinal product(s): Cymbalta, Xeristar\n"
+            "Product reference: LY248686\nResearch question and objectives: compared with venlafaxine",
+        ),
+    ]
+    # The comparator in another field is not taken; free text such as product codes is never kept
+    assert pass_table_medicines(pages, names) == [
+        {"term": "duloxetine", "atc_codes": ["N06AX21"], "page": 2, "source": "protocol_pass_table"}
+    ]
+
+
+@pytest.mark.usefixtures("drug_file")
+async def test_backfill_fills_medicines_from_text_then_protocols_and_stops_on_rate_limit(
+    service, monkeypatch
+):
+    service.repo.upsert(study("1", title="Apixaban users in primary care", protocol_listed=False))
+    service.repo.upsert(study("123", title="Opioid safety", protocol_listed=True))
+    service.repo.upsert(study("2", title="Anticoagulant cohort", protocol_listed=True))
+    service.repo.upsert(
+        study("3", title="Statin", exposures=["(C10AA05) atorvastatin"], protocol_listed=True)
+    )
+    summary = await service.backfill_protocols(interval=0, download=False)
+    # Text step: a named medicine becomes an observed exposure, searchable in the exposure column
+    assert summary["named_in_text"] == 1
+    assert service.repo.observation("1")["exposures"] == [{"term": "apixaban", "source": "catalogue_text"}]
+    rows = service.repo.search("apixaban", None, False, None, role="exposure")
+    assert [r["study_id"] for r in rows] == ["1"]
+    # Download step: only studies without medicines whose export lists a protocol; stops at a rate limit
+    calls = []
+    real = service.get_protocol
+
+    async def get_protocol(study_id, *args, **kwargs):
+        calls.append(study_id)
+        if study_id == "2":
+            raise RWEError("EMA_RATE_LIMITED", "HTTP 429")
+        return await real(study_id, *args, **kwargs)
+
+    monkeypatch.setattr(service, "get_protocol", get_protocol)
+    summary = await service.backfill_protocols(interval=0)
+    assert calls == ["123", "2"] and summary["stopped"].startswith("EMA_RATE_LIMITED")
+    assert service.repo.observation("123")["protocol_found"] is True
+    # A rerun resumes: the study already tried is skipped
+    calls.clear()
+    await service.backfill_protocols(interval=0, limit=1)
+    assert calls == ["2"]
+
+
+@pytest.mark.usefixtures("drug_file")
+async def test_backfill_retries_a_study_interrupted_after_its_documents_page(service, monkeypatch):
+    service.repo.upsert(study("123", title="Opioid safety", protocol_listed=True))
+    real_load = service.archive.load
+
+    def outage(protocol_id):  # the documents page was read (protocol_found recorded), the PDF was not
+        raise RWEError("EMA_UNAVAILABLE", "connection reset")
+
+    monkeypatch.setattr(service.archive, "load", outage)
+    summary = await service.backfill_protocols(interval=0)
+    # An outage stops the run like a rate limit, and leaves the study to the next run
+    assert summary["stopped"].startswith("EMA_UNAVAILABLE")
+    assert service.repo.observation("123")["protocol_found"] is True
+    assert not service.repo.observation("123").get("backfill_done")
+    monkeypatch.setattr(service.archive, "load", real_load)
+    summary = await service.backfill_protocols(interval=0)
+    assert summary["tried"] == 1 and service.repo.observation("123")["backfill_done"] is True
+
+
+def test_atc_codes_go_to_the_medicine_written_just_before_them():
+    from ema_rwe.medicines import pass_table_medicines
+    from ema_rwe.pdf import Page
+
+    names = {
+        "dulaglutide": "dulaglutide",
+        "liraglutide": "liraglutide",
+        "abiraterone acetate": "abiraterone acetate",
+        "enzalutamide": "enzalutamide",
+        "docetaxel": "docetaxel",
+    }
+    page = Page(
+        1,
+        "Active substance  Dulaglutide (A10BJ05), Liraglutide (A10BJ02)\nProduct reference  N/A\n"
+        "Medicinal product  abiraterone acetate (ATC code L02BX03); enzalutamide (ATC code L02BB04), docetaxel\n",
+    )
+    codes = {m["term"]: m["atc_codes"] for m in pass_table_medicines([page], names)}
+    assert codes == {
+        "dulaglutide": ["A10BJ05"],
+        "liraglutide": ["A10BJ02"],
+        "abiraterone acetate": ["L02BX03"],
+        "enzalutamide": ["L02BB04"],
+        "docetaxel": [],
+    }
+
+
+@pytest.mark.usefixtures("drug_file")
+async def test_backfill_records_a_permanent_http_error_as_done(service, monkeypatch):
+    service.repo.upsert(study("123", title="Opioid safety", protocol_listed=True))
+
+    async def gone(study_id, *args, **kwargs):
+        raise RWEError("EMA_HTTP_ERROR", "EMA returned HTTP 404.")
+
+    monkeypatch.setattr(service, "get_protocol", gone)
+    summary = await service.backfill_protocols(interval=0)
+    assert summary["stopped"] is None and summary["errors"] == {"EMA_HTTP_ERROR": 1}
+    assert service.repo.observation("123")["backfill_done"] is True
+
+
+@pytest.mark.usefixtures("drug_file")
+async def test_text_matches_step_aside_once_the_catalogue_lists_medicines(service):
+    service.repo.upsert(study("1", title="Apixaban users"))
+    await service.backfill_protocols(interval=0, download=False)
+    assert [r["study_id"] for r in service.repo.search("apixaban", None, False, None, role="exposure")] == [
+        "1"
+    ]
+    # A newer export fills the medicines: the text match no longer counts, even before a rerun
+    service.repo.upsert(study("1", title="Apixaban users", exposures=["(B01AF01) rivaroxaban"]))
+    row = service.repo.search("rivaroxaban", None, False, None)[0]
+    assert row["observed_exposures"] == []

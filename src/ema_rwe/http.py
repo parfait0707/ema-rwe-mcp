@@ -131,8 +131,8 @@ class EMAClient:
                         elif status in (301, 302, 303, 307, 308):
                             current = urljoin(current, response.headers.get("location", ""))
                             break
-                        elif status >= 400:
-                            raise RWEError("EMA_UNAVAILABLE", f"EMA returned HTTP {status}.")
+                        elif status >= 400:  # not retried: the page or document is gone or refused
+                            raise RWEError("EMA_HTTP_ERROR", f"EMA returned HTTP {status}.")
                         else:
                             parts, length = [], 0
                             async for chunk in response.aiter_bytes():

@@ -240,16 +240,26 @@ async def test_added_medicine_names_are_capped_per_question_and_never_relabel_ca
 
 async def test_protocol_listing_and_text_layer_order_candidates_without_dropping_them(service):
     # Given equally specific matches: one image-only protocol, one export listing no protocol, one listed
-    service.repo.upsert(study("1", title="Statin cohort", protocol_listed=True, protocol_text_layer="none"))
+    service.repo.upsert(study("1", title="Statin cohort", protocol_listed=True))
+    service.repo.observe("1", protocol_found=True, text_layer="none")
     service.repo.upsert(study("2", title="Statin cohort", protocol_listed=False))
     service.repo.upsert(study("3", title="Statin cohort", protocol_listed=True))
-    for i in range(4, 10):
+    # An unlisted study whose protocol was found on retrieval is not held back
+    service.repo.upsert(study("4", title="Statin cohort", protocol_listed=False))
+    service.repo.observe("4", protocol_found=True, text_layer="full")
+    # A study observed to have no protocol goes last, like an unreadable one
+    service.repo.upsert(study("5", title="Statin cohort", protocol_listed=True))
+    service.repo.observe("5", protocol_found=False)
+    for i in range(6, 10):
         service.repo.upsert(study(str(i), title="Statin users", protocol_listed=True))
     result = await service.compare_protocols("q", ["statin"])
     order = ids(result)
-    # Then listed protocols come first, an unlisted one after them, an unreadable one last: none removed
-    assert order.index("3") < order.index("2") < order.index("1") == len(order) - 1
-    assert result["candidates"][-1]["protocol_text_layer"] == "none"
+    # Then listed or found protocols first, an unlisted one after them, unusable ones last: none removed
+    assert (
+        max(order.index("3"), order.index("4")) < order.index("2") < min(order.index("1"), order.index("5"))
+    )
+    assert {"1", "5"} == set(order[-2:])
+    assert next(c for c in result["candidates"] if c["study_id"] == "1")["protocol_text_layer"] == "none"
 
 
 @pytest.mark.usefixtures("drug_file")
@@ -275,3 +285,54 @@ async def test_analogous_rerun_searches_the_offered_atc_class(service):
         "q", ["ipragliflozin", "A10BK05"], role="exposure", match_scope="analogous"
     )
     assert result["total_matches"] == 7 and result["match_scope"] == "analogous"
+
+
+@pytest.mark.usefixtures("drug_file")
+async def test_analogous_candidates_are_ranked_and_labelled_like_concept_ones(service):
+    # Given a catalogue that names the SGLT2 class only at the 3rd level, and members of the class
+    service.repo.upsert(
+        study("1", exposures=["(A10B) Blood glucose lowering drugs, excl. insulins"], protocol_listed=False)
+    )
+    service.repo.upsert(study("2", exposures=["(A10BK01) dapagliflozin"], protocol_listed=True))
+    service.repo.upsert(study("3", exposures=["(A10BK01) dapagliflozin"], protocol_listed=True))
+    service.repo.observe("3", protocol_found=True, text_layer="none")  # image-only protocol
+    for i in range(4, 9):
+        service.repo.upsert(study(str(i), exposures=["(A10BK03) empagliflozin"], protocol_listed=False))
+    result = await service.compare_protocols(
+        "q", ["ipragliflozin", "A10BK05"], role="exposure", match_scope="analogous"
+    )
+    order = ids(result)
+    # The broader concept falls back to the 3rd-level name; candidates carry rank features
+    assert {t["term"]: t["relation"] for t in result["analogous_terms"]}[
+        "Blood glucose lowering drugs, excl. insulins"
+    ] == "broader"
+    assert all("rank_features" in c for c in result["candidates"])
+    # Listed protocols first, the unreadable one last; the server's ATC terms say where they came from
+    assert order[0] == "2" and order[-1] == "3"
+    assert result["candidates"][0]["matched_term_sources"] == {"dapagliflozin": "catalogue_atc"}
+
+
+@pytest.mark.usefixtures("drug_file")
+async def test_analogous_terms_report_their_own_origin_count_and_skip_blanks(service):
+    service.repo.upsert(study("1", exposures=["(A10B) Blood glucose lowering drugs, excl. insulins"]))
+    result = await service.compare_protocols(
+        "q", ["ipragliflozin", "A10BK05"], analogous=[AnalogousTerm(term=" ", relation="broader")]
+    )
+    terms = {t["term"]: t["study_count"] for t in result["analogous_fallback"]["analogous_terms"]}
+    # The term with punctuation is counted, and a blank term never turns into the whole catalogue
+    assert terms["Blood glucose lowering drugs, excl. insulins"] == 1
+    assert result["analogous_fallback"]["total_matches"] == 1
+
+
+async def test_checked_protocol_overrides_an_earlier_observation(service, monkeypatch):
+    for i in range(1, 8):
+        service.repo.upsert(study(str(i), title="Statin users", protocol_listed=True))
+    service.repo.observe("1", protocol_found=False)  # e.g. an old observation from the bundle
+
+    async def fake_get_protocol(study_id, version="latest", download=True, refresh=False):
+        return {"protocol": {}}
+
+    monkeypatch.setattr(service, "get_protocol", fake_get_protocol)
+    result = await service.compare_protocols("q", ["statin"], check_protocols=7)
+    row = next(c for c in result["candidates"] if c["study_id"] == "1")
+    assert row["protocol_found"] is True and ids(result)[-1] != "1"

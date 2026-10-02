@@ -44,6 +44,22 @@ def parser():
     inbox.add_argument("filename")
     inbox.add_argument("--column-map", type=Path)
     commands.add_parser("import-all", help="Import every CSV under studies/ then source_type/")
+    backfill = commands.add_parser(
+        "backfill-protocols",
+        help="Fill medicines of studies whose export lists none: from their text, then their protocols",
+    )
+    backfill.add_argument("--interval", type=float, default=60.0, help="Seconds between studies (default 60)")
+    backfill.add_argument("--limit", type=int, help="At most this many protocols in this run")
+    backfill.add_argument("--no-download", action="store_true", help="Only the text step; no network")
+    backfill.add_argument(
+        "--reextract",
+        action="store_true",
+        help="Read the PASS tables of protocols already kept again (no network)",
+    )
+    merge = commands.add_parser(
+        "merge-observations", help="Add another database's protocol observations (e.g. a backfill run) here"
+    )
+    merge.add_argument("source", help="Path of the database whose observations are added")
     commands.add_parser("catalogue-status")
     search = commands.add_parser("search")
     search.add_argument("query")
@@ -177,6 +193,18 @@ async def run(args):
                 return service.import_catalogue_csv(args.filename, mapping)
             case "import-all":
                 return service.import_all()
+            case "merge-observations":
+                from .storage import merge_bundle_observations
+
+                return {
+                    "changed": merge_bundle_observations(
+                        Path(args.source), service.settings.db_path, strict=True
+                    )
+                }
+            case "backfill-protocols":
+                return await service.backfill_protocols(
+                    args.interval, args.limit, not args.no_download, args.reextract
+                )
             case "search":
                 return service.search_studies(
                     args.query,

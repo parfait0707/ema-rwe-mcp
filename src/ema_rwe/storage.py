@@ -14,7 +14,7 @@ from .selection import filter_rows
 from .terminology import analogous_phrases, labelled_phrases, term_source
 from .vocabulary import canonical, expand
 
-SCHEMA_VERSION = 5  # 5: Study.protocol_listed / protocol_text_layer
+SCHEMA_VERSION = 6  # 5: Study.protocol_listed; 6: protocol_observations table
 FTS_COLUMNS = (
     "id UNINDEXED",
     "title",
@@ -64,11 +64,28 @@ class Repository:
                     checksum TEXT PRIMARY KEY, filename TEXT, imported_at TEXT, count INTEGER);
                 CREATE TABLE IF NOT EXISTS study_catalogue_search (
                     study_id TEXT PRIMARY KEY, search_text TEXT NOT NULL);
-                PRAGMA user_version={SCHEMA_VERSION};
+                CREATE TABLE IF NOT EXISTS protocol_observations (
+                    study_id TEXT PRIMARY KEY, body TEXT NOT NULL);
             """)
+            # Schema 5 kept the protocol text layer in the study body; it is an observation now.
+            for study_id, body in db.execute("SELECT id, body FROM studies").fetchall():
+                data = json.loads(body)
+                if "protocol_text_layer" in data:
+                    layer = data.pop("protocol_text_layer")
+                    if layer:
+                        db.execute(
+                            "INSERT OR IGNORE INTO protocol_observations VALUES (?,?)",
+                            (study_id, json.dumps({"text_layer": layer})),
+                        )
+                    db.execute("UPDATE studies SET body=? WHERE id=?", (json.dumps(data), study_id))
             # Re-index existing rows; role columns stay empty until the export is imported again.
             for row in db.execute("SELECT body FROM studies").fetchall():
-                self._index(db, Study.model_validate_json(row[0]))
+                try:
+                    self._index(db, Study.model_validate_json(row[0]))
+                except (KeyError, TypeError, ValueError):
+                    continue  # a malformed cached analysis leaves its study unindexed, as before
+            # The version is set last: an interrupted migration runs again on the next start.
+            db.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
 
     @contextmanager
     def connection(self):
@@ -98,6 +115,27 @@ class Repository:
             ).fetchall()
         return [dict(row) for row in rows]
 
+    def observation(self, study_id: str) -> dict:
+        """What retrieving the study's protocol showed (protocol_found, text_layer, protocol_id, exposures).
+        Kept apart from the catalogue tables, so re-imports and bundle refreshes never erase it."""
+        with self.connection() as db:
+            row = db.execute(
+                "SELECT body FROM protocol_observations WHERE study_id=?", (study_id,)
+            ).fetchone()
+        return json.loads(row[0]) if row else {}
+
+    def observe(self, study_id: str, **fields) -> dict:
+        """Merge observed facts into the study's observation and re-index the study."""
+        body = {**self.observation(study_id), **fields, "observed_at": now()}
+        with self.connection() as db:
+            db.execute(
+                "INSERT OR REPLACE INTO protocol_observations VALUES (?,?)", (study_id, json.dumps(body))
+            )
+            row = db.execute("SELECT body FROM studies WHERE id=?", (study_id,)).fetchone()
+            if row:
+                self._index(db, Study.model_validate_json(row[0]))
+        return body
+
     def upsert(self, study: Study):
         with self.connection() as db:
             db.execute(
@@ -112,6 +150,13 @@ class Repository:
             "SELECT search_text FROM study_catalogue_search WHERE study_id=?", (study.study_id,)
         ).fetchone()
         catalogue_search_text = catalogue_row[0] if catalogue_row else ""
+        observed = db.execute(
+            "SELECT body FROM protocol_observations WHERE study_id=?", (study.study_id,)
+        ).fetchone()
+        # Medicines found in the protocol or the catalogue text when the export lists none (backfill).
+        observed_exposures = " ".join(
+            e["term"] for e in current_exposures(json.loads(observed[0]) if observed else {}, study)
+        )
         db.execute("DELETE FROM study_fts WHERE id=?", (study.study_id,))
 
         # Only structured facts are indexed; never protocol raw text or contact fields.
@@ -151,7 +196,7 @@ class Repository:
                 ),
                 " ".join(study.conditions),
                 study.outcomes + " " + values(a.get("outcomes")),
-                " ".join(study.exposures) + " " + values(a.get("exposure")),
+                " ".join(study.exposures) + " " + values(a.get("exposure")) + " " + observed_exposures,
                 study.objective,
             ),
         )
@@ -295,7 +340,11 @@ class Repository:
                 result["study_designs"] = [analysis["analysis"]["study_design"]["value"]]
             if not filter_rows([result], filters):
                 continue
+            observed = self.observation(study.study_id)
             result.update(
+                protocol_found=observed.get("protocol_found"),
+                protocol_text_layer=observed.get("text_layer"),
+                observed_exposures=current_exposures(observed, study),
                 score=-row["rank"],
                 protocol_data_sources=(analysis["analysis"]["data_sources"] if analysis else []),
                 protocol_source_assessments=(
@@ -564,6 +613,85 @@ def latest_import(path: Path, immutable: bool = False) -> str | None:
         return None
 
 
+def current_exposures(observation: dict, study: Study) -> list[dict]:
+    """Observed medicines that still apply: text matches only while the export lists no medicine."""
+    return [
+        e for e in observation.get("exposures", []) if e["source"] != "catalogue_text" or not study.exposures
+    ]
+
+
+SHAREABLE_OBSERVATIONS = ("protocol_found", "text_layer", "exposures", "backfill_done")
+
+
+def shareable(body: str) -> str:
+    """The part of an observation that travels between databases: no local PDF IDs or error codes."""
+    data = json.loads(body)
+    return json.dumps({k: data[k] for k in SHAREABLE_OBSERVATIONS if k in data})
+
+
+def _merge_observations(db, alias: str = "bundle") -> list[str]:
+    """Fill each study's observation with the fields of `alias`'s that it lacks (the local fields win,
+    field by field) and return the studies changed. Only shareable fields travel."""
+    changed = []
+    for study_id, body in db.execute(f"SELECT study_id, body FROM {alias}.protocol_observations").fetchall():
+        row = db.execute(
+            "SELECT body FROM main.protocol_observations WHERE study_id=?", (study_id,)
+        ).fetchone()
+        current = json.loads(row[0]) if row else None
+        merged = {**json.loads(shareable(body)), **(current or {})}
+        if merged != current:
+            db.execute(
+                "INSERT OR REPLACE INTO main.protocol_observations VALUES (?,?)",
+                (study_id, json.dumps(merged)),
+            )
+            changed.append(study_id)
+    return changed
+
+
+def merge_bundle_observations(bundled: Path, dest: Path, strict: bool = False) -> int:
+    """Fill `dest`'s protocol observations from another database's (the bundle's backfill, or a backfill
+    run when building the bundle); `dest`'s own fields win. Returns how many studies changed; they are
+    re-indexed. At startup (strict=False) it never raises; the CLI (strict=True) reports any failure."""
+    try:
+        repo = Repository(dest)
+        db = sqlite3.connect(dest.resolve().as_uri(), uri=True, timeout=30)
+        try:
+            # The wheel's bundle is immutable; a working database may still have WAL pages to read.
+            mode = "mode=ro" if strict else "mode=ro&immutable=1"
+            db.execute("ATTACH DATABASE ? AS bundle", (f"{bundled.resolve().as_uri()}?{mode}",))
+            version = db.execute("PRAGMA bundle.user_version").fetchone()[0]
+            has_table = db.execute(
+                "SELECT 1 FROM bundle.sqlite_master WHERE name='protocol_observations'"
+            ).fetchone()
+            if version != SCHEMA_VERSION or not has_table:
+                if strict:
+                    raise RWEError(
+                        "DATABASE_ERROR",
+                        f"{bundled} has schema {version} without observations; expected {SCHEMA_VERSION}.",
+                    )
+                return 0
+            changed = _merge_observations(db)
+            for study_id in changed:
+                row = db.execute("SELECT body FROM studies WHERE id=?", (study_id,)).fetchone()
+                try:
+                    if row:
+                        repo._index(db, Study.model_validate_json(row[0]))
+                except (KeyError, TypeError, ValueError):
+                    continue  # one malformed row does not cost the others their backfill
+            db.commit()
+            return len(changed)
+        finally:
+            db.close()
+    except Exception as exc:
+        if strict:
+            raise (
+                exc
+                if isinstance(exc, RWEError)
+                else RWEError("DATABASE_ERROR", f"Cannot merge observations from {bundled}: {exc}")
+            ) from exc
+        return 0  # never block startup
+
+
 def refresh_from_bundle(bundled: Path, dest: Path) -> bool:
     """Replace the catalogue tables of `dest` with the bundled ones when the bundle holds a newer import.
 
@@ -572,7 +700,10 @@ def refresh_from_bundle(bundled: Path, dest: Path) -> bool:
     imported a CSV) is kept. Studies re-fetched by get_study revert to the bundled row.
     """
     new = latest_import(bundled, immutable=True)
-    if not new or not dest.is_file() or not (latest_import(dest) or "") < new:
+    if not new or not dest.is_file():
+        return False
+    if not (latest_import(dest) or "") < new:
+        merge_bundle_observations(bundled, dest)  # a newer package may ship backfill for the same catalogue
         return False
     try:
         repo = Repository(dest)  # brings an older user schema up to this package's version
@@ -595,10 +726,16 @@ def refresh_from_bundle(bundled: Path, dest: Path) -> bool:
                     )
                     db.execute(f"DELETE FROM main.{table}")
                     db.execute(f"INSERT INTO main.{table} ({columns}) SELECT {columns} FROM bundle.{table}")
+                # Observations: the user's own are kept, the bundle's backfill fills the rest.
+                if db.execute(
+                    "SELECT 1 FROM bundle.sqlite_master WHERE name='protocol_observations'"
+                ).fetchone():
+                    _merge_observations(db)
                 analysed = db.execute(
-                    "SELECT s.body FROM studies s JOIN analyses a ON a.study_id = s.id"
+                    "SELECT s.body FROM studies s WHERE s.id IN (SELECT study_id FROM analyses"
+                    " UNION SELECT study_id FROM protocol_observations)"
                 ).fetchall()
-                for (body,) in analysed:  # the bundle's index lacks the user's analysed facts
+                for (body,) in analysed:  # the bundle's index lacks the user's analysed and observed facts
                     try:
                         repo._index(db, Study.model_validate_json(body))
                     except (KeyError, TypeError, ValueError):

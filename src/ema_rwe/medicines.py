@@ -105,3 +105,89 @@ def expand_medicine(query: str, labels: dict[str, str]) -> dict | None:
         "queries": {t: v for t, v in ordered.items() if t.casefold() != drop},
         "category_terms": {t: v for t, v in category.items() if t.casefold() != drop},
     }
+
+
+# Field labels of a PASS information table. A label counts only at the start of a line, and a page
+# counts as the table only when it carries two or more of them: body text that merely mentions
+# "medicinal products" or "active substance" is not a field.
+PASS_FIELDS = re.compile(
+    r"(?im)^[ \t]*(Active substances?(?:\(s\))?|Medicinal products?(?:\(s\))?|Product reference|Procedure number|"
+    r"Joint PASS|Research question|Country\(?-?ies\)? of study|Author|Marketing authori[sz]ation holder)"
+)
+MAX_FIELD = 300  # characters of a field value: a table cell, never the rest of the page
+CODE = re.compile(r"\b([a-z]\d{2}[a-z]{2}\d{2})\b")
+_PATTERNS: dict[int, tuple[dict, re.Pattern]] = {}
+
+
+def known_medicine_names(labels: dict[str, str]) -> dict[str, str]:
+    """Canonical medicine name -> name to record: catalogue 5th-level names and EMA INNs as themselves,
+    one-word EMA product names as their ingredient set. Multi-word product names ('COVID-19 Vaccine
+    (inactivated) Valneva') read like common phrases and are left out, as are names under 5 letters."""
+    names: dict[str, str] = {}
+    for code, label in labels.items():
+        if len(code) == 7 and not GENERIC.fullmatch(label):
+            names.setdefault(canonical(label), label)
+    for row in load_dictionary()[0]:
+        ingredients = " / ".join(row["ingredients"])
+        names.setdefault(canonical(ingredients), ingredients)
+        product = canonical(row["product_name"].split(" (")[0])  # 'Spikevax (previously ...)'
+        if " " not in product:
+            names.setdefault(product, ingredients)
+    return {n: v for n, v in names.items() if len(n) >= 5}
+
+
+def _medicine_spans(text: str, names: dict[str, str]) -> list[tuple[str, int, int]]:
+    """(name to record, start, end) of every known medicine name in canonical(text)."""
+    if not names:
+        return []
+    cached = _PATTERNS.get(id(names))
+    if not cached or cached[0] is not names:
+        pattern = re.compile(
+            r"(?<!\w)(" + "|".join(sorted(map(re.escape, names), key=len, reverse=True)) + r")(?!\w)"
+        )
+        _PATTERNS[id(names)] = cached = (names, pattern)
+    return [(names[m.group(1)], m.start(), m.end()) for m in cached[1].finditer(canonical(text))]
+
+
+def find_medicines(text: str, names: dict[str, str]) -> list[str]:
+    """Known medicine names written in the text (whole words), as names to record."""
+    return list(dict.fromkeys(name for name, *_ in _medicine_spans(text, names)))
+
+
+def pass_table_medicines(pages, names: dict[str, str], max_pages: int = 8) -> list[dict]:
+    """Medicines in the 'Active substance' and 'Medicinal product' fields of a PASS information table,
+    with the ATC codes written next to each and the physical page. Known names only: no free text is
+    kept. Each code goes to the medicine name written just before it (within 60 characters), or to the
+    field's only medicine; never to every medicine of the field, so a list is not merged into one."""
+    for page in pages[:max_pages]:
+        parts = PASS_FIELDS.split(page.text)
+        labels = {" ".join(label.casefold().split())[:16] for label in parts[1::2]}
+        if len(labels) < 2:
+            continue
+        found: dict[str, dict] = {}
+        for label, value in zip(parts[1::2], parts[2::2], strict=False):
+            if not label.casefold().startswith(("active substance", "medicinal product")):
+                continue
+            text = canonical(value[:MAX_FIELD])
+            spans = _medicine_spans(value[:MAX_FIELD], names)
+            for name, *_ in spans:
+                found.setdefault(
+                    name, {"term": name, "atc_codes": [], "page": page.page, "source": "protocol_pass_table"}
+                )
+            single = {name for name, *_ in spans}
+            for code in CODE.finditer(text):
+                # 'name (code), name (code)': a code belongs to the name just before it. Only a field
+                # with one medicine takes a code written elsewhere ('ATC code N06AX21, duloxetine').
+                before = [s for s in spans if s[2] <= code.start() and code.start() - s[2] <= 60]
+                owner = (
+                    max(before, key=lambda s: s[2])[0]
+                    if before
+                    else next(iter(single))
+                    if len(single) == 1
+                    else None
+                )
+                if owner:
+                    found[owner]["atc_codes"] = sorted({*found[owner]["atc_codes"], code.group(1).upper()})
+        if found:
+            return list(found.values())
+    return []

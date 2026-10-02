@@ -267,3 +267,40 @@ def test_salt_name_finds_the_base_medicine_but_ema_codes_are_not_search_terms(dr
     passed = expand("apixaban", None, [CodeCandidate(system="ATC", code="B01AF02")], whole_term=True)
     groups = labelled_phrases("apixaban", passed, False)
     assert any("b01af02" in [w.casefold() for w in group] for _, group in groups)
+
+
+def test_salted_ingredient_is_found_by_its_base_name_only_as_a_whole_term(tmp_path, monkeypatch):
+    path = tmp_path / "salted.json"
+    monkeypatch.setenv("EMA_DRUG_DICTIONARY_PATH", str(path))
+    payload = {
+        "meta": {},
+        "data": [
+            row("Pradaxa", "dabigatran etexilate", "B01AE07"),
+            row("Tecfidera", "dimethyl fumarate", "N07XX09"),
+        ],
+    }
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    assert [m["product_name"] for m in drug_expansion("dabigatran", whole_term=True)["matches"]] == [
+        "Pradaxa"
+    ]
+    # The base name is never scanned inside free text, where a generic word could match
+    assert drug_expansion("dimethyl ester study")["matches"] == []
+    assert drug_expansion("dabigatran users")["matches"] == []
+
+
+def test_one_word_product_name_with_a_bracketed_history_still_counts_for_text_matching(tmp_path, monkeypatch):
+    from ema_rwe.medicines import find_medicines, known_medicine_names
+
+    path = tmp_path / "products.json"
+    monkeypatch.setenv("EMA_DRUG_DICTIONARY_PATH", str(path))
+    payload = {
+        "meta": {},
+        "data": [
+            row("Spikevax (previously COVID-19 Vaccine Moderna)", "elasomeran", "J07BN01"),
+            row("COVID-19 Vaccine (inactivated, adjuvanted) Valneva", "covid vaccine x", "J07BN03"),
+        ],
+    }
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    names = known_medicine_names({})
+    assert find_medicines("Safety of Spikevax in pregnancy", names) == ["elasomeran"]
+    assert find_medicines("Safety of COVID-19 vaccine in pregnancy", names) == []

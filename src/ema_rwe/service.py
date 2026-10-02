@@ -10,13 +10,29 @@ from pydantic import ValidationError
 from .archive import ProtocolArchive
 from .comparison import Comparisons
 from .config import Settings
-from .domain import AnalogousTerm, CodeCandidate, Extraction, ProtocolAnswer, RWEError, SourcePreference, now
+from .domain import (
+    AnalogousTerm,
+    CodeCandidate,
+    Extraction,
+    ProtocolAnswer,
+    RWEError,
+    SourcePreference,
+    Study,
+    now,
+)
 from .drugs import refresh_dictionary
 from .ema import BASE, is_non_interventional, parse_documents, parse_study, select_protocol
 from .exploration import Explorer
 from .http import EMAClient
 from .llm import EXTRACTION_PROMPT, complete_json, configured, extract_with_provider, merge_extractions
-from .medicines import GENERIC, MAX_NAMES, expand_medicine
+from .medicines import (
+    GENERIC,
+    MAX_NAMES,
+    expand_medicine,
+    find_medicines,
+    known_medicine_names,
+    pass_table_medicines,
+)
 from .pdf import (
     audit_extraction,
     extract_pages,
@@ -29,7 +45,7 @@ from .pdf import (
 from .ranking import ScreeningBlock, order_key, screen
 from .selection import TYPED_SOURCES, SearchFilters, compact, selection
 from .storage import Repository, import_csv
-from .terminology import dictionary_paths, proposed_codes
+from .terminology import dictionary_paths, labelled_phrases, proposed_codes
 from .vocabulary import expand
 
 SCHEMA_VERSION = Extraction.model_fields["schema_version"].default
@@ -53,7 +69,6 @@ CATALOGUE_FIELDS = (
     "objective",
     "catalogue_data_sources",
     "protocol_listed",
-    "protocol_text_layer",
 )
 CATEGORY_GUIDANCE = (
     "Catalogue records often name only a category, so give each concept category_terms too: the ICD-10 "
@@ -286,6 +301,93 @@ class Service:
         result = import_csv(self.repo, path, column_map, source_type)
         return {**result, "source_path": str(path), "catalogue": self.catalogue_status()}
 
+    async def backfill_protocols(
+        self, interval: float = 60.0, limit: int | None = None, download: bool = True, reextract: bool = False
+    ):
+        """Fill the medicines of studies whose export lists none (a user-run command, never part of a search).
+
+        1. No network: medicine names written in the title, description or objective.
+        2. With download: for those whose export lists a protocol and that were not tried yet, the
+           'Active substance' / 'Medicinal product' fields of the protocol's PASS information table.
+        One study at a time, `interval` seconds apart on top of the HTTP interval; resumable (tried
+        studies are skipped); stops at the first rate-limit response. Results are observations
+        (protocol_observations), never catalogue values.
+        """
+        if interval < 0 or (limit is not None and limit < 1):
+            raise RWEError("INVALID_INPUT", "interval must be >= 0 and limit >= 1.")
+        names = known_medicine_names(self.repo.atc_labels())
+        with self.repo.connection() as db:
+            bodies = [r[0] for r in db.execute("SELECT body FROM studies").fetchall()]
+        studies = [s for s in map(Study.model_validate_json, bodies) if is_non_interventional(s.study_type)]
+        empty = [s for s in studies if not s.exposures]
+        summary = {
+            "studies_without_medicines": len(empty),
+            "named_in_text": 0,
+            "tried": 0,
+            "from_protocol": 0,
+            "no_protocol": 0,
+            "errors": {},
+            "stopped": None,
+        }
+        for study in studies:
+            observed = self.repo.observation(study.study_id)
+            # The catalogue's own medicines replace text matches once an export lists them.
+            text = f"{study.title} {study.description} {study.objective}" if not study.exposures else ""
+            in_text = [{"term": n, "source": "catalogue_text"} for n in find_medicines(text, names)]
+            kept = [e for e in observed.get("exposures", []) if e["source"] != "catalogue_text"]
+            if observed.get("exposures", []) != kept + in_text:
+                self.repo.observe(study.study_id, exposures=kept + in_text)
+            summary["named_in_text"] += bool(in_text)
+        if reextract:  # read the PASS tables of protocols already kept again (after a parser fix); no network
+            summary["reextracted"] = 0
+            for study in empty:
+                observed = self.repo.observation(study.study_id)
+                if not observed.get("protocol_id"):
+                    continue
+                try:
+                    pdf, _ = self.archive.load(observed["protocol_id"])
+                    pages = await asyncio.to_thread(extract_pages, pdf)
+                except RWEError:
+                    continue
+                kept = [e for e in observed.get("exposures", []) if e["source"] != "protocol_pass_table"]
+                self.repo.observe(study.study_id, exposures=kept + pass_table_medicines(pages, names))
+                summary["reextracted"] += 1
+        if not download:
+            return summary
+        # A study is done once its protocol was read (or found absent, or failed for good); a run
+        # interrupted midway (rate limit, outage, Ctrl-C) leaves it to the next run.
+        queue = [
+            s
+            for s in empty
+            if s.protocol_listed and not self.repo.observation(s.study_id).get("backfill_done")
+        ]
+        summary["queued"] = len(queue)
+        for n, study in enumerate(queue[:limit]):
+            if n:
+                await asyncio.sleep(interval)
+            summary["tried"] += 1
+            try:
+                result = await self.get_protocol(study.study_id)
+                pdf, _ = self.archive.load(result["protocol"]["protocol_id"])
+                pages = await asyncio.to_thread(extract_pages, pdf)
+            except RWEError as exc:
+                if exc.code in ("EMA_RATE_LIMITED", "EMA_UNAVAILABLE"):
+                    summary["stopped"] = f"{exc.code} at study {study.study_id}; rerun later to resume"
+                    break
+                if exc.code == "PROTOCOL_NOT_FOUND":
+                    summary["no_protocol"] += 1
+                    self.repo.observe(study.study_id, backfill_done=True)
+                else:  # this protocol cannot be read (not a PDF, encrypted, image-only, out of scope)
+                    self.repo.observe(study.study_id, backfill_done=True, backfill_error=exc.code)
+                    summary["errors"][exc.code] = summary["errors"].get(exc.code, 0) + 1
+                continue
+            found = pass_table_medicines(pages, names)
+            observed = self.repo.observation(study.study_id)
+            kept = [e for e in observed.get("exposures", []) if e["source"] != "protocol_pass_table"]
+            self.repo.observe(study.study_id, exposures=kept + found, backfill_done=True)
+            summary["from_protocol"] += bool(found)
+        return summary
+
     def import_all(self):
         """Rebuild tags from every export on disk: full Studies export(s) first, then the typed exports."""
         folders = (self.study_import_dir, self.source_type_import_dir)
@@ -431,6 +533,7 @@ class Service:
         status=None,
         analyzed_only=False,
         split_long=True,
+        derived=frozenset(),
     ):
         """How candidates matched, plus the analogous-concept fallback when the concept itself has no study."""
         terms = analogous_terms(expansions, analogous)
@@ -459,18 +562,106 @@ class Service:
                 split_long,
             )
             result["analogous_fallback"] = self._fallback(
-                queries, terms, synonyms, codes, role, union_args, split_long
+                queries, terms, synonyms, codes, role, union_args, split_long, derived
             )
         return result
 
     def _concept_ids(self, queries, synonyms, codes, role, split_long=True) -> set[str]:
         return set().union(*(self.repo.concept_ids(q, synonyms, codes, role, split_long) for q in queries))
 
-    def _fallback(self, queries, terms, synonyms, codes, role, union_args, split_long=True):
+    def _analogous_screen(
+        self,
+        queries,
+        terms,
+        darwin_only,
+        synonyms,
+        codes,
+        filters,
+        role,
+        status=None,
+        analyzed_only=False,
+        split_long=True,
+        derived=frozenset(),
+    ) -> dict[str, dict]:
+        """Analogous-concept candidates, screened and ranked like concept ones: the analogous terms form
+        one block, each searched as one phrase; studies matching the requested concept are excluded.
+        Each matched term reports its origin: catalogue_atc (built by the server from an ATC code),
+        caller or dictionary."""
+        terms = [t for t in terms if re.search(r"\w", t["term"])]  # a blank term would match every study
+        if not terms:
+            return {}
+        # Studies that mention the requested concept anywhere are its own, not analogous candidates.
+        exclude = self._concept_ids(queries, synonyms, codes, "any", split_long)
+
+        def search(term: str, column_role: str, with_expansion: bool) -> list[dict]:
+            rows = self.repo.search(
+                term,
+                None,
+                darwin_only,
+                status,
+                analyzed_only,
+                None,
+                None,
+                filters,
+                column_role,
+                split_long=False,
+                exclude=exclude,
+            )
+            # The index labels a match by the term's content words ('drugs excl insulins'); report the
+            # analogous term as written, so its origin and study_count line up.
+            phrases = labelled_phrases(term, expand(term, whole_term=True), False)
+            own = phrases[0][0] if phrases else term
+            for row in rows:
+                row["matched_terms"] = [term if t == own else t for t in row["matched_terms"]]
+                row["matched_term_sources"] = {
+                    term if t == own else t: v for t, v in row["matched_term_sources"].items()
+                }
+            return rows
+
+        origin = {
+            t["term"]: "catalogue_atc"
+            if t["term"] in derived
+            else "caller"
+            if t.get("concept_id") is None
+            else "dictionary"
+            for t in terms
+        }
+        block = ScreeningBlock.model_construct(role=role, queries=list(origin), category_terms=[])
+        rows = screen(search, [block])
+        for row in rows:
+            row["match_basis"] = "analogous"
+            row["matched_term_sources"] = {
+                t: origin.get(t, source) for t, source in row["matched_term_sources"].items()
+            }
+        return {row["study_id"]: row for row in rows}
+
+    def _fallback(
+        self, queries, terms, synonyms, codes, role, union_args, split_long=True, derived=frozenset()
+    ):
         # Concept studies in the index that filters, darwin_only, status or analyzed_only removed:
         # then the concept is not absent, and the caller must say so before offering analogues.
         filtered_out = len(self._concept_ids(queries, synonyms, codes, role, split_long))
-        rows = list(self._union(*union_args).values()) if terms else []
+        darwin_only, filters, status, analyzed_only = (
+            union_args[1],
+            union_args[4],
+            union_args[8],
+            union_args[9],
+        )
+        rows = list(
+            self._analogous_screen(
+                queries,
+                terms,
+                darwin_only,
+                synonyms,
+                codes,
+                filters,
+                role,
+                status,
+                analyzed_only,
+                split_long,
+                derived,
+            ).values()
+        )
         selected = self._selection(rows)
         counts = {
             t["term"]: sum(t["term"].casefold() in {m.casefold() for m in r["matched_terms"]} for r in rows)
@@ -583,12 +774,15 @@ class Service:
         # The single block's role drives the analogous fallback, whichever form the caller used.
         role = blocks[0].role if len(blocks) == 1 else role
         medicines: list[dict] = []
+        derived: set[str] = set()  # analogous terms the server built from ATC codes
         if match_scope == "analogous":
             # The ATC class offered on a zero-hit result is searched on rerun, as the fallback said.
-            analogous = [*(analogous or []), *self._atc_analogues(queries)]
-            # Query variants are explicit search terms: keep each as one phrase, however long.
-            unique = self._union(
-                queries, darwin_only, synonyms, codes, filters, role, match_scope, analogous, split_long=False
+            atc_terms = self._atc_analogues(queries)
+            derived |= {t.term for t in atc_terms}
+            analogous = [*(analogous or []), *atc_terms]
+            terms = analogous_terms([expand(q, synonyms, codes, whole_term=True) for q in queries], analogous)
+            unique = self._analogous_screen(
+                queries, terms, darwin_only, synonyms, codes, filters, role, split_long=False, derived=derived
             )
         else:
 
@@ -614,7 +808,9 @@ class Service:
             }
             if not unique and len(blocks) == 1:
                 # An absent medicine: offer the catalogue's members of the class its ATC code belongs to.
-                analogous = [*(analogous or []), *self._atc_analogues(blocks[0].queries)]
+                atc_terms = self._atc_analogues(blocks[0].queries)
+                derived |= {t.term for t in atc_terms}
+                analogous = [*(analogous or []), *atc_terms]
             for row in unique.values():
                 # Server-added medicine names say where they came from, not that the caller typed them.
                 for term, source in row["matched_term_sources"].items():
@@ -674,6 +870,7 @@ class Service:
                 analogous,
                 bool(unique) or len(blocks) > 1,
                 split_long=False,
+                derived=frozenset(derived),
             ),
             "darwin_only": darwin_only,
             "search_scope": "local catalogue metadata and saved analysis only",
@@ -733,7 +930,8 @@ class Service:
             members = [
                 labels[c] for c in sorted(labels) if len(c) == 7 and c.startswith(parent) and c != code
             ]
-            for name, relation in [(labels.get(parent), "broader"), *((m, "sibling") for m in members)]:
+            broader = labels.get(parent) or labels.get(code[:4])  # the 3rd level when the 4th has no name
+            for name, relation in [(broader, "broader"), *((m, "sibling") for m in members)]:
                 if name and name.isascii() and len(name) <= 150 and not GENERIC.fullmatch(name):
                     terms.append(AnalogousTerm(term=name, relation=relation))
         return terms
@@ -744,11 +942,13 @@ class Service:
         for row in rows:
             try:
                 await self.get_protocol(row["study_id"], download=False)
-                row["protocol_available"] = True
+                row["protocol_available"] = row["protocol_found"] = True
             except RWEError as exc:
                 # No protocol, or no longer a non-interventional study: neither can answer, so rank last.
                 unusable = exc.code in ("PROTOCOL_NOT_FOUND", "STUDY_OUT_OF_SCOPE")
                 row["protocol_available"] = False if unusable else None
+                if exc.code == "PROTOCOL_NOT_FOUND":
+                    row["protocol_found"] = False
                 if exc.code == "STUDY_OUT_OF_SCOPE":
                     row["out_of_scope"] = True
         return len(rows)
@@ -804,12 +1004,19 @@ class Service:
         self, study_id: str, version: str = "latest", download: bool = True, refresh: bool = False
     ):
         study = await self.get_study(study_id, refresh)
-        url = study.tabs.get("study-documents")
-        if not url:
-            raise RWEError("PROTOCOL_NOT_FOUND", "Study documents tab not found.")
-        html, metadata = await self.client.get(url, refresh)
-        docs = parse_documents(html.decode("utf-8", errors="replace"))
-        protocol, reason = select_protocol(docs, version)
+        try:
+            url = study.tabs.get("study-documents")
+            if not url:
+                raise RWEError("PROTOCOL_NOT_FOUND", "Study documents tab not found.")
+            html, metadata = await self.client.get(url, refresh)
+            docs = parse_documents(html.decode("utf-8", errors="replace"))
+            protocol, reason = select_protocol(docs, version)
+        except RWEError as exc:
+            if exc.code == "PROTOCOL_NOT_FOUND" and version == "latest":
+                self.repo.observe(study_id, protocol_found=False)  # ranked last from now on
+            raise
+        if version == "latest":
+            self.repo.observe(study_id, protocol_found=True)
         result = {
             "study_id": study_id,
             "protocol": protocol.model_dump(),
@@ -833,17 +1040,26 @@ class Service:
                     "study_url": study.source_url,
                 },
             )
-            # A cached PDF of known layer is not parsed again; a new download is.
-            known = study.protocol_text_layer if meta.get("cached") else None
-            layer = known or await asyncio.to_thread(text_layer, pdf)
+            # A cached PDF whose layer was observed for the same protocol is not parsed again.
+            observed = self.repo.observation(study_id)
+            same = meta.get("cached") and observed.get("protocol_id") == archived["protocol_id"]
+            layer = (observed.get("text_layer") if same else None) or await asyncio.to_thread(text_layer, pdf)
             result["protocol"].update(
                 protocol_id=archived["protocol_id"],
                 local_filename=archived["local_filename"],
                 text_layer=layer,
             )
-            if layer and study.protocol_text_layer != layer:
+            if (
+                version == "latest"
+                and layer
+                and (observed.get("text_layer"), observed.get("protocol_id"))
+                != (
+                    layer,
+                    archived["protocol_id"],
+                )
+            ):
                 # Remembered so that later searches rank an image-only protocol after readable ones.
-                self.repo.upsert(study.model_copy(update={"protocol_text_layer": layer}))
+                self.repo.observe(study_id, text_layer=layer, protocol_id=archived["protocol_id"])
         return result
 
     async def _context(self, study_id: str, force_refresh: bool = False):
