@@ -6,7 +6,7 @@
 # copied to the OS user data directory on first run; no path overrides are required.
 [mcp_servers.ema-rwe]
 command = "uvx"
-args = ["--from", "git+https://github.com/parfait0707/ema-rwe-mcp@v0.5.0", "ema-rwe-mcp"]
+args = ["--from", "git+https://github.com/parfait0707/ema-rwe-mcp@v0.5.1", "ema-rwe-mcp"]
 enabled = true
 startup_timeout_sec = 30
 tool_timeout_sec = 180
