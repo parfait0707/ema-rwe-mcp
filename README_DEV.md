@@ -82,7 +82,7 @@ PyPI公開やGitHub Releaseへのwheel添付など他の配布経路の比較検
 - **区切り**: 複数値の区切りは`|`・`;`・改行です。値内部のカンマは分割しません。
 - **プロトコル所在（`protocol_listed`）**: `Protocol file(s)`・`Protocol file(s) - URI`・`Protocol URL`のいずれかに値があれば`true`、すべて空なら`false`、列が無ければ未設定です。順位付けにだけ使い、最新版の選択には使いません（最新版はStudy documentsで選びます）。
 - **再構築**: `data/imports/{studies,source_type}/`にexportを置いて`uv run ema-rwe import-all`を実行すると、`studies/`、`source_type/`の順にすべて取り込みます。
-- **医薬品欄の補完**: `uv run ema-rwe backfill-protocols [--interval 60] [--limit N] [--no-download]`。医薬品欄が空の研究に、題名・説明・目的の既知の医薬品名（通信なし）と、CSVにプロトコルの所在がある研究のプロトコルのPASS情報表（Active substance・Medicinal product）の既知の医薬品名・ATC・ページを補います（spec v1.2）。1件ずつ、研究の間を`--interval`秒空け、429で止まり、試した研究は飛ばして再開します。同梱DBを作るときは、作業用のDBで実行し、`protocol_observations`表だけを同梱DBへ移します。
+- **医薬品欄の補完**: `uv run ema-rwe backfill-protocols [--interval 60] [--limit N] [--no-download]`。医薬品欄が空の研究に、題名・説明・目的の既知の医薬品名（通信なし）と、CSVにプロトコルの所在がある研究のプロトコルのPASS情報表（Active substance・Medicinal product）の既知の医薬品名・ATC・ページを補います（spec v1.2）。1件ずつ、研究の間を`--interval`秒空け、429や通信障害で止まり（HTTP層の再試行の後）、読み終えた研究（`backfill_done`）は飛ばして再開します。同梱DBを作るときは、作業用のDB（`EMA_DB_PATH`）で実行してから、`uv run ema-rwe merge-observations <作業用DB>`で同梱DBに観測を加えます（配る項目だけを移し、索引も作り直します）。
 - **upsert**: 研究ID単位のupsertです。今回のCSVにない既存研究は削除しません。元CSVのバイト列、SHA256、ファイル名、取込時刻を保存します。
 - **連絡先の非索引化**: 原本CSVに連絡先が含まれる場合があります。原本は検索対象から分離され、連絡先専用列はDB／FTS／検索結果には入れません。
 - **Data Sources CSVは不要**: カタログの種別タグはローカル候補の絞り込みだけに使い、定義ごとのデータタイプは候補PDFの該当用途からLLMで判定して公式のStudy分類と分けて保存します（[docs/source-types.md](docs/source-types.md)）。
