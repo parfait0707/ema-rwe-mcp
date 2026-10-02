@@ -58,8 +58,6 @@ class Study(Model):
     # Whether the Studies export lists a protocol file or URL (None: unknown). A study without one rarely
     # has a protocol in Study documents, so ranking puts it after listed ones; it is never removed.
     protocol_listed: bool | None = None
-    # Text layer of the downloaded protocol PDF: full, partial or none (image-only, needs OCR).
-    protocol_text_layer: str | None = None
     source_url: str
     metadata_source: str = ""
     retrieved_at: str = Field(default_factory=now)

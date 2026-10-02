@@ -240,16 +240,26 @@ async def test_added_medicine_names_are_capped_per_question_and_never_relabel_ca
 
 async def test_protocol_listing_and_text_layer_order_candidates_without_dropping_them(service):
     # Given equally specific matches: one image-only protocol, one export listing no protocol, one listed
-    service.repo.upsert(study("1", title="Statin cohort", protocol_listed=True, protocol_text_layer="none"))
+    service.repo.upsert(study("1", title="Statin cohort", protocol_listed=True))
+    service.repo.observe("1", protocol_found=True, text_layer="none")
     service.repo.upsert(study("2", title="Statin cohort", protocol_listed=False))
     service.repo.upsert(study("3", title="Statin cohort", protocol_listed=True))
-    for i in range(4, 10):
+    # An unlisted study whose protocol was found on retrieval is not held back
+    service.repo.upsert(study("4", title="Statin cohort", protocol_listed=False))
+    service.repo.observe("4", protocol_found=True, text_layer="full")
+    # A study observed to have no protocol goes last, like an unreadable one
+    service.repo.upsert(study("5", title="Statin cohort", protocol_listed=True))
+    service.repo.observe("5", protocol_found=False)
+    for i in range(6, 10):
         service.repo.upsert(study(str(i), title="Statin users", protocol_listed=True))
     result = await service.compare_protocols("q", ["statin"])
     order = ids(result)
-    # Then listed protocols come first, an unlisted one after them, an unreadable one last: none removed
-    assert order.index("3") < order.index("2") < order.index("1") == len(order) - 1
-    assert result["candidates"][-1]["protocol_text_layer"] == "none"
+    # Then listed or found protocols first, an unlisted one after them, unusable ones last: none removed
+    assert (
+        max(order.index("3"), order.index("4")) < order.index("2") < min(order.index("1"), order.index("5"))
+    )
+    assert {"1", "5"} == set(order[-2:])
+    assert next(c for c in result["candidates"] if c["study_id"] == "1")["protocol_text_layer"] == "none"
 
 
 @pytest.mark.usefixtures("drug_file")

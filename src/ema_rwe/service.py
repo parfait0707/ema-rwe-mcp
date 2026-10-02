@@ -10,13 +10,29 @@ from pydantic import ValidationError
 from .archive import ProtocolArchive
 from .comparison import Comparisons
 from .config import Settings
-from .domain import AnalogousTerm, CodeCandidate, Extraction, ProtocolAnswer, RWEError, SourcePreference, now
+from .domain import (
+    AnalogousTerm,
+    CodeCandidate,
+    Extraction,
+    ProtocolAnswer,
+    RWEError,
+    SourcePreference,
+    Study,
+    now,
+)
 from .drugs import refresh_dictionary
 from .ema import BASE, is_non_interventional, parse_documents, parse_study, select_protocol
 from .exploration import Explorer
 from .http import EMAClient
 from .llm import EXTRACTION_PROMPT, complete_json, configured, extract_with_provider, merge_extractions
-from .medicines import GENERIC, MAX_NAMES, expand_medicine
+from .medicines import (
+    GENERIC,
+    MAX_NAMES,
+    expand_medicine,
+    find_medicines,
+    known_medicine_names,
+    pass_table_medicines,
+)
 from .pdf import (
     audit_extraction,
     extract_pages,
@@ -53,7 +69,6 @@ CATALOGUE_FIELDS = (
     "objective",
     "catalogue_data_sources",
     "protocol_listed",
-    "protocol_text_layer",
 )
 CATEGORY_GUIDANCE = (
     "Catalogue records often name only a category, so give each concept category_terms too: the ICD-10 "
@@ -285,6 +300,80 @@ class Service:
             raise RWEError("CSV_SCHEMA_ERROR", "CSV must be non-empty and at most 50 MiB.")
         result = import_csv(self.repo, path, column_map, source_type)
         return {**result, "source_path": str(path), "catalogue": self.catalogue_status()}
+
+    async def backfill_protocols(
+        self, interval: float = 60.0, limit: int | None = None, download: bool = True
+    ):
+        """Fill the medicines of studies whose export lists none (a user-run command, never part of a search).
+
+        1. No network: medicine names written in the title, description or objective.
+        2. With download: for those whose export lists a protocol and that were not tried yet, the
+           'Active substance' / 'Medicinal product' fields of the protocol's PASS information table.
+        One study at a time, `interval` seconds apart on top of the HTTP interval; resumable (tried
+        studies are skipped); stops at the first rate-limit response. Results are observations
+        (protocol_observations), never catalogue values.
+        """
+        if interval < 0 or (limit is not None and limit < 1):
+            raise RWEError("INVALID_INPUT", "interval must be >= 0 and limit >= 1.")
+        names = known_medicine_names(self.repo.atc_labels())
+        with self.repo.connection() as db:
+            bodies = [r[0] for r in db.execute("SELECT body FROM studies").fetchall()]
+        empty = [s for s in map(Study.model_validate_json, bodies) if not s.exposures]
+        summary = {
+            "studies_without_medicines": len(empty),
+            "named_in_text": 0,
+            "tried": 0,
+            "from_protocol": 0,
+            "no_protocol": 0,
+            "errors": {},
+            "stopped": None,
+        }
+        for study in empty:
+            observed = self.repo.observation(study.study_id)
+            text = f"{study.title} {study.description} {study.objective}"
+            in_text = [{"term": n, "source": "catalogue_text"} for n in find_medicines(text, names)]
+            kept = [e for e in observed.get("exposures", []) if e["source"] != "catalogue_text"]
+            if in_text and observed.get("exposures") != kept + in_text:
+                self.repo.observe(study.study_id, exposures=kept + in_text)
+            summary["named_in_text"] += bool(in_text)
+        if not download:
+            return summary
+        queue = [
+            s
+            for s in empty
+            if s.protocol_listed
+            and "protocol_found" not in self.repo.observation(s.study_id)
+            and "backfill_error" not in self.repo.observation(s.study_id)
+        ]
+        summary["queued"] = len(queue)
+        for n, study in enumerate(queue[:limit]):
+            if n:
+                await asyncio.sleep(interval)
+            summary["tried"] += 1
+            try:
+                result = await self.get_protocol(study.study_id)
+            except RWEError as exc:
+                if exc.code == "EMA_RATE_LIMITED":
+                    summary["stopped"] = f"EMA_RATE_LIMITED at study {study.study_id}; rerun later to resume"
+                    break
+                if exc.code == "PROTOCOL_NOT_FOUND":
+                    summary["no_protocol"] += 1
+                else:
+                    self.repo.observe(study.study_id, backfill_error=exc.code)
+                    summary["errors"][exc.code] = summary["errors"].get(exc.code, 0) + 1
+                continue
+            pdf, _ = self.archive.load(result["protocol"]["protocol_id"])
+            try:
+                pages = await asyncio.to_thread(extract_pages, pdf)
+            except RWEError:
+                continue  # an unreadable protocol is already observed as such by get_protocol
+            found = pass_table_medicines(pages, names)
+            if found:
+                observed = self.repo.observation(study.study_id)
+                kept = [e for e in observed.get("exposures", []) if e["source"] != "protocol_pass_table"]
+                self.repo.observe(study.study_id, exposures=kept + found)
+                summary["from_protocol"] += 1
+        return summary
 
     def import_all(self):
         """Rebuild tags from every export on disk: full Studies export(s) first, then the typed exports."""
@@ -804,12 +893,19 @@ class Service:
         self, study_id: str, version: str = "latest", download: bool = True, refresh: bool = False
     ):
         study = await self.get_study(study_id, refresh)
-        url = study.tabs.get("study-documents")
-        if not url:
-            raise RWEError("PROTOCOL_NOT_FOUND", "Study documents tab not found.")
-        html, metadata = await self.client.get(url, refresh)
-        docs = parse_documents(html.decode("utf-8", errors="replace"))
-        protocol, reason = select_protocol(docs, version)
+        try:
+            url = study.tabs.get("study-documents")
+            if not url:
+                raise RWEError("PROTOCOL_NOT_FOUND", "Study documents tab not found.")
+            html, metadata = await self.client.get(url, refresh)
+            docs = parse_documents(html.decode("utf-8", errors="replace"))
+            protocol, reason = select_protocol(docs, version)
+        except RWEError as exc:
+            if exc.code == "PROTOCOL_NOT_FOUND" and version == "latest":
+                self.repo.observe(study_id, protocol_found=False)  # ranked last from now on
+            raise
+        if version == "latest":
+            self.repo.observe(study_id, protocol_found=True)
         result = {
             "study_id": study_id,
             "protocol": protocol.model_dump(),
@@ -833,17 +929,21 @@ class Service:
                     "study_url": study.source_url,
                 },
             )
-            # A cached PDF of known layer is not parsed again; a new download is.
-            known = study.protocol_text_layer if meta.get("cached") else None
-            layer = known or await asyncio.to_thread(text_layer, pdf)
+            # A cached PDF whose layer was observed for the same protocol is not parsed again.
+            observed = self.repo.observation(study_id)
+            same = meta.get("cached") and observed.get("protocol_id") == archived["protocol_id"]
+            layer = (observed.get("text_layer") if same else None) or await asyncio.to_thread(text_layer, pdf)
             result["protocol"].update(
                 protocol_id=archived["protocol_id"],
                 local_filename=archived["local_filename"],
                 text_layer=layer,
             )
-            if layer and study.protocol_text_layer != layer:
+            if layer and (observed.get("text_layer"), observed.get("protocol_id")) != (
+                layer,
+                archived["protocol_id"],
+            ):
                 # Remembered so that later searches rank an image-only protocol after readable ones.
-                self.repo.upsert(study.model_copy(update={"protocol_text_layer": layer}))
+                self.repo.observe(study_id, text_layer=layer, protocol_id=archived["protocol_id"])
         return result
 
     async def _context(self, study_id: str, force_refresh: bool = False):

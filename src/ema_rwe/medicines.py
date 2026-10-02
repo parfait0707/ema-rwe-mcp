@@ -105,3 +105,56 @@ def expand_medicine(query: str, labels: dict[str, str]) -> dict | None:
         "queries": {t: v for t, v in ordered.items() if t.casefold() != drop},
         "category_terms": {t: v for t, v in category.items() if t.casefold() != drop},
     }
+
+
+# Labels that open the next field of a PASS information table; a field's value ends at the next one.
+PASS_FIELDS = re.compile(
+    r"(Active substance|Medicinal products?(?:\(s\))?|Product reference|Procedure number|Joint PASS|"
+    r"Research question|Country\(?-?ies\)? of study|Author|Marketing authori[sz]ation holder)",
+    re.IGNORECASE,
+)
+
+
+def known_medicine_names(labels: dict[str, str]) -> dict[str, str]:
+    """Canonical medicine name -> name to record: catalogue 5th-level names and EMA INNs (single
+    ingredients) as themselves, EMA product names as their ingredient set. Short and generic names are
+    left out, so a match is a medicine name, not a common word."""
+    names: dict[str, str] = {}
+    for code, label in labels.items():
+        if len(code) == 7 and not GENERIC.fullmatch(label):
+            names.setdefault(canonical(label), label)
+    for row in load_dictionary()[0]:
+        ingredients = " / ".join(row["ingredients"])
+        names.setdefault(canonical(ingredients), ingredients)
+        names.setdefault(canonical(row["product_name"].split(" (")[0]), ingredients)
+    return {n: v for n, v in names.items() if len(n) >= 5}
+
+
+def find_medicines(text: str, names: dict[str, str]) -> list[str]:
+    """Known medicine names written in the text (whole words, longest first), as names to record."""
+    if not names:
+        return []
+    pattern = re.compile(
+        r"(?<!\w)(" + "|".join(sorted(map(re.escape, names), key=len, reverse=True)) + r")(?!\w)"
+    )
+    return list(dict.fromkeys(names[m.group(1)] for m in pattern.finditer(canonical(text))))
+
+
+def pass_table_medicines(pages, names: dict[str, str], max_pages: int = 8) -> list[dict]:
+    """Medicines in the 'Active substance' and 'Medicinal product' fields of a PASS information table,
+    with the ATC codes written there and the physical page. Known names only: no free text is kept."""
+    for page in pages[:max_pages]:
+        parts = PASS_FIELDS.split(page.text)
+        found: dict[str, dict] = {}  # one entry per medicine: codes merged across its fields
+        for label, value in zip(parts[1::2], parts[2::2], strict=False):
+            if not label.casefold().startswith(("active substance", "medicinal product")):
+                continue
+            codes = set(re.findall(r"\b[A-Z]\d{2}[A-Z]{2}\d{2}\b", value))
+            for name in find_medicines(value, names):
+                entry = found.setdefault(
+                    name, {"term": name, "atc_codes": [], "page": page.page, "source": "protocol_pass_table"}
+                )
+                entry["atc_codes"] = sorted(set(entry["atc_codes"]) | codes)
+        if found:
+            return list(found.values())
+    return []

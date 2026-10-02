@@ -107,10 +107,11 @@ def order_key(row: dict) -> tuple:
     return (
         # A study without a published protocol, or whose protocol has no text layer, cannot answer a
         # definition question: keep it, but last.
-        available is False or row.get("protocol_text_layer") == "none",
+        False in (available, row.get("protocol_found")) or row.get("protocol_text_layer") == "none",
         -f["specific_blocks"],
         -f["role_blocks"],
-        row.get("protocol_listed") is False,  # the export lists no protocol: usually none to read
+        # The export lists no protocol (usually none to read), unless one was found on retrieval.
+        row.get("protocol_listed") is False and row.get("protocol_found") is not True,
         -f["type_fit"],
         -f["fused_score"],
         row["study_id"],

@@ -61,6 +61,8 @@ def test_newer_bundle_refreshes_catalogue_and_keeps_user_caches(tmp_path):
     bundled, user = tmp_path / "bundled.sqlite3", tmp_path / "user.sqlite3"
     catalogue(bundled, "2026-10-01", "Pancreatitis cohort", "Newly registered stroke study")
     repo = catalogue(user, "2026-09-13", "Pancreatitis cohort")
+    repo.observe("1", protocol_found=True, text_layer="none")  # the user's own observation
+    type(repo)(bundled).observe("2", protocol_found=False)  # the bundle's backfill
     with repo.connection() as db:
         db.execute("INSERT INTO analyses VALUES ('1','fp',?)", ('{"analysis": {}}',))
         db.execute("CREATE TABLE protocol_answers (cache_key TEXT PRIMARY KEY, body TEXT NOT NULL)")
@@ -71,6 +73,9 @@ def test_newer_bundle_refreshes_catalogue_and_keeps_user_caches(tmp_path):
     assert refreshed.study_count() == 2
     assert [r["study_id"] for r in refreshed.search("stroke", None, False, None)] == ["2"]
     assert refreshed.analysis("1") == {"analysis": {}}
+    # Observations: the user's own survive the refresh, the bundle's are added
+    assert refreshed.observation("1")["text_layer"] == "none"
+    assert refreshed.observation("2")["protocol_found"] is False
     with refreshed.connection() as db:
         assert db.execute("SELECT body FROM protocol_answers").fetchone()[0] == "answer"
     assert not refresh_from_bundle(bundled, user)  # same import now: nothing to do

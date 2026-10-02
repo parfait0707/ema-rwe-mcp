@@ -130,6 +130,7 @@ COMPACT_KEYS = (
     "rank_features",
     "protocol_available",
     "protocol_listed",
+    "protocol_found",
     "protocol_text_layer",
     "out_of_scope",
 )
