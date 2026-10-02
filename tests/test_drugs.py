@@ -267,3 +267,22 @@ def test_salt_name_finds_the_base_medicine_but_ema_codes_are_not_search_terms(dr
     passed = expand("apixaban", None, [CodeCandidate(system="ATC", code="B01AF02")], whole_term=True)
     groups = labelled_phrases("apixaban", passed, False)
     assert any("b01af02" in [w.casefold() for w in group] for _, group in groups)
+
+
+def test_salted_ingredient_is_found_by_its_base_name_only_as_a_whole_term(tmp_path, monkeypatch):
+    path = tmp_path / "salted.json"
+    monkeypatch.setenv("EMA_DRUG_DICTIONARY_PATH", str(path))
+    payload = {
+        "meta": {},
+        "data": [
+            row("Pradaxa", "dabigatran etexilate", "B01AE07"),
+            row("Tecfidera", "dimethyl fumarate", "N07XX09"),
+        ],
+    }
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    assert [m["product_name"] for m in drug_expansion("dabigatran", whole_term=True)["matches"]] == [
+        "Pradaxa"
+    ]
+    # The base name is never scanned inside free text, where a generic word could match
+    assert drug_expansion("dimethyl ester study")["matches"] == []
+    assert drug_expansion("dabigatran users")["matches"] == []

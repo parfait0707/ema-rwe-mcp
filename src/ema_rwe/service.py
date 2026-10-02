@@ -520,6 +520,7 @@ class Service:
         status=None,
         analyzed_only=False,
         split_long=True,
+        derived=frozenset(),
     ):
         """How candidates matched, plus the analogous-concept fallback when the concept itself has no study."""
         terms = analogous_terms(expansions, analogous)
@@ -548,18 +549,94 @@ class Service:
                 split_long,
             )
             result["analogous_fallback"] = self._fallback(
-                queries, terms, synonyms, codes, role, union_args, split_long
+                queries, terms, synonyms, codes, role, union_args, split_long, derived
             )
         return result
 
     def _concept_ids(self, queries, synonyms, codes, role, split_long=True) -> set[str]:
         return set().union(*(self.repo.concept_ids(q, synonyms, codes, role, split_long) for q in queries))
 
-    def _fallback(self, queries, terms, synonyms, codes, role, union_args, split_long=True):
+    def _analogous_screen(
+        self,
+        queries,
+        terms,
+        darwin_only,
+        synonyms,
+        codes,
+        filters,
+        role,
+        status=None,
+        analyzed_only=False,
+        split_long=True,
+        derived=frozenset(),
+    ) -> dict[str, dict]:
+        """Analogous-concept candidates, screened and ranked like concept ones: the analogous terms form
+        one block, each searched as one phrase; studies matching the requested concept are excluded.
+        Each matched term reports its origin: catalogue_atc (built by the server from an ATC code),
+        caller or dictionary."""
+        if not terms:
+            return {}
+        exclude = self._concept_ids(queries, synonyms, codes, role, split_long)
+
+        def search(term: str, column_role: str, with_expansion: bool) -> list[dict]:
+            return self.repo.search(
+                term,
+                None,
+                darwin_only,
+                status,
+                analyzed_only,
+                None,
+                None,
+                filters,
+                column_role,
+                split_long=False,
+                exclude=exclude,
+            )
+
+        origin = {
+            t["term"]: "catalogue_atc"
+            if t["term"] in derived
+            else "caller"
+            if t.get("concept_id") is None
+            else "dictionary"
+            for t in terms
+        }
+        block = ScreeningBlock.model_construct(role=role, queries=list(origin), category_terms=[])
+        rows = screen(search, [block])
+        for row in rows:
+            row["match_basis"] = "analogous"
+            row["matched_term_sources"] = {
+                t: origin.get(t, source) for t, source in row["matched_term_sources"].items()
+            }
+        return {row["study_id"]: row for row in rows}
+
+    def _fallback(
+        self, queries, terms, synonyms, codes, role, union_args, split_long=True, derived=frozenset()
+    ):
         # Concept studies in the index that filters, darwin_only, status or analyzed_only removed:
         # then the concept is not absent, and the caller must say so before offering analogues.
         filtered_out = len(self._concept_ids(queries, synonyms, codes, role, split_long))
-        rows = list(self._union(*union_args).values()) if terms else []
+        darwin_only, filters, status, analyzed_only = (
+            union_args[1],
+            union_args[4],
+            union_args[8],
+            union_args[9],
+        )
+        rows = list(
+            self._analogous_screen(
+                queries,
+                terms,
+                darwin_only,
+                synonyms,
+                codes,
+                filters,
+                role,
+                status,
+                analyzed_only,
+                split_long,
+                derived,
+            ).values()
+        )
         selected = self._selection(rows)
         counts = {
             t["term"]: sum(t["term"].casefold() in {m.casefold() for m in r["matched_terms"]} for r in rows)
@@ -672,12 +749,15 @@ class Service:
         # The single block's role drives the analogous fallback, whichever form the caller used.
         role = blocks[0].role if len(blocks) == 1 else role
         medicines: list[dict] = []
+        derived: set[str] = set()  # analogous terms the server built from ATC codes
         if match_scope == "analogous":
             # The ATC class offered on a zero-hit result is searched on rerun, as the fallback said.
-            analogous = [*(analogous or []), *self._atc_analogues(queries)]
-            # Query variants are explicit search terms: keep each as one phrase, however long.
-            unique = self._union(
-                queries, darwin_only, synonyms, codes, filters, role, match_scope, analogous, split_long=False
+            atc_terms = self._atc_analogues(queries)
+            derived |= {t.term for t in atc_terms}
+            analogous = [*(analogous or []), *atc_terms]
+            terms = analogous_terms([expand(q, synonyms, codes, whole_term=True) for q in queries], analogous)
+            unique = self._analogous_screen(
+                queries, terms, darwin_only, synonyms, codes, filters, role, split_long=False, derived=derived
             )
         else:
 
@@ -703,7 +783,9 @@ class Service:
             }
             if not unique and len(blocks) == 1:
                 # An absent medicine: offer the catalogue's members of the class its ATC code belongs to.
-                analogous = [*(analogous or []), *self._atc_analogues(blocks[0].queries)]
+                atc_terms = self._atc_analogues(blocks[0].queries)
+                derived |= {t.term for t in atc_terms}
+                analogous = [*(analogous or []), *atc_terms]
             for row in unique.values():
                 # Server-added medicine names say where they came from, not that the caller typed them.
                 for term, source in row["matched_term_sources"].items():
@@ -763,6 +845,7 @@ class Service:
                 analogous,
                 bool(unique) or len(blocks) > 1,
                 split_long=False,
+                derived=frozenset(derived),
             ),
             "darwin_only": darwin_only,
             "search_scope": "local catalogue metadata and saved analysis only",
@@ -822,7 +905,8 @@ class Service:
             members = [
                 labels[c] for c in sorted(labels) if len(c) == 7 and c.startswith(parent) and c != code
             ]
-            for name, relation in [(labels.get(parent), "broader"), *((m, "sibling") for m in members)]:
+            broader = labels.get(parent) or labels.get(code[:4])  # the 3rd level when the 4th has no name
+            for name, relation in [(broader, "broader"), *((m, "sibling") for m in members)]:
                 if name and name.isascii() and len(name) <= 150 and not GENERIC.fullmatch(name):
                     terms.append(AnalogousTerm(term=name, relation=relation))
         return terms
