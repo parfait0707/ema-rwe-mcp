@@ -45,7 +45,7 @@ from .pdf import (
 from .ranking import ScreeningBlock, order_key, screen
 from .selection import TYPED_SOURCES, SearchFilters, compact, selection
 from .storage import Repository, import_csv
-from .terminology import dictionary_paths, proposed_codes
+from .terminology import dictionary_paths, labelled_phrases, proposed_codes
 from .vocabulary import expand
 
 SCHEMA_VERSION = Extraction.model_fields["schema_version"].default
@@ -318,7 +318,8 @@ class Service:
         names = known_medicine_names(self.repo.atc_labels())
         with self.repo.connection() as db:
             bodies = [r[0] for r in db.execute("SELECT body FROM studies").fetchall()]
-        empty = [s for s in map(Study.model_validate_json, bodies) if not s.exposures]
+        studies = [s for s in map(Study.model_validate_json, bodies) if is_non_interventional(s.study_type)]
+        empty = [s for s in studies if not s.exposures]
         summary = {
             "studies_without_medicines": len(empty),
             "named_in_text": 0,
@@ -328,22 +329,23 @@ class Service:
             "errors": {},
             "stopped": None,
         }
-        for study in empty:
+        for study in studies:
             observed = self.repo.observation(study.study_id)
-            text = f"{study.title} {study.description} {study.objective}"
+            # The catalogue's own medicines replace text matches once an export lists them.
+            text = f"{study.title} {study.description} {study.objective}" if not study.exposures else ""
             in_text = [{"term": n, "source": "catalogue_text"} for n in find_medicines(text, names)]
             kept = [e for e in observed.get("exposures", []) if e["source"] != "catalogue_text"]
-            if in_text and observed.get("exposures") != kept + in_text:
+            if observed.get("exposures", []) != kept + in_text:
                 self.repo.observe(study.study_id, exposures=kept + in_text)
             summary["named_in_text"] += bool(in_text)
         if not download:
             return summary
+        # A study is done once its protocol was read (or found absent, or failed for good); a run
+        # interrupted midway (rate limit, outage, Ctrl-C) leaves it to the next run.
         queue = [
             s
             for s in empty
-            if s.protocol_listed
-            and "protocol_found" not in self.repo.observation(s.study_id)
-            and "backfill_error" not in self.repo.observation(s.study_id)
+            if s.protocol_listed and not self.repo.observation(s.study_id).get("backfill_done")
         ]
         summary["queued"] = len(queue)
         for n, study in enumerate(queue[:limit]):
@@ -352,27 +354,24 @@ class Service:
             summary["tried"] += 1
             try:
                 result = await self.get_protocol(study.study_id)
+                pdf, _ = self.archive.load(result["protocol"]["protocol_id"])
+                pages = await asyncio.to_thread(extract_pages, pdf)
             except RWEError as exc:
-                if exc.code == "EMA_RATE_LIMITED":
-                    summary["stopped"] = f"EMA_RATE_LIMITED at study {study.study_id}; rerun later to resume"
+                if exc.code in ("EMA_RATE_LIMITED", "EMA_UNAVAILABLE"):
+                    summary["stopped"] = f"{exc.code} at study {study.study_id}; rerun later to resume"
                     break
                 if exc.code == "PROTOCOL_NOT_FOUND":
                     summary["no_protocol"] += 1
-                else:
-                    self.repo.observe(study.study_id, backfill_error=exc.code)
+                    self.repo.observe(study.study_id, backfill_done=True)
+                else:  # this protocol cannot be read (not a PDF, encrypted, image-only, out of scope)
+                    self.repo.observe(study.study_id, backfill_done=True, backfill_error=exc.code)
                     summary["errors"][exc.code] = summary["errors"].get(exc.code, 0) + 1
                 continue
-            pdf, _ = self.archive.load(result["protocol"]["protocol_id"])
-            try:
-                pages = await asyncio.to_thread(extract_pages, pdf)
-            except RWEError:
-                continue  # an unreadable protocol is already observed as such by get_protocol
             found = pass_table_medicines(pages, names)
-            if found:
-                observed = self.repo.observation(study.study_id)
-                kept = [e for e in observed.get("exposures", []) if e["source"] != "protocol_pass_table"]
-                self.repo.observe(study.study_id, exposures=kept + found)
-                summary["from_protocol"] += 1
+            observed = self.repo.observation(study.study_id)
+            kept = [e for e in observed.get("exposures", []) if e["source"] != "protocol_pass_table"]
+            self.repo.observe(study.study_id, exposures=kept + found, backfill_done=True)
+            summary["from_protocol"] += bool(found)
         return summary
 
     def import_all(self):
@@ -574,12 +573,14 @@ class Service:
         one block, each searched as one phrase; studies matching the requested concept are excluded.
         Each matched term reports its origin: catalogue_atc (built by the server from an ATC code),
         caller or dictionary."""
+        terms = [t for t in terms if re.search(r"\w", t["term"])]  # a blank term would match every study
         if not terms:
             return {}
-        exclude = self._concept_ids(queries, synonyms, codes, role, split_long)
+        # Studies that mention the requested concept anywhere are its own, not analogous candidates.
+        exclude = self._concept_ids(queries, synonyms, codes, "any", split_long)
 
         def search(term: str, column_role: str, with_expansion: bool) -> list[dict]:
-            return self.repo.search(
+            rows = self.repo.search(
                 term,
                 None,
                 darwin_only,
@@ -592,6 +593,16 @@ class Service:
                 split_long=False,
                 exclude=exclude,
             )
+            # The index labels a match by the term's content words ('drugs excl insulins'); report the
+            # analogous term as written, so its origin and study_count line up.
+            phrases = labelled_phrases(term, expand(term, whole_term=True), False)
+            own = phrases[0][0] if phrases else term
+            for row in rows:
+                row["matched_terms"] = [term if t == own else t for t in row["matched_terms"]]
+                row["matched_term_sources"] = {
+                    term if t == own else t: v for t, v in row["matched_term_sources"].items()
+                }
+            return rows
 
         origin = {
             t["term"]: "catalogue_atc"
@@ -917,11 +928,13 @@ class Service:
         for row in rows:
             try:
                 await self.get_protocol(row["study_id"], download=False)
-                row["protocol_available"] = True
+                row["protocol_available"] = row["protocol_found"] = True
             except RWEError as exc:
                 # No protocol, or no longer a non-interventional study: neither can answer, so rank last.
                 unusable = exc.code in ("PROTOCOL_NOT_FOUND", "STUDY_OUT_OF_SCOPE")
                 row["protocol_available"] = False if unusable else None
+                if exc.code == "PROTOCOL_NOT_FOUND":
+                    row["protocol_found"] = False
                 if exc.code == "STUDY_OUT_OF_SCOPE":
                     row["out_of_scope"] = True
         return len(rows)
@@ -1022,9 +1035,14 @@ class Service:
                 local_filename=archived["local_filename"],
                 text_layer=layer,
             )
-            if layer and (observed.get("text_layer"), observed.get("protocol_id")) != (
-                layer,
-                archived["protocol_id"],
+            if (
+                version == "latest"
+                and layer
+                and (observed.get("text_layer"), observed.get("protocol_id"))
+                != (
+                    layer,
+                    archived["protocol_id"],
+                )
             ):
                 # Remembered so that later searches rank an image-only protocol after readable ones.
                 self.repo.observe(study_id, text_layer=layer, protocol_id=archived["protocol_id"])

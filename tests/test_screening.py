@@ -421,3 +421,22 @@ async def test_backfill_fills_medicines_from_text_then_protocols_and_stops_on_ra
     calls.clear()
     await service.backfill_protocols(interval=0, limit=1)
     assert calls == ["2"]
+
+
+@pytest.mark.usefixtures("drug_file")
+async def test_backfill_retries_a_study_interrupted_after_its_documents_page(service, monkeypatch):
+    service.repo.upsert(study("123", title="Opioid safety", protocol_listed=True))
+    real_load = service.archive.load
+
+    def outage(protocol_id):  # the documents page was read (protocol_found recorded), the PDF was not
+        raise RWEError("EMA_UNAVAILABLE", "connection reset")
+
+    monkeypatch.setattr(service.archive, "load", outage)
+    summary = await service.backfill_protocols(interval=0)
+    # An outage stops the run like a rate limit, and leaves the study to the next run
+    assert summary["stopped"].startswith("EMA_UNAVAILABLE")
+    assert service.repo.observation("123")["protocol_found"] is True
+    assert not service.repo.observation("123").get("backfill_done")
+    monkeypatch.setattr(service.archive, "load", real_load)
+    summary = await service.backfill_protocols(interval=0)
+    assert summary["tried"] == 1 and service.repo.observation("123")["backfill_done"] is True

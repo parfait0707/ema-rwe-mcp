@@ -132,6 +132,7 @@ COMPACT_KEYS = (
     "protocol_listed",
     "protocol_found",
     "protocol_text_layer",
+    "observed_exposures",
     "out_of_scope",
 )
 

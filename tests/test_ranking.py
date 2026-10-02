@@ -310,3 +310,29 @@ async def test_analogous_candidates_are_ranked_and_labelled_like_concept_ones(se
     # Listed protocols first, the unreadable one last; the server's ATC terms say where they came from
     assert order[0] == "2" and order[-1] == "3"
     assert result["candidates"][0]["matched_term_sources"] == {"dapagliflozin": "catalogue_atc"}
+
+
+@pytest.mark.usefixtures("drug_file")
+async def test_analogous_terms_report_their_own_origin_count_and_skip_blanks(service):
+    service.repo.upsert(study("1", exposures=["(A10B) Blood glucose lowering drugs, excl. insulins"]))
+    result = await service.compare_protocols(
+        "q", ["ipragliflozin", "A10BK05"], analogous=[AnalogousTerm(term=" ", relation="broader")]
+    )
+    terms = {t["term"]: t["study_count"] for t in result["analogous_fallback"]["analogous_terms"]}
+    # The term with punctuation is counted, and a blank term never turns into the whole catalogue
+    assert terms["Blood glucose lowering drugs, excl. insulins"] == 1
+    assert result["analogous_fallback"]["total_matches"] == 1
+
+
+async def test_checked_protocol_overrides_an_earlier_observation(service, monkeypatch):
+    for i in range(1, 8):
+        service.repo.upsert(study(str(i), title="Statin users", protocol_listed=True))
+    service.repo.observe("1", protocol_found=False)  # e.g. an old observation from the bundle
+
+    async def fake_get_protocol(study_id, version="latest", download=True, refresh=False):
+        return {"protocol": {}}
+
+    monkeypatch.setattr(service, "get_protocol", fake_get_protocol)
+    result = await service.compare_protocols("q", ["statin"], check_protocols=7)
+    row = next(c for c in result["candidates"] if c["study_id"] == "1")
+    assert row["protocol_found"] is True and ids(result)[-1] != "1"

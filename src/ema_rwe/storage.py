@@ -66,7 +66,6 @@ class Repository:
                     study_id TEXT PRIMARY KEY, search_text TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS protocol_observations (
                     study_id TEXT PRIMARY KEY, body TEXT NOT NULL);
-                PRAGMA user_version={SCHEMA_VERSION};
             """)
             # Schema 5 kept the protocol text layer in the study body; it is an observation now.
             for study_id, body in db.execute("SELECT id, body FROM studies").fetchall():
@@ -81,7 +80,12 @@ class Repository:
                     db.execute("UPDATE studies SET body=? WHERE id=?", (json.dumps(data), study_id))
             # Re-index existing rows; role columns stay empty until the export is imported again.
             for row in db.execute("SELECT body FROM studies").fetchall():
-                self._index(db, Study.model_validate_json(row[0]))
+                try:
+                    self._index(db, Study.model_validate_json(row[0]))
+                except (KeyError, TypeError, ValueError):
+                    continue  # a malformed cached analysis leaves its study unindexed, as before
+            # The version is set last: an interrupted migration runs again on the next start.
+            db.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
 
     @contextmanager
     def connection(self):
@@ -609,6 +613,15 @@ def latest_import(path: Path, immutable: bool = False) -> str | None:
         return None
 
 
+SHAREABLE_OBSERVATIONS = ("protocol_found", "text_layer", "exposures", "backfill_done")
+
+
+def shareable(body: str) -> str:
+    """The part of an observation that travels between databases: no local PDF IDs or error codes."""
+    data = json.loads(body)
+    return json.dumps({k: data[k] for k in SHAREABLE_OBSERVATIONS if k in data})
+
+
 def merge_bundle_observations(bundled: Path, dest: Path) -> int:
     """Add the bundle's protocol observations (backfill) the user does not have; the user's own win.
     Returns how many were added; the added studies are re-indexed. Never raises."""
@@ -624,20 +637,21 @@ def merge_bundle_observations(bundled: Path, dest: Path) -> int:
                 ).fetchone()
             ):
                 return 0
-            added = [
-                r[0]
-                for r in db.execute(
-                    "SELECT study_id FROM bundle.protocol_observations"
-                    " WHERE study_id NOT IN (SELECT study_id FROM main.protocol_observations)"
-                ).fetchall()
-            ]
-            db.execute(
-                "INSERT OR IGNORE INTO main.protocol_observations SELECT * FROM bundle.protocol_observations"
-            )
-            for study_id in added:
+            added = db.execute(
+                "SELECT study_id, body FROM bundle.protocol_observations"
+                " WHERE study_id NOT IN (SELECT study_id FROM main.protocol_observations)"
+            ).fetchall()
+            for study_id, body in added:
+                db.execute(
+                    "INSERT OR IGNORE INTO main.protocol_observations VALUES (?,?)",
+                    (study_id, shareable(body)),
+                )
                 row = db.execute("SELECT body FROM studies WHERE id=?", (study_id,)).fetchone()
-                if row:
-                    repo._index(db, Study.model_validate_json(row[0]))
+                try:
+                    if row:
+                        repo._index(db, Study.model_validate_json(row[0]))
+                except (KeyError, TypeError, ValueError):
+                    continue  # one malformed row does not cost the others their backfill
             db.commit()
             return len(added)
         finally:
@@ -684,9 +698,13 @@ def refresh_from_bundle(bundled: Path, dest: Path) -> bool:
                 if db.execute(
                     "SELECT 1 FROM bundle.sqlite_master WHERE name='protocol_observations'"
                 ).fetchone():
-                    db.execute(
-                        "INSERT OR IGNORE INTO main.protocol_observations SELECT * FROM bundle.protocol_observations"
-                    )
+                    for study_id, body in db.execute(
+                        "SELECT study_id, body FROM bundle.protocol_observations"
+                        " WHERE study_id NOT IN (SELECT study_id FROM main.protocol_observations)"
+                    ).fetchall():
+                        db.execute(
+                            "INSERT INTO main.protocol_observations VALUES (?,?)", (study_id, shareable(body))
+                        )
                 analysed = db.execute(
                     "SELECT s.body FROM studies s WHERE s.id IN (SELECT study_id FROM analyses"
                     " UNION SELECT study_id FROM protocol_observations)"

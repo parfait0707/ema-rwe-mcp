@@ -122,3 +122,17 @@ def test_bundle_observations_reach_a_user_whose_catalogue_is_current(tmp_path):
     user_repo = type(mine)(user)
     assert user_repo.observation("1") == mine.observation("1")  # the user's own observation wins
     assert [r["study_id"] for r in user_repo.search("metoprolol", None, False, None)] == ["2"]
+
+
+def test_shared_observations_carry_no_local_ids_or_errors(tmp_path):
+    from ema_rwe.storage import refresh_from_bundle
+
+    bundled, user = tmp_path / "bundled.sqlite3", tmp_path / "user.sqlite3"
+    bundle = catalogue(bundled, "2026-10-01", "Cohort")
+    catalogue(user, "2026-10-01", "Cohort")
+    bundle.observe(
+        "1", protocol_found=True, protocol_id="pdf_1_x", backfill_error="PDF_PARSE_FAILED", backfill_done=True
+    )
+    refresh_from_bundle(bundled, user)
+    observed = type(bundle)(user).observation("1")
+    assert {"protocol_id", "backfill_error"}.isdisjoint(observed) and observed["backfill_done"] is True
