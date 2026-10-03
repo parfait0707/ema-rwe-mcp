@@ -421,7 +421,7 @@ class Service:
         self,
         query: str,
         limit: int = 5,
-        darwin_only: bool = True,
+        darwin_only: bool = False,
         status: list[str] | None = None,
         analyzed_only: bool = False,
         synonyms: list[str] | None = None,
@@ -1010,6 +1010,13 @@ class Service:
             for name in CATALOGUE_FIELDS:
                 if not getattr(parsed, name):
                     setattr(parsed, name, getattr(study, name))
+            if study.metadata_source.startswith("CSV"):
+                # Source-type tags of an exported study come only from the typed exports (an empty set
+                # means 'others'); the detail page's F8.7 values never replace them, on any later refresh.
+                parsed.metadata_source = study.metadata_source
+                parsed.data_source_types = study.data_source_types
+                parsed.data_source_types_source = study.data_source_types_source
+                parsed.data_source_types_checked_at = study.data_source_types_checked_at
         self.repo.upsert(parsed)
         self._in_scope(parsed)
         return parsed

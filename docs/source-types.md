@@ -70,7 +70,7 @@
 
 順位付けには質問別回答のsource_assessmentsを使う。共通抽出だけにある別アウトカムの分類を、質問への一致根拠へ流用しない。質問別の分類がなければunknown。共通抽出の全assessmentも別途保持して表示する。同じ優先度内は候補の順序を保持する。matchedもコード体系、利用可能変数、観察期間などの互換性を保証しない。希望タイプを変えただけなら、同じ質問とPDFの共通抽出・質問別回答を再利用して順位を計算する。
 
-公式の`data_source_types`はStudyページのF8.7を別途返す。`data_source_types_source`と`data_source_types_checked_at`に由来・確認日時を残す。公式分類とPDF由来の明示的分類が重ならない場合は`catalogue_protocol_disjoint=true`とし、どちらも上書きしない。このフラグは意味の誤りを判定するものではなく、差異の確認用。
+公式の`data_source_types`はカタログの種別タグ（種別で絞ったexport由来。exportに無く詳細ページだけで知った研究はF8.7の値）を別途返す。`data_source_types_source`と`data_source_types_checked_at`に由来・確認日時を残す。公式分類とPDF由来の明示的分類が重ならない場合は`catalogue_protocol_disjoint=true`とし、どちらも上書きしない。このフラグは意味の誤りを判定するものではなく、差異の確認用。
 
 ## 独立した上限
 

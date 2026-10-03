@@ -2,7 +2,7 @@
 
 エンドユーザー（このMCPを使って研究を調べる人）向けの使い方は[README.md](README.md)を参照してください。本ファイルはこのMCPサーバー自体を開発・改修する人向けの内部仕様です。
 
-公開版は0.5.2（内部履歴では0.1〜1.4の仕様段階を経ている）。`docs/spec/v0.1.md`〜`v1.4.md`が仕様の正本、[docs/mcp-workflow.md](docs/mcp-workflow.md)が呼出元向け手順の正本、開発ルールは[AGENTS.md](AGENTS.md)です。
+公開版は0.5.3（内部履歴では0.1〜1.4の仕様段階を経ている）。`docs/spec/v0.1.md`〜`v1.4.md`が仕様の正本、[docs/mcp-workflow.md](docs/mcp-workflow.md)が呼出元向け手順の正本、開発ルールは[AGENTS.md](AGENTS.md)です。
 
 ## 開発用セットアップ（checkout）
 
@@ -68,7 +68,7 @@ uv build
 リポジトリを公開する場合は次を行います。
 
 1. `.gitignore`を再確認する（現状は`data/`配下のうちカタログDB・医薬品辞書・辞書の記入例・関連語の判定記録の4ファイルと`imports/`の空フォルダだけを追跡し、他はすべて除外。PDF・DB・キャッシュ・`.env`・`docs/agent_brief/`・`docs/agent_report/`も除外済み）。
-2. リリースタグ（例: `v0.5.1`）を打つ。手順は[docs/release.md](docs/release.md)。
+2. リリースタグ（`v<pyproject.tomlの版>`）を打つ。手順は[docs/release.md](docs/release.md)。
 
 PyPI公開やGitHub Releaseへのwheel添付など他の配布経路の比較検討は[docs/research/202609160750_mcp_distribution.md](docs/research/202609160750_mcp_distribution.md)を参照してください。
 
@@ -173,7 +173,7 @@ PDF保存は「サイト全体のPDFを収集する」処理ではありませ�
 | `EMA_MAX_SCREENING_STUDIES` | `5`（1〜1000） | 一次判定でPDF取得・全件解析へ進める最大研究数 |
 | `EMA_MAX_COMPARISON_STUDIES` | `5`（1〜1000） | 比較表へ掲載する最大研究数 |
 | `EMA_MAX_LISTED_CANDIDATES` | `50`（1〜1000） | `needs_narrowing`時に`candidates`一覧を返す最大件数 |
-| `EMA_USER_AGENT` | `ema-rwe-mcp/0.5.2` | EMAへのHTTPリクエストのUser-Agent |
+| `EMA_USER_AGENT` | `ema-rwe-mcp/0.5.3` | EMAへのHTTPリクエストのUser-Agent |
 | `EMA_RESEARCH_BUDGET_CHARS` | `40000` | 呼出元向けの追加探索応答の文字数予算 |
 | `EMA_SEARCH_BUDGET_CHARS` | `20000` | 呼出元向けのPDF全文検索応答の文字数予算 |
 | `EMA_PROTOCOL_DIR` | DBと同じ親フォルダ内の`protocols` | 保持するPDF/JSONの保存先 |
@@ -231,6 +231,8 @@ stdioで17個のToolを公開します（`src/ema_rwe/mcp/server.py`）。
 | `read_protocol_text` | `protocol_id`, `section_id`または`start_page`/`end_page`（1〜5ページ）, `offset=0`, `max_chars=12000`。`next_offset`で続きを読む |
 | `research_protocol` | `protocol_id`, `question`, `force=false`。保存回答の再利用、全文一括回答、または呼出元駆動のステップ探索 |
 | `cache_protocol_answer` | `protocol_id`, `question`, `answer`。質問別の出典付き回答を検証・保存 |
+
+CLIのサブコマンドはMCPのツールと同じ引数と既定値を取ります（`uv run ema-rwe <サブコマンド> --help`。`search`も既定で全研究を対象にし、`--darwin-only`でDARWIN EUに限ります）。
 
 MCPの`instructions`文字列は要点のみに短縮しており、完全な手順とフィールド意味論は[docs/mcp-workflow.md](docs/mcp-workflow.md)が正本です（MCPリソース`ema-rwe://docs/mcp-workflow`としても返します）。検索応答は既定でcompact（説明文・由来を省略）、`catalogue`は状態・取込済み種別・`browser_refresh_recommended`だけを返し、別に`catalogue_action`を返します。
 
