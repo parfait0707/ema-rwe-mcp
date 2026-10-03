@@ -65,10 +65,10 @@ def parser():
     search.add_argument("query")
     search.add_argument("--limit", type=int, default=5)
     search.add_argument(
-        "--all-studies",
-        action="store_true",
-        help="Include non-DARWIN EU studies (the CLI search defaults to DARWIN EU only; MCP darwin_only=false).",
+        "--darwin-only", action="store_true", help="Only DARWIN EU studies (MCP darwin_only)."
     )
+    # Kept so older scripts still run: every study is searched by default, as in MCP.
+    search.add_argument("--all-studies", action="store_true", help=argparse.SUPPRESS)
     search.add_argument("--status", action="append")
     search.add_argument("--analyzed-only", action="store_true")
     search.add_argument("--synonym", action="append")
@@ -132,6 +132,7 @@ def parser():
     comparison.add_argument(
         "--study-id", action="append", help="User-selected eligible IDs after completed screening."
     )
+    comparison.add_argument("--detail", choices=["compact", "full"], default="compact")
     plan = commands.add_parser("plan-search")
     plan.add_argument("question")
     plan.add_argument("--llm", action="store_true")
@@ -140,17 +141,22 @@ def parser():
     outline = commands.add_parser("outline")
     outline.add_argument("protocol_id")
     outline.add_argument("--offset", type=int, default=0)
+    outline.add_argument("--limit", type=int, default=100)
+    outline.add_argument("--detail", choices=["compact", "full"], default="compact")
     find = commands.add_parser("pdf-search")
     find.add_argument("protocol_id")
     find.add_argument("query")
     find.add_argument("--synonym", action="append")
     find.add_argument("--code", action="append", type=code_argument)
+    find.add_argument("--limit", type=int, default=10)
+    find.add_argument("--max-chars", type=int)
     read = commands.add_parser("pdf-read")
     read.add_argument("protocol_id")
     read.add_argument("--section-id")
     read.add_argument("--start-page", type=int, default=1)
     read.add_argument("--end-page", type=int)
     read.add_argument("--offset", type=int, default=0)
+    read.add_argument("--max-chars", type=int, default=12000)
     ask = commands.add_parser("ask")
     ask.add_argument("protocol_id")
     ask.add_argument("question")
@@ -165,11 +171,13 @@ def parser():
         if name == "analyze":
             cmd.add_argument("--offset", type=int, default=0)
             cmd.add_argument("--max-chars", type=int, default=30000)
+            cmd.add_argument("--detail", choices=["summary", "full"], default="summary")
     submit = commands.add_parser("cache-analysis")
     submit.add_argument("study_id")
     submit.add_argument("fingerprint")
     submit.add_argument("input", type=Path)
     submit.add_argument("--coverage-complete", action="store_true")
+    submit.add_argument("--batch-offset", type=int, help="Save one batch read at this offset (resumable).")
     commands.add_parser("cleanup-cache")
     return p
 
@@ -214,7 +222,7 @@ async def run(args):
                 return service.search_studies(
                     args.query,
                     args.limit,
-                    not args.all_studies,
+                    args.darwin_only,
                     args.status,
                     args.analyzed_only,
                     args.synonym,
@@ -258,20 +266,27 @@ async def run(args):
                     args.check_protocols,
                 )
             case "comparison":
-                return await service.get_protocol_comparison(args.comparison_id, args.study_id)
+                return await service.get_protocol_comparison(args.comparison_id, args.study_id, args.detail)
             case "plan-search":
                 return await service.plan_study_search(args.question, args.llm)
             case "local-protocols":
                 return await service.list_local_protocols(args.study_id)
             case "outline":
-                return await service.get_protocol_outline(args.protocol_id, args.offset)
+                return await service.get_protocol_outline(
+                    args.protocol_id, args.offset, args.limit, args.detail
+                )
             case "pdf-search":
                 return await service.search_protocol_text(
-                    args.protocol_id, args.query, synonyms=args.synonym, codes=args.code
+                    args.protocol_id, args.query, args.limit, args.synonym, args.code, args.max_chars
                 )
             case "pdf-read":
                 return await service.read_protocol_text(
-                    args.protocol_id, args.section_id, args.start_page, args.end_page, args.offset
+                    args.protocol_id,
+                    args.section_id,
+                    args.start_page,
+                    args.end_page,
+                    args.offset,
+                    args.max_chars,
                 )
             case "ask":
                 return await service.research_protocol(args.protocol_id, args.question, args.force)
@@ -283,12 +298,12 @@ async def run(args):
                 )
             case "analyze":
                 return await service.analyze_protocol(
-                    args.study_id, args.refresh, args.offset, args.max_chars
+                    args.study_id, args.refresh, args.offset, args.max_chars, args.detail
                 )
             case "cache-analysis":
                 analysis = Extraction.model_validate_json(args.input.read_text(encoding="utf-8"))
                 return await service.cache_protocol_analysis(
-                    args.study_id, args.fingerprint, analysis, args.coverage_complete
+                    args.study_id, args.fingerprint, analysis, args.coverage_complete, args.batch_offset
                 )
             case "cleanup-cache":
                 return {"removed": service.client.cleanup()}

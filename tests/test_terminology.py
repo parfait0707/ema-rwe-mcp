@@ -115,3 +115,18 @@ async def test_plan_has_callable_code_queries_and_unknown_translation_status(set
 def test_cli_typed_codes():
     args = parser().parse_args(["pdf-search", "id", "outcome", "--code", "OMOP concept_id:000123"])
     assert args.code[0].code == "000123"
+
+
+def test_cli_takes_the_mcp_arguments_and_searches_every_study_by_default():
+    """CLI and MCP stay consistent: the same arguments and the same darwin_only default."""
+    p = parser()
+    assert p.parse_args(["search", "x"]).darwin_only is False
+    assert p.parse_args(["search", "x", "--darwin-only"]).darwin_only is True
+    assert p.parse_args(["outline", "id", "--limit", "50", "--detail", "full"]).limit == 50
+    found = p.parse_args(["pdf-search", "id", "q", "--limit", "5", "--max-chars", "2000"])
+    assert (found.limit, found.max_chars) == (5, 2000)
+    assert p.parse_args(["pdf-read", "id", "--max-chars", "3000"]).max_chars == 3000
+    assert p.parse_args(["analyze", "1"]).detail == "summary"  # MCP analyze_protocol default
+    assert p.parse_args(["analyze", "1", "--detail", "full"]).detail == "full"
+    assert p.parse_args(["cache-analysis", "1", "fp", "a.json", "--batch-offset", "4"]).batch_offset == 4
+    assert p.parse_args(["comparison", "cmp_1", "--detail", "full"]).detail == "full"

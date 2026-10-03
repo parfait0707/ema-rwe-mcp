@@ -615,3 +615,19 @@ def test_pass_table_codes_never_cross_neighbours_or_take_icd_or_variant_codes():
     assert fields("Platelet aggregation inhibitors excl. heparin") == [
         ("Platelet aggregation inhibitors excl. heparin", [])
     ]
+
+
+async def test_page_refresh_keeps_the_typed_export_source_tags(service):
+    """The detail page's F8.7 values never replace the tags of an exported study."""
+    # A study known only from its detail page takes the page's F8.7 values
+    service.repo.upsert(study("123", title="Opioid safety"))
+    await service.get_study("123", refresh=True)
+    assert service.repo.get("123").data_source_types == ["Electronic healthcare records (EHR)"]
+    # An exported study keeps the tags of the typed exports
+    exported = {"metadata_source": "CSV SHA256:x", "data_source_types_source": "filtered export claims.csv"}
+    service.repo.upsert(study("123", title="Opioid safety", data_source_types=["claims"], **exported))
+    for _ in range(2):  # every later refresh too, not only the first
+        await service.get_study("123", refresh=True)
+        kept = service.repo.get("123")
+        assert kept.data_source_types == ["claims"]
+        assert kept.data_source_types_source == "filtered export claims.csv"
