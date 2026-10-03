@@ -1,6 +1,6 @@
 # EMA Studies CSV実データ調査（2026-09-12）
 
-> 2026-09-12時点の調査記録。その後、Data source typeは通常、種別で絞ったexport（`data/imports/source_type/`）から付けるようになった（`get_study`で詳細ページを取り直した研究だけは、詳細ページのF8.7の値に置き換わる）（現行の手順は[README_DEV.md](../README_DEV.md)）。
+> 2026-09-12時点の調査記録。その後、Data source typeは種別で絞ったexport（`data/imports/source_type/`）から付けるようになった（`get_study`で取り直しても変わらない。exportに無く詳細ページだけで知った研究は、詳細ページのF8.7の値を使う）（現行の手順は[README_DEV.md](../README_DEV.md)）。
 
 対象は`data/imports/20260912_export-data.csv`。原本には連絡先欄があるためGit管理せず、以下は集計値だけを記録する。
 

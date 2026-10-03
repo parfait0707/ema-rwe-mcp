@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.3 (2026-10-03)
+
+- A `get_study` refresh keeps an exported study's source-type tags (an empty set means `others`); only a
+  study known solely from its detail page takes the page's F8.7 values.
+- The CLI `search` searches every study by default, as MCP does (`--darwin-only` restricts it;
+  `--all-studies` is accepted and ignored). The CLI takes the MCP arguments it lacked: `analyze --detail`,
+  `cache-analysis --batch-offset`, `comparison --detail`, `outline --limit --detail`,
+  `pdf-search --limit --max-chars`, `pdf-read --max-chars`.
+
 ## 0.5.2 (2026-10-03)
 
 - The caller procedure `docs/mcp-workflow.md` ships in the wheel and is served as the MCP resource

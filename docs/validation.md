@@ -459,6 +459,14 @@ PDF 取得先ディレクトリ名から X/Y が推測可能だった（P）、�
 - テスト：`test_mcp.py`（リソース）、`test_distribution.py`（wheel への同梱とパスの切り替え）。全体 321 passed、ruff と `uv build` 合格。
 - コードの判断が要るもの（未対応）：CLI と MCP の引数の対応の欠け（`analyze --detail`、`cache-analysis --batch-offset` など）、CLI の `search` の既定が DARWIN EU のみ（ヘルプに明記した）、`get_study` の再取得が種別タグを詳細ページの F8.7 で置き換えること（AGENTS.md に明記した）、`.devcontainer` の旧名とインタープリタのパス。
 
+## 2026-10-03 CLI と MCP の一致、書き出しの種別タグの保持
+
+- `get_study` の再取得で、CSV から取り込んだ研究の種別タグ（`data_source_types`・出所・確認日時）を保つようにした。書き出しに無く詳細ページだけで知った研究は、これまでどおり F8.7 の値を使う。テスト：`test_page_refresh_keeps_the_typed_export_source_tags`（修正前は失敗する形）。
+- CLI の `search` の既定を MCP と同じ全研究にした（`--darwin-only` で DARWIN EU に限る。`--all-studies` は受け付けて無視）。実測：`search diabetes` は 292 件、`--darwin-only` は 8 件。MCP にあって CLI に無かった引数を加えた（テスト：`test_cli_takes_the_mcp_arguments_and_searches_every_study_by_default`）。
+- `.devcontainer/`（Git 管理外）の名前とインタープリタのパスを直した（手元の環境だけ）。
+- リリース前の点検（release-consistency-audit スキル：機械的な走査と、読み取り専用のサブエージェントによる照合）で、次の2件の不具合を見つけて直した。1つは、CLI の `analyze --detail` の選択肢を MCP と違う compact/full にしていて、既定のままでは必ず `INVALID_INPUT` になっていたこと（summary/full に修正）。もう1つは、種別タグの保持が1回目の再取得にしか効かず、再取得で `metadata_source` が詳細ページの値に変わるため2回目からは F8.7 に置き換わっていたこと（`metadata_source` も引き継ぐように修正。テストは2回の再取得で確認）。あわせて、サービス層の `search_studies` の既定も `darwin_only=False` にし、docs/source-types.md の種別タグの説明を直した。機械的な走査では、README_DEV.md に残っていた古い版の例（`v0.5.1`）も見つけ、版に依存しない書き方にした。
+- 全体 323 passed、ruff と `uv build` 合格。
+
 ## 未検証事項（継続）
 
 - 外部LLM API呼出しの実認証検証は未実施。キーなしの呼出元LLM方式は合成PDFで保存・再利用まで検証。
