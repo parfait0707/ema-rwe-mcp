@@ -83,6 +83,8 @@ PDF検索にはさらに`protocol_id`を指定します。CLIも`--code "ICD-10:
 
 `refresh_drug_dictionary()`（CLI: `ema-rwe refresh-drugs`）で[公式EMA医薬品JSON](https://www.ema.europa.eu/en/about-us/about-website/download-website-data-json-data-format)を取得します。ヒト用医薬品の`name_of_medicine`、`international_non_proprietary_name_common_name`、`atc_code_human`を対応付け、出典URLと更新日を保持します。EMAの欄名がINN／common nameなので、すべてを厳密なWHO INNと断定せず、その区別をJSONにも残します。
 
+成分名の末尾の塩・エステル・水和物の語（`hydrochloride`、`choline`、`diolamine` など）は、基名でも製品を引ける検索キーを足すだけで、製品の成分の組み合わせは変えません（`SALT_WORDS`）。別の製品系列を分ける語（`disoproxil` と `alafenamide` など）は塩とみなしません（`NOT_SALT_WORDS`）。辞書を更新すると、どちらの一覧にも無い末尾の語のうち「X W」と「X」の両方が成分名にあるものを `salt_word_candidates` として返します。一覧への追加は、出典と検索の変化を添えたコードレビューで行い、自動では加えません。
+
 保存先は`EMA_DRUG_DICTIONARY_PATH`、未設定時はDBと同じフォルダの`ema-medicines.json`です（チェックアウトとwheelには`data/ema-medicines.json`を同梱）。7日間は再利用し、`force=true`で再取得できます。取得した原本とSHA256を利用し、不正な応答で旧辞書を上書きしません。通常の研究・PDF検索はローカル辞書を読み、通信しません。未取得・7日経過は`clinical.drugs.needs_refresh`に表示します。
 
 ### 名前で照合する（v1.1）
