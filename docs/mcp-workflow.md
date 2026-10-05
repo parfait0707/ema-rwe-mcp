@@ -40,8 +40,9 @@ the MCP resource `ema-rwe://docs/mcp-workflow` (bundled in the wheel), so a clie
   abbreviations, singular/plural, INN or product names). The candidate count is the deduplicated
   union.
 - `category_terms`: the umbrella a catalogue record may use instead of the specific name — the ICD-10
-  block or chapter title, composite outcomes (MACE, cardiovascular events, adverse events of special
-  interest, immune-related adverse events, pregnancy outcomes). Keep them specific to the concept;
+  block or chapter title, and the composite or umbrella outcomes studies of that concept use (for
+  example MACE or adverse events of special interest; illustrations, not a list to choose from). Keep
+  them specific to the concept;
   generic phrases such as "adverse drug reactions" only add noise.
 - Medicines: the server resolves each query to ATC codes (catalogue entries such as `(B01AF02) apixaban`
   and the EMA medicines dictionary) and searches names, plus the 4th-level class code the catalogue records; ATC is a join key, not an answer. An EMA

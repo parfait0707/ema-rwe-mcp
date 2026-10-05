@@ -5,6 +5,14 @@
 - `ema-rwe import-all` and `ema-rwe merge-observations`, the commands that build the bundled database,
   end with `VACUUM` (the result reports `bytes_before`/`bytes_after`). On a copy of the current bundle:
   45.8 MB -> 43.1 MB, gzip 17.1 MB -> 12.1 MB. The committed database is compacted at its next rebuild.
+- Prompts no longer encode examples from individual verified studies: the stated-count rule covers any
+  list (outcomes, endpoints, cohorts, analyses, definitions) instead of "two types of outcomes", the
+  database rule asks for every database named for the study with its supported usage (an assessed one is
+  a candidate) instead of naming abstract/feasibility sections, and the linkage rule drops the
+  hospital-network example. The `COUNT_CLAIM` audit (it matched 2 of 433 local protocols) is removed.
+  Translation instructions say non-English instead of Japanese; checklist and category examples are
+  marked as illustrations. Cached analyses and research answers are re-extracted (fingerprint and
+  explorer version change).
 - Fixes from an external review:
   - A page without a text heading that starts a new bookmark chapter no longer inherits the previous
     page's heading (a methods chapter after `BACKGROUND` was read as background and its quotes rejected

@@ -75,9 +75,9 @@ CATALOGUE_FIELDS = (
 )
 CATEGORY_GUIDANCE = (
     "Catalogue records often name only a category, so give each concept category_terms too: the ICD-10 "
-    "block or chapter title (e.g. systemic connective tissue disorders for SLE, ischaemic heart diseases for "
-    "unstable angina), composite or umbrella outcomes studies use (MACE, cardiovascular events, adverse events "
-    "of special interest, immune-related adverse events, pregnancy outcomes); the server adds the class of a "
+    "block or chapter title, and the composite or umbrella outcomes studies of that concept use (for example "
+    "MACE or adverse events of special interest; these are illustrations, not a list to choose from); the "
+    "server adds the class of a "
     "medicine itself. Keep them "
     "specific to the concept: generic terms such as 'adverse drug reactions' only add noise. Category matches "
     "are ranked below specific ones. Codes rarely appear in catalogue records; they matter in the protocol PDFs."
@@ -91,7 +91,7 @@ CLIENT_EXPANSION_INSTRUCTION = (
     + " "
     + CATEGORY_GUIDANCE
     + " For medicines give the English INN and the EU and US product names (each query is matched as one whole "
-    "name), plus abbreviations (TNFi, JAKi, DOACs), noun variants (drugs/medicines/medications) and spellings "
+    "name), plus abbreviations (e.g. TNFi, JAKi, DOACs), noun variants (drugs/medicines/medications) and spellings "
     "with and without hyphens; for an absent medicine also give its 5th-level ATC code. For a requested medicine class, put the class name "
     "and its ATC 3rd/4th-level code (e.g. N03A) in queries; the server adds the member medicines that the "
     "catalogue and the EMA medicines dictionary code under it (medicine_expansion). Keep outcome, exposure "
@@ -1259,7 +1259,7 @@ class Service:
                         "Include separate name-based and code-based queries. Distinguish outcome vs exposure vs comorbidity. "
                         + ICD10_SYNONYM_GUIDANCE
                         + " "
-                        "For medicines, translate Japanese names, expand brand names to International Nonproprietary Names "
+                        "For medicines, translate non-English names, expand brand names to International Nonproprietary Names "
                         "and INNs to brand names in BOTH directions, and suggest ATC codes when known. Put translated "
                         "drug names in synonyms so the local official EMA dictionary can verify and expand them. "
                         "Preserve full ingredient sets for combination products, salts, formulations and country differences. "
