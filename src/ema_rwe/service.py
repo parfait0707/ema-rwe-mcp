@@ -37,6 +37,7 @@ from .medicines import (
     pass_table_medicines,
 )
 from .pdf import (
+    PARSER_VERSION,
     audit_extraction,
     extract_pages,
     finalize_extraction,
@@ -1102,7 +1103,7 @@ class Service:
                     "sha256": result["download"]["sha256"],
                     "version": result["protocol"]["version"],
                     "schema": SCHEMA_VERSION,
-                    "parser": "structural-v4",
+                    "parser": PARSER_VERSION,
                     "prompt": EXTRACTION_PROMPT,
                     "model": self.settings.llm_model or "client-assisted",
                     "provider": self.settings.llm_base_url,

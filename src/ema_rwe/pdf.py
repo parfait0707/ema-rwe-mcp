@@ -1,7 +1,8 @@
 """Native page-aware extraction. Raw PDF text remains in memory only."""
 
 import re
-from dataclasses import dataclass
+from collections import Counter
+from dataclasses import dataclass, field
 
 import pymupdf
 
@@ -12,17 +13,73 @@ from .vocabulary import canonical, contains, expand
 RELEVANT = re.compile(
     r"design|method|setting|data source|database|population|inclusion|exclusion|exposure|"
     r"comparator|outcome|variable|definition|phenotyp|code list|codelist|concept|"
-    r"analysis|analyses|statistic|follow.up|washout|objective|appendix|annex|cohort",
+    r"analysis|analyses|statistic|follow.up|washout|objective|appendix|annex|cohort|eligib",
     re.IGNORECASE,
 )
-HEADING = re.compile(r"^(?:\d{1,2}(?:\.\d{1,2})*\.?\s+|[A-Z]\.\s+).{3,110}$")
+# Section numbers: arabic (9, 9.2) or roman (II, II.4); a leading zero ('0.03 MG/ML') is a value, not a section.
+SECTION_NUMBER = re.compile(r"^((?:[1-9]\d?|[IVX]{1,4})(?:\.\d{1,2})*)\.?\s+(\S.{2,109})$")
+LETTERED = re.compile(r"^[A-Z]\.\s+(\S.{2,109})$")
+ROMAN = {"I": 1, "V": 5, "X": 10}
+# Chapter titles of the EMA PASS protocol template (EMA/623947/2012), matched as whole titles: a single-level
+# numbered line with one of them is a heading even in title case ('13 References'), unlike a numbered list item.
+CHAPTER_TITLES = {
+    "table of contents",
+    "list of abbreviations",
+    "responsible parties",
+    "abstract",
+    "amendments and updates",
+    "milestones",
+    "rationale and background",
+    "research question and objectives",
+    "research methods",
+    "study design",
+    "setting",
+    "variables",
+    "data sources",
+    "study size",
+    "data management",
+    "data analysis",
+    "quality control",
+    "limitations of the research methods",
+    "other aspects",
+    "protection of human subjects",
+    "management and reporting of adverse events",
+    "management and reporting of adverse events adverse reactions",
+    "plans for disseminating and communicating study results",
+    "references",
+    "annexes",
+    "appendices",
+    "study population",
+    "disease definitions",
+}
+
+
+def roman_value(text: str) -> int | None:
+    values = [ROMAN.get(ch) for ch in text]
+    if None in values:
+        return None
+    total = sum(-v if i + 1 < len(values) and v < values[i + 1] else v for i, v in enumerate(values))
+    return total if total > 0 else None
+
+
+def section_number(heading: str | None) -> tuple[int, ...]:
+    """(2, 4) for 'II.4 Abstract' or '2.4 Abstract'; () when the heading carries no section number."""
+    match = SECTION_NUMBER.match(heading or "")
+    if not match:
+        return ()
+    first, *rest = match.group(1).split(".")
+    value = int(first) if first.isdigit() else roman_value(first)
+    # Protocols have tens of chapters at most: '79.15 Closed reduction ...' is a procedure code, not a section.
+    return (value, *map(int, rest)) if value and value <= 30 else ()
 
 
 def is_heading(line: str) -> bool:
     if line.rstrip().endswith("?"):
         return False
     if re.match(r"^(?:appendix|annex)\s+[A-Z0-9]+\b", line, re.IGNORECASE):
-        return True
+        # 'Appendix I. The following protocols will continue to be developed' is a sentence citing the
+        # appendix: running text has verbs and pronouns that titles ('Amendments and changes to the protocol') lack.
+        return sum(w in SENTENCE_WORDS for w in re.findall(r"\b[a-z]+\b", line)) < 2
     if canonical(line) in {
         "study design",
         "research methods",
@@ -41,27 +98,63 @@ def is_heading(line: str) -> bool:
         "outcomes",
     }:
         return True
-    if not HEADING.match(line) or re.search(r"\.{3,}|\s\d+\s*$", line):
+    if re.search(r"\.{3,}|\s\d+\s*$", line):
         return False
-    # Numbered database lists and footnotes are not section headings.
-    if re.match(r"^\d+\.\d+", line):
-        return True
-    title = re.sub(r"^(?:\d+\.?|[A-Z]\.)\s+", "", line)
-    return title.isupper() or bool(
-        re.fullmatch(
-            r"Study design|Data sources|Study population|Research methods|Data analysis|Disease definitions",
-            title,
-            re.IGNORECASE,
-        )
-    )
+    if (match := SECTION_NUMBER.match(line)) and section_number(line):
+        if len(section_number(line)) > 1:
+            # '9.2 Setting', 'II.4 Abstract': multi-level numbering is not a list item; a lower-case word after
+            # the number ('3.3 million, by applying ...') is a value in running text.
+            return not match.group(2)[0].islower()
+        title = match.group(2)
+        if match.group(1).isalpha() and canonical(title) not in CHAPTER_TITLES:
+            # 'IV Q5106', 'IV ORAL': a route or code in a table row, not a roman chapter number.
+            return title.isupper() and len(re.findall(r"[A-Za-z]{3,}", title)) >= 2
+    elif match := LETTERED.match(line):
+        title = match.group(1)
+    else:
+        # An unnumbered all-caps line naming a method topic ('DATA SOURCE, STUDY DESIGN AND METHODOLOGY').
+        words = re.findall(r"[A-Za-z]{2,}", line)
+        return line.isupper() and 2 <= len(words) <= 12 and heading_role(line) in METHOD_ROLES
+    # A single-level number is also how lists are written: only an all-caps or template chapter title counts.
+    return title.isupper() or canonical(title) in CHAPTER_TITLES
 
 
 ROLES = {
+    # A list of annexes is the annexes themselves (structure); lists of tables and figures are navigation.
+    "contents": ("table of contents", "list of tables", "list of figures"),
     "references": ("references", "bibliography", "literature cited"),
     "administrative": ("responsible parties", "study team", "milestones", "governance", "signatures"),
-    "background": ("background", "rationale", "introduction"),
+    # 'rationale' alone also titles method subsections ('Context and rationale for definition of time 0').
+    "background": (
+        "background",
+        "introduction",
+        "rationale and background",
+        "study rationale",
+        "scientific rationale",
+    ),
     "abstract": ("abstract", "synopsis", "summary"),
+    # Protocol changes: read, but superseded conditions must not be extracted as current ones.
+    "amendments": (
+        "amendments",
+        "amendment",
+        "document history",
+        "description of changes",
+        "protocol changes",
+    ),
     "appendix": ("appendix", "appendices", "annex", "annexes", "supplement"),
+    # Study conduct chapters of the PASS template (ethics, safety reporting, dissemination). They may hold
+    # study-specific conditions or definitions (consent before enrolment, adverse event definitions).
+    "conduct": (
+        "protection of human subjects",
+        "ethics",
+        "ethical",
+        "consent",
+        "reporting of adverse events",
+        "safety reporting",
+        "disseminating",
+        "dissemination",
+        "publication",
+    ),
     "methods": ("research methods", "methodology", "methods", "study design", "research design"),
     "data_sources": ("data sources", "data source", "study setting", "databases", "data provenance"),
     "population": ("population", "eligibility", "inclusion", "exclusion", "participants", "study subjects"),
@@ -83,14 +176,35 @@ ROLES = {
         "sensitivity",
         "confounding",
     ),
+    "objectives": (
+        "research question",
+        "research questions",
+        "objectives",
+        "objective",
+        "aims",
+        "aim",
+        "goals",
+        "goal",
+    ),
 }
 
 
-# Section roles whose text describes something other than this study's methods.
+# Separate decisions use the section role:
+# - NON_METHOD_ROLES are not read for extraction (and rank low in search); an unknown role is read only
+#   when the section itself shows method content. Conduct and amendment chapters are read: they may state
+#   study-specific conditions (consent before enrolment, adverse event definitions and collection windows,
+#   a removed washout), and their role tells the extractor how to read them.
+# - EVIDENCE_REJECT_ROLES are the roles whose text is confidently not this study's methods, so a method
+#   fact quoted only from them is rejected. An uncertain role never rejects a verbatim quote.
 NON_METHOD_ROLES = {"references", "contents", "background", "administrative", "checklist"}
+# A section whose own heading names one of these keeps it inside a background chapter.
+METHOD_ROLES = {"methods", "objectives", "population", "definitions", "data_sources", "analysis"}
+EVIDENCE_REJECT_ROLES = {"references", "contents", "background", "checklist"}
 
 
 def heading_role(heading: str | None) -> str:
+    if heading and re.sub(r"^[\dIVX.]+\s+", "", canonical(heading)).startswith("rationale"):
+        return "background"  # 'Rationale', '5 Rationale for the study'
     for role, terms in ROLES.items():
         if heading and any(contains(heading, term) for term in terms):
             return role
@@ -107,32 +221,169 @@ class Page:
     chapter_top: str | None = None
     # Every bookmark title from the top level down to `chapter` ('12 Annexes / 12.3 Annex 3 / 12.3.2 ...').
     chapter_path: str | None = None
+    # Canonical titles of the outline entries that start on this page: such a line is a section heading.
+    outline_titles: set[str] = field(default_factory=set)
+    # Each such entry's own (chapter, top-level chapter, path), for the text below its title line.
+    outline_entries: dict[str, tuple[str, str, str]] = field(default_factory=dict)
+    # Where the outline came from: 'bookmarks', 'toc' (a verified text table of contents) or None.
+    outline_source: str | None = None
+    # Canonical line text -> (largest font size, bold) from the PDF's text spans, and the document's body
+    # font size: layout support for chapter headings when there is no outline.
+    line_styles: dict[str, tuple[float, bool]] = field(default_factory=dict)
+    body_size: float = 0.0
 
 
-def apply_bookmarks(pages: list[Page], toc: list) -> None:
-    """Label each page with the bookmark chapter that starts on or before it (pymupdf get_toc rows)."""
+def apply_line_styles(pages: list[Page], doc) -> None:
+    sizes: Counter = Counter()
+    for page, pdf_page in zip(pages, doc):
+        for block in pdf_page.get_text("dict")["blocks"]:
+            for line in block.get("lines", []):
+                spans = [s for s in line["spans"] if s["text"].strip()]
+                if not spans:
+                    continue
+                text = canonical("".join(s["text"] for s in spans))
+                bold = all(s["flags"] & 16 or "bold" in s["font"].casefold() for s in spans)
+                page.line_styles[text] = (max(s["size"] for s in spans), bold)
+                for s in spans:
+                    sizes[round(s["size"], 1)] += len(s["text"])
+    body = sizes.most_common(1)[0][0] if sizes else 0.0
+    for page in pages:
+        page.body_size = body
+
+
+def apply_bookmarks(pages: list[Page], toc: list, source: str = "bookmarks") -> None:
+    """Label each page with the bookmark chapter that starts on or before it (pymupdf get_toc rows).
+
+    A list of tables, figures or contents and the entries under it are navigation, not structure: they point
+    at single tables inside other chapters (often at the first one, not at the list), so they are skipped.
+    Contents pages are recognised from their text instead.
+    """
+    rows, navigation_level = [], None
+    for lvl, title, page in toc:
+        if navigation_level is not None and lvl > navigation_level:
+            continue
+        navigation_level = None
+        if heading_role(str(title)) == "contents":
+            navigation_level = lvl
+            continue
+        rows.append((lvl, title, page))
+    toc = rows
     entries = sorted(
-        ((int(p), int(lvl), str(t).strip()) for lvl, t, p in toc if p and p > 0), key=lambda e: e[0]
+        ((int(p), int(lvl), " ".join(str(t).split())) for lvl, t, p in toc if p and p > 0), key=lambda e: e[0]
     )
     if not entries:
         return
+    by_page = {p.page: p for p in pages}
+    for start, _, title in entries:
+        if start in by_page:
+            by_page[start].outline_titles.add(canonical(title))
     ancestors: dict[int, str] = {}
     i = 0
     current = None
     for page in pages:
         while i < len(entries) and entries[i][0] <= page.page:
-            _, level, title = entries[i]
+            start, level, title = entries[i]
             ancestors = {lvl: t for lvl, t in ancestors.items() if lvl < level}
             ancestors[level] = title
             current = title
+            if start == page.page:
+                page.outline_entries[canonical(title)] = (
+                    title,
+                    ancestors[min(ancestors)],
+                    " / ".join(ancestors[lvl] for lvl in sorted(ancestors)),
+                )
             i += 1
         if current is not None:
             page.chapter = current
             page.chapter_top = ancestors.get(min(ancestors)) if ancestors else current
             page.chapter_path = " / ".join(ancestors[lvl] for lvl in sorted(ancestors)) or current
+            page.outline_source = source
 
 
-def extract_pages(data: bytes) -> list[Page]:
+CAPTION = re.compile(r"(?:table|figure|fig\.)\s*[A-Z]?\d", re.IGNORECASE)
+TOC_LINE = re.compile(
+    r"^\s*(?P<number>(?:[1-9]\d?|[IVX]{1,4})(?:\.\d{1,2})*\.?)?\s*(?P<title>\S.*?)\s*(?:\.{3,}|…+)\s*(?P<page>\d{1,3})\s*$"
+)
+
+
+def text_outline(pages: list[Page]) -> list[list]:
+    """Outline rows [level, title, physical page] read from a text table of contents, or [] when unverified.
+
+    Printed page numbers differ from physical ones by the front matter. An entry counts only where its
+    heading is printed as a line of the body; the printed-to-physical offset must agree for at least three
+    entries and two fifths of all entries. Entries anchored at that offset (±1 page) are kept, and so are
+    unanchored appendix or template chapter entries placed by the offset; table and figure captions are
+    navigation and are skipped.
+    """
+    toc_pages = [p for p in pages[:25] if sum(bool(TOC_LINE.match(l)) for l in p.text.splitlines()) >= 3]
+    if not toc_pages:
+        return []
+    last_toc = max(p.page for p in toc_pages)
+    entries = []
+    for page in toc_pages:
+        for line in page.text.splitlines():
+            if m := TOC_LINE.match(line):
+                number = m["number"] or ""  # as printed ('9.2.'), for the outline title
+                key = canonical(f"{number} {m['title']}")
+                entries.append((number, m["title"].strip(), int(m["page"]), key))
+    body = {
+        p.page: {canonical(l) for l in p.text.splitlines() if l.strip()} for p in pages if p.page > last_toc
+    }
+    anchors = [(entry, [pg for pg, lines in body.items() if entry[3] in lines]) for entry in entries]
+    offsets = Counter(off for entry, found in anchors for off in {pg - entry[2] for pg in found})
+    if not offsets:
+        return []
+    offset, support = offsets.most_common(1)[0]
+    if support < 3 or support < 0.4 * len(entries):
+        return []
+    rows, numbered_level, last_page = [], 0, 0
+    for (number, title, printed, _), found in anchors:
+        if CAPTION.match(title):
+            continue  # a list-of-tables or list-of-figures line: navigation, not structure
+        chapter_like = not number and (
+            re.match(r"(?:appendix|annex|appendices|annexes)\b", title, re.IGNORECASE)
+            or canonical(title) in CHAPTER_TITLES
+        )
+        near = [pg for pg in found if abs(pg - (printed + offset)) <= 1]
+        if near:
+            page = min(near, key=lambda pg: abs(pg - printed - offset))
+        elif chapter_like and last_page <= printed + offset <= len(pages):
+            # An annex of rotated tables prints no heading line; the verified offset still places it.
+            page = printed + offset
+        else:
+            continue
+        if number:
+            level = numbered_level = len(section_number(f"{number.rstrip('.')} title"))
+        elif chapter_like:
+            level = 1
+        else:  # an unnumbered line under a numbered entry is its sub-item; unnumbered entries are siblings
+            level = numbered_level + 1
+        rows.append([max(level, 1), f"{number} {title}".strip(), page])
+        last_page = max(last_page, page)
+    return rows
+
+
+# Version of the section/role/reading rules; part of the analysis fingerprint, so a change re-extracts.
+PARSER_VERSION = "structural-v24"
+
+
+def mark_contents_titles(pages: list[Page], rows: list[list]) -> None:
+    """A verified contents page tells where sections start, not which chapter later text belongs to: its
+    entries can drift from the body (a contents page numbering methods 8.x for a body's 9.x), so chapters
+    and roles keep coming from the text headings."""
+    if not rows:
+        return
+    by_page = {p.page: p for p in pages}
+    for _, title, page in rows:
+        if page in by_page:
+            by_page[page].outline_titles.add(canonical(title))
+    for page in pages:
+        page.outline_source = "toc"
+
+
+def extract_pages(data: bytes, use_outline: bool = True) -> list[Page]:
+    """Page texts with an outline applied: the PDF's bookmarks, else a verified text table of contents.
+    use_outline=False ignores the bookmarks (structure evaluation measures text-only detection against them)."""
     if not data.lstrip().startswith(b"%PDF-"):
         raise RWEError("PDF_PARSE_FAILED", "Response is not a PDF.")
     try:
@@ -140,7 +391,11 @@ def extract_pages(data: bytes) -> list[Page]:
             if doc.needs_pass or len(doc) > 1500:
                 raise RWEError("PDF_PARSE_FAILED", "Encrypted PDF or page limit exceeded.")
             pages = [Page(i + 1, page.get_text(sort=True)) for i, page in enumerate(doc)]
-            apply_bookmarks(pages, doc.get_toc())
+            apply_bookmarks(pages, doc.get_toc() if use_outline else [])
+            if not any(p.chapter for p in pages):
+                mark_contents_titles(pages, text_outline(pages))
+            if not any(p.chapter for p in pages):
+                apply_line_styles(pages, doc)
     except RWEError:
         raise
     except Exception as exc:
@@ -162,15 +417,134 @@ def text_layer(data: bytes) -> str | None:
     return "partial" if blank * 2 >= len(pages) else "full"
 
 
+SENTENCE_WORDS = frozenset(
+    [
+        "will",
+        "be",
+        "is",
+        "are",
+        "was",
+        "were",
+        "has",
+        "have",
+        "this",
+        "that",
+        "these",
+        "which",
+        "shall",
+        "should",
+    ]
+)
+ENGLISH_WORDS = frozenset(
+    [
+        "the",
+        "of",
+        "and",
+        "to",
+        "in",
+        "for",
+        "with",
+        "will",
+        "be",
+        "is",
+        "are",
+        "this",
+        "that",
+        "by",
+        "on",
+        "from",
+        "or",
+        "as",
+    ]
+)
+
+
+def english(pages: list[Page]) -> bool:
+    """Whether the protocol body is in English: these function words are about a fifth of English prose."""
+    words = re.findall(r"[a-z]+", " ".join(p.text for p in pages).casefold())
+    return not words or sum(w in ENGLISH_WORDS for w in words) >= 0.08 * len(words)
+
+
+CITATION = re.compile(r"\bet al\b|\bdoi\b|\b(?:19|20)\d{2}\b", re.IGNORECASE)
+
+
+def citation_like(text: str) -> bool:
+    """Reference lists carry years, 'et al' and DOIs densely; code tables and protocol text do not."""
+    return len(CITATION.findall(text)) * 1000 >= 2 * len(text)
+
+
+def starts_section(line: str, page: Page, last_chapter: int | None = None) -> bool:
+    """A detected heading, a line naming an outline entry (bookmark or verified contents) of its page, or,
+    without any outline, a layout chapter: the next chapter number in a larger or bold font."""
+    if line and canonical(line) in page.outline_titles:
+        return True
+    if is_heading(line):
+        number = section_number(line)
+        # A numbered line far beyond the current chapter is a table row or code ('25.3 mg', '17.2 ...').
+        return not (len(number) > 1 and last_chapter is not None and number[0] > last_chapter + 3)
+    return page.outline_source is None and layout_chapter(line, page, last_chapter)
+
+
+def layout_chapter(line: str, page: Page, last_chapter: int | None) -> bool:
+    """'5 Study Procedures' after chapter 4, set larger or bold than the body text. A numbered list item
+    breaks the chapter sequence ('1. Patients ...' inside chapter 7) or is set in the body font."""
+    number = section_number(line)
+    match = SECTION_NUMBER.match(line)
+    if len(number) != 1 or not match or last_chapter is None or number[0] != last_chapter + 1:
+        return False
+    title = match.group(2)
+    style = page.line_styles.get(canonical(line))
+    return (
+        len(title) <= 80
+        and not title.rstrip().endswith((".", ",", ";", ":"))
+        and style is not None
+        and (style[0] >= page.body_size + 1 or style[1])
+    )
+
+
+CHECKLIST_TITLE = re.compile(r"checklist\s+for\s+study\s+protocols", re.IGNORECASE)
+
+
+def names_checklist(line: str, heading: bool) -> bool:
+    """A heading naming a checklist, or the ENCePP questionnaire's own title line (headings may misspell it)."""
+    return len(line) <= 140 and (
+        bool(CHECKLIST_TITLE.search(line)) or (heading and "checklist" in line.casefold())
+    )
+
+
+def questionnaire_follows(page_lines: list[list[str]], index: int, line_number: int) -> bool:
+    """Questions and answer columns (Yes / No / N/A) within the next two pages: the title is not merely
+    listed in a contents page or a list of annexes."""
+    text = "\n".join(
+        page_lines[index][line_number + 1 :] + [l for p in page_lines[index + 1 : index + 3] for l in p]
+    )
+    return text.count("?") >= 5 and bool(re.search(r"\bYes\b[\s\S]{0,40}\bNo\b|\bN/A\b", text))
+
+
+def ends_checklist(line: str, page: Page) -> bool:
+    """The next appendix, outline entry or top-level chapter after the questionnaire."""
+    if "checklist" in line.casefold() or line.rstrip().endswith("?"):
+        return False
+    return (
+        bool(re.match(r"^(?:appendix|annex)\s+[A-Z0-9]+\b", line, re.IGNORECASE))
+        or canonical(line) in page.outline_titles
+        or (is_heading(line) and len(section_number(line)) == 1)
+    )
+
+
 def sections(pages: list[Page]) -> list[dict]:
     result = []
 
     chapters = {p.page: (p.chapter, p.chapter_top, p.chapter_path) for p in pages}
+    outline = {p.page: p.outline_source for p in pages}
+    # The chapter of the text being read: a page's outline chapter starts at its title line, so the text
+    # above that line still belongs to the previous page's chapter.
+    current = {"chapter": (None, None, None)}
 
-    def flush(buffer, page_number, current_heading):
+    def flush(buffer, page_number, current_heading, checklist=False):
         text = "\n".join(buffer).strip()
         if text:
-            chapter, chapter_top, chapter_path = chapters.get(page_number, (None, None, None))
+            chapter, chapter_top, chapter_path = current["chapter"]
             result.append(
                 {
                     "page": page_number,
@@ -178,74 +552,100 @@ def sections(pages: list[Page]) -> list[dict]:
                     "chapter": chapter,
                     "chapter_top": chapter_top,
                     "chapter_path": chapter_path,
+                    "outline_source": outline[page_number] if chapter else None,
                     "text": text,
-                    "relevant": bool(RELEVANT.search((current_heading or "") + " " + text)),
+                    "relevant": not checklist and bool(RELEVANT.search((current_heading or "") + " " + text)),
+                    **({"checklist": True} if checklist else {}),
                 }
             )
         buffer.clear()
 
-    checklist_heading = None
-    for p in pages:
-        appendix_headers = re.findall(r"(?im)^\s*((?:appendix|annex)\s+[^\n]{1,120})$", p.text)
-        if appendix_headers:
-            checklist_heading = (
-                appendix_headers[0].strip()
-                if len(appendix_headers) == 1 and "checklist" in appendix_headers[0].casefold()
-                else None
-            )
-        if checklist_heading:
-            # ENCePP's questionnaire contains numbered questions that mimic methods headings.
-            # Keep the appendix boundary across pages; those questions are not study methods.
-            result.append(
-                {
-                    "page": p.page,
-                    "section": checklist_heading,
-                    "text": p.text,
-                    "relevant": False,
-                    "checklist": True,
-                }
-            )
-            continue
-        if (
+    in_checklist = None  # the heading of the ENCePP questionnaire being read, if any
+    unconfirmed = set()  # (page, heading) named as a checklist without a questionnaire after it
+    last_chapter = None  # first number of the latest numbered heading, for the layout chapter sequence
+    page_lines = [[line.strip() for line in p.text.splitlines()] for p in pages]
+    for index, p in enumerate(pages):
+        lines = page_lines[index]
+        if not in_checklist and (
             re.search(r"(?im)^\s*(?:table of )?contents\s*$", p.text)
             or len(re.findall(r"\.{4,}\s*\d+", p.text)) >= 3
         ):
-            result.append({"page": p.page, "section": None, "text": p.text, "relevant": False, "toc": True})
+            chapter, chapter_top, chapter_path = chapters[p.page]
+            result.append(
+                {
+                    "page": p.page,
+                    "section": None,
+                    "chapter": chapter,
+                    "chapter_top": chapter_top,
+                    "chapter_path": chapter_path,
+                    "outline_source": p.outline_source,
+                    "text": p.text,
+                    "relevant": False,
+                    "toc": True,
+                }
+            )
             continue
-        lines = p.text.splitlines()
         current_heading = result[-1]["section"] if result and not result[-1].get("toc") else None
         if (
             current_heading
             and result[-1].get("chapter") != p.chapter
-            and not any(is_heading(line.strip()) for line in lines)
+            and not any(starts_section(line, p) for line in lines)
         ):
             # A page without a text heading that starts a new bookmark chapter begins that chapter, so the
             # previous page's heading does not carry over. A page with headings may start the chapter
             # midway; its leading text still continues the previous section.
             current_heading = None
         buffer = []
-        for line in lines:
-            line = line.strip()
-            if is_heading(line):
+        titled = any(canonical(line) in p.outline_titles for line in lines if line)
+        current["chapter"] = chapters[pages[index - 1].page] if titled and index else chapters[p.page]
+        for n, line in enumerate(lines):
+            if titled and line and canonical(line) in p.outline_titles:
+                flush(buffer, p.page, in_checklist or current_heading, checklist=bool(in_checklist))
+                current["chapter"] = p.outline_entries.get(canonical(line), chapters[p.page])
+            if in_checklist:
+                if not ends_checklist(line, p):
+                    buffer.append(line)
+                    continue
+                flush(buffer, p.page, in_checklist, checklist=True)
+                in_checklist = None
+            heading = starts_section(line, p, last_chapter)
+            if names_checklist(line, heading):
+                if questionnaire_follows(page_lines, index, n):
+                    # ENCePP's questionnaire has numbered questions that mimic methods headings: keep it as one
+                    # checklist block, from this line to the next appendix or top-level chapter.
+                    flush(buffer, p.page, current_heading)
+                    in_checklist = line
+                    buffer.append(line)
+                    continue
+                unconfirmed.add((p.page, line))
+            if heading:
                 flush(buffer, p.page, current_heading)
                 current_heading = line
+                last_chapter = section_number(line)[0] if section_number(line) else last_chapter
             if sum(map(len, buffer)) + len(line) > 5500:
                 flush(buffer, p.page, current_heading)
             buffer.append(line)
-        flush(buffer, p.page, current_heading)
+        if in_checklist:
+            flush(buffer, p.page, in_checklist, checklist=True)
+        else:
+            flush(buffer, p.page, current_heading)
     parent = None
     previous_number = ()
+    body_started = False  # a method-side or abstract section has been seen
     for i, chunk in enumerate(result):
         heading = chunk["section"]
-        match = re.match(r"^(\d+(?:\.\d+)*)\.?\s", heading or "")
-        number = tuple(int(x) for x in match.group(1).split(".")) if match else ()
+        number = section_number(heading)
         role = heading_role(heading)
+        basis = "heading" if role != "unknown" else "none"
         if role == "unknown" and chunk.get("chapter"):
-            # Bookmark outline beats a missed text heading; the top-level chapter supplies the context.
-            role = heading_role(chunk["chapter"])
-            if role == "unknown":
-                role = heading_role(chunk.get("chapter_top"))
+            # Bookmark outline beats a missed text heading: the nearest outline ancestor with a known role
+            # ('II.9.2 Setting' under 'II.9 Research Methods') supplies it.
+            path = (chunk.get("chapter_path") or chunk["chapter"]).split(" / ")
+            role = next((r for t in reversed(path) if (r := heading_role(t)) != "unknown"), "unknown")
+            basis = "bookmark" if role != "unknown" else basis
         warnings = []
+        if (chunk["page"], heading) in unconfirmed:
+            warnings.append("named as a checklist but no questionnaire follows; kept as protocol text")
         if number and previous_number and number < previous_number and heading != result[i - 1]["section"]:
             warnings.append("section_number_regression; verify heading against outline")
         if number:
@@ -263,29 +663,35 @@ def sections(pages: list[Page]) -> list[dict]:
             "introduction",
         } or bool(re.match(r"^(appendix|annex)\b", heading or "", re.IGNORECASE))
         top = chunk.get("chapter_top")
-        if (
-            top
-            and top != (result[i - 1].get("chapter_top") if i else None)
-            and heading_role(top) != "unknown"
+        if top and top != (result[i - 1].get("chapter_top") if i else None):
+            # A new top-level outline chapter replaces the parent context, also when its title has no known
+            # role: the previous chapter (often 'Background') has ended.
+            parent = {"heading": top, "role": heading_role(top), "number": section_number(top)}
+        if parent and number and parent["number"] and number[0] != parent["number"][0]:
+            # A numbered section outside the parent's chapter ('3.1' after '1. Background'): the chapter
+            # heading in between was missed, so the old parent must not impose its role.
+            parent = None
+        if heading and (
+            len(number) == 1 or (not number and (major_unnumbered or role != "unknown")) or parent is None
         ):
-            # A top-level bookmark chapter with a known role becomes the parent context; an outline title
-            # without one ('Part B') keeps the parent found from text headings.
-            parent = {"heading": top, "role": heading_role(top)}
-        if heading and (len(number) == 1 or (not number and major_unnumbered) or parent is None):
-            parent = {"heading": heading, "role": role}
+            parent = {"heading": heading, "role": role, "number": number}
         inherited = parent["role"] if parent else "unknown"
         if chunk.get("checklist"):
-            role = "checklist"
-            parent = {"heading": heading, "role": role}
+            role, basis = "checklist", "page_type"
+            parent = {"heading": heading, "role": role, "number": ()}
         elif chunk.get("toc"):
-            role = "contents"
+            role, basis = "contents", "page_type"
             parent = None
         elif (
             inherited in {"references", "administrative", "background"}
             and len(number) != 1
+            and basis != "bookmark"  # the outline places this section; a text parent does not override it
+            # A background chapter may hold this study's own objectives or methods ('7.4 Research question and
+            # objectives' in '7 Rationale and background'); sections of a reference list never do.
+            and not (inherited == "background" and role in METHOD_ROLES)
             or role == "unknown"
         ):
-            role = inherited
+            role, basis = inherited, ("parent" if inherited != "unknown" else "none")
         chunk.update(
             section_id=f"s{i + 1:04}",
             role=role,
@@ -294,10 +700,28 @@ def sections(pages: list[Page]) -> list[dict]:
             previous_section=result[i - 1]["section"] if i else None,
             next_section=result[i + 1]["section"] if i + 1 < len(result) else None,
             structure_warnings=warnings,
+            role_basis=basis,  # heading, bookmark, parent, page_type or none: how sure the role is
         )
+        if role == "references" and len(chunk["text"]) >= 300 and not citation_like(chunk["text"]):
+            # A references heading carried over code tables or a next chapter it did not detect.
+            role, basis = "unknown", "content"
+            chunk["role"], chunk["role_basis"] = role, basis
+        body_started = body_started or role in METHOD_ROLES or role == "abstract"
         chunk["relevant"] = role not in NON_METHOD_ROLES and (
-            role != "unknown" or chunk["relevant"] or bool(expand(chunk["text"][:1900])["concepts"])
+            role != "unknown"
+            or chunk["relevant"]
+            or bool(expand(chunk["text"][:1900])["concepts"])
+            # Inside the protocol body, an unnamed subsection ('5.5.1 Primary endpoint' under '5 Procedures')
+            # is read unless its chapter is background, administration or references.
+            or (body_started and chunk["context_role"] not in NON_METHOD_ROLES)
         )
+    headed = [c for c in result if c["section"] and not c.get("toc") and not c.get("checklist")]
+    if not english(pages) or (headed and sum(c["role"] == "unknown" for c in headed) > 0.6 * len(headed)):
+        # The role and signal words are English: when they recognise few of the document's headings (another
+        # language or an unusual template), an unknown section is read rather than dropped for lack of them.
+        for c in result:
+            if c["role"] == "unknown":
+                c["relevant"] = True
     return result
 
 
@@ -315,10 +739,17 @@ def reading_order(chunks: list[dict]) -> list[dict]:
     plus its code lists. Without bookmarks every relevant section is returned as before.
     """
     relevant = [c for c in chunks if c["relevant"]]
-    if not any(c.get("chapter") for c in chunks):
+    # The appendix filter needs the PDF's own bookmarks: an outline read from a contents page may miss the
+    # appendices' structure, so those PDFs read every relevant section as before.
+    if not any(c.get("outline_source") == "bookmarks" for c in chunks):
         return relevant
     body = [c for c in relevant if c["role"] != "appendix"]
-    referenced = {m.group(1).casefold() for c in body for m in APPENDIX_REF.finditer(c["text"]) if m.group(1)}
+    # Any protocol text may cite an appendix ('the protocols attached as Appendix I' in a preamble), but not
+    # the appendices, references, checklists or contents pages themselves.
+    citing = [c for c in chunks if c["role"] not in {"appendix", "references", "checklist", "contents"}]
+    referenced = {
+        m.group(1).casefold() for c in citing for m in APPENDIX_REF.finditer(c["text"]) if m.group(1)
+    }
 
     def is_referenced(chunk) -> bool:
         # The whole outline path: a sub-bookmark ('12.3.2 Terms for outcome mapping') belongs to its annex.
@@ -328,8 +759,9 @@ def reading_order(chunks: list[dict]) -> list[dict]:
         chapter = chunk.get("chapter") or ""
         if "checklist" in chapter.casefold():
             return False  # ENCePP checklists mimic method headings but are not this study's methods
-        # Code lists and variable definitions are read even without an explicit cross-reference.
-        if CODE_LIST_TITLE.search(chapter):
+        # Code lists and variable definitions are read even without an explicit cross-reference; the title may
+        # be any level of the outline ('Appendix I: Definitions of study outcomes / ... / Staging').
+        if CODE_LIST_TITLE.search(chunk.get("chapter_path") or chapter):
             return True
         return any(m.group(1).casefold() in referenced for m in APPENDIX_REF.finditer(label) if m.group(1))
 
@@ -382,11 +814,11 @@ def validate_evidence(extraction: Extraction, pages: list[Page], chunks: list[di
             if (
                 require_methods
                 and containing_chunks
-                and all(c["role"] in NON_METHOD_ROLES for c in containing_chunks)
+                and all(c["role"] in EVIDENCE_REJECT_ROLES for c in containing_chunks)
             ):
                 raise RWEError(
                     "EVIDENCE_WRONG_SECTION",
-                    "Method/data-source evidence comes only from background, references, checklist or administrative content.",
+                    "Method/data-source evidence comes only from background, references, contents or checklist content.",
                 )
             if evidence.section is not None:
                 matching = [

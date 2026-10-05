@@ -1,0 +1,2539 @@
+{
+ "description": "Independent structure labels for the eval split; made from page text only, without running the section/reading code.",
+ "labeller": "subagent (Claude Opus), 2026-10-05; not yet checked by a human",
+ "protocols": [
+  {
+   "study_id": "19786",
+   "file": "pdf_19786_674a35befc8335fa71274f84687738e51d7bc386b5e33e801f5dfed8d4ab0d91.pdf",
+   "sha256": "674a35befc8335fa71274f84687738e51d7bc386b5e33e801f5dfed8d4ab0d91",
+   "headings": [
+    {
+     "page": 4,
+     "level": 1,
+     "text": "I    Background and Preamble"
+    },
+    {
+     "page": 6,
+     "level": 1,
+     "text": "II    Database study of GLP-1 Receptor Agonists and Risk of Acute  Pancreatitis,"
+    },
+    {
+     "page": 6,
+     "level": 2,
+     "text": "II.1  Title"
+    },
+    {
+     "page": 6,
+     "level": 2,
+     "text": "II.2  Marketing Authorisation Holder"
+    },
+    {
+     "page": 6,
+     "level": 2,
+     "text": "II.3  Responsible Parties"
+    },
+    {
+     "page": 7,
+     "level": 2,
+     "text": "II.4  Abstract"
+    },
+    {
+     "page": 9,
+     "level": 2,
+     "text": "II.5  Amendments and Updates"
+    },
+    {
+     "page": 9,
+     "level": 2,
+     "text": "II.6  Milestones (events in months)"
+    },
+    {
+     "page": 9,
+     "level": 2,
+     "text": "II.7  Rationale and Background"
+    },
+    {
+     "page": 13,
+     "level": 2,
+     "text": "II.8. Research Question and Objectives"
+    },
+    {
+     "page": 14,
+     "level": 2,
+     "text": "II.9 Research Methods"
+    },
+    {
+     "page": 27,
+     "level": 2,
+     "text": "II.10 Protection of Human Subjects"
+    },
+    {
+     "page": 27,
+     "level": 2,
+     "text": "II.11 Management and Reporting of Adverse events/ reactions"
+    },
+    {
+     "page": 27,
+     "level": 2,
+     "text": "II.12 Plans for disseminating and communicating study results"
+    },
+    {
+     "page": 28,
+     "level": 2,
+     "text": "II.13 References cited in the text"
+    },
+    {
+     "page": 32,
+     "level": 1,
+     "text": "III   Patient Registry of Lixisenatide Use in Adult Type 2 Diabetes"
+    },
+    {
+     "page": 32,
+     "level": 2,
+     "text": "III.1        Title"
+    },
+    {
+     "page": 32,
+     "level": 2,
+     "text": "III.2      Marketing Authorization Holder"
+    },
+    {
+     "page": 32,
+     "level": 2,
+     "text": "III.3 Responsible Parties"
+    },
+    {
+     "page": 33,
+     "level": 2,
+     "text": "III.4       Abstract"
+    },
+    {
+     "page": 35,
+     "level": 2,
+     "text": "III.5 Amendments and Updates"
+    },
+    {
+     "page": 35,
+     "level": 2,
+     "text": "III.6 Milestones (events in months)"
+    },
+    {
+     "page": 35,
+     "level": 2,
+     "text": "III.7       Rationale and Background"
+    },
+    {
+     "page": 40,
+     "level": 2,
+     "text": "III.8      Research Question and Objectives"
+    },
+    {
+     "page": 42,
+     "level": 2,
+     "text": "III.9      Research Methods"
+    },
+    {
+     "page": 51,
+     "level": 2,
+     "text": "III.10      Protection of Human Subjects"
+    },
+    {
+     "page": 51,
+     "level": 2,
+     "text": "III.11     Management and Reporting of adverse events/reactions"
+    },
+    {
+     "page": 51,
+     "level": 2,
+     "text": "III.12     Plans for disseminating and communicating study results"
+    },
+    {
+     "page": 52,
+     "level": 2,
+     "text": "III.13     References"
+    },
+    {
+     "page": 56,
+     "level": 1,
+     "text": "Appendix I"
+    },
+    {
+     "page": 62,
+     "level": 1,
+     "text": "Appendix II"
+    },
+    {
+     "page": 219,
+     "level": 1,
+     "text": "Appendix III"
+    },
+    {
+     "page": 238,
+     "level": 1,
+     "text": "Appendix IV"
+    },
+    {
+     "page": 240,
+     "level": 1,
+     "text": "Appendix V"
+    }
+   ],
+   "checklist": null,
+   "key_passages": [
+    {
+     "page": 7,
+     "kind": "design",
+     "location": "II.4  Abstract",
+     "quote": "A series of retrospective cohort studies will be conducted based on prescription databases in Denmark, Norway, and Sweden"
+    },
+    {
+     "page": 14,
+     "kind": "design",
+     "location": "II.9 Research Methods",
+     "quote": "The study will have a retrospective observational (cohort) design using prescription databases as a source of patients"
+    },
+    {
+     "page": 16,
+     "kind": "cohort_criterion",
+     "location": "II.9 Research Methods",
+     "quote": "Individuals with a diagnosis of thyroid cancer, pancreatic cancer, or any pancreatitis prior to cohort entry."
+    },
+    {
+     "page": 16,
+     "kind": "cohort_criterion",
+     "location": "II.9 Research Methods",
+     "quote": "Patients with diabetes will be identified as having been prescribed at least one prescription for an anti-diabetic drug"
+    },
+    {
+     "page": 17,
+     "kind": "index_follow_up",
+     "location": "II.9 Research Methods",
+     "quote": "The starting date for an individual in the study is the date of first prescription of either exenatide or liraglutide for cohort 1"
+    },
+    {
+     "page": 17,
+     "kind": "exposure_definition",
+     "location": "II.9 Research Methods",
+     "quote": "New users are defined as patients who initiated either GLP-1 treatment or other anti- diabetic drugs at least 6 months after the start date"
+    },
+    {
+     "page": 19,
+     "kind": "outcome_definition",
+     "location": "II.9 Research Methods",
+     "quote": "Acute pancreatitis cases will be identified from the hospital discharge registers."
+    },
+    {
+     "page": 20,
+     "kind": "data_source",
+     "location": "II.9 Research Methods",
+     "quote": "The Register of Medicinal Products contains data from 1995 on almost all prescription drugs dispensed at all Danish pharmacies"
+    },
+    {
+     "page": 22,
+     "kind": "code_list",
+     "location": "II.9 Research Methods",
+     "quote": "The ICD10 codes will be used for outcome assessment: acute pancreatitis (K85), pancreatic cancer (C25) and thyroid cancer (C73)"
+    },
+    {
+     "page": 25,
+     "kind": "analysis",
+     "location": "II.9 Research Methods",
+     "quote": "Hazard ratios (95% CIs) of pancreatitis, pancreatic cancer and thyroid cancer associated with the treatment of GLP-1 RAs versus other anti-diabetics"
+    },
+    {
+     "page": 241,
+     "kind": "code_list",
+     "location": "Appendix V",
+     "quote": "A10A - Insulins and analogues A10AB - Insulins and analogues for injection, fast-acting"
+    },
+    {
+     "page": 43,
+     "kind": "cohort_criterion",
+     "location": "III.9      Research Methods",
+     "quote": "The patients will be identified as having been prescribed at least one prescription for the GLP-1 RA lixisenatide."
+    }
+   ]
+  },
+  {
+   "study_id": "49951",
+   "file": "pdf_49951_c55d7da6f4349af35901b7bc3ab81558787cec3b9cd29e782bda67b5d8cadff0.pdf",
+   "sha256": "c55d7da6f4349af35901b7bc3ab81558787cec3b9cd29e782bda67b5d8cadff0",
+   "headings": [
+    {
+     "page": 3,
+     "level": 1,
+     "text": "STUDY INFORMATION"
+    },
+    {
+     "page": 6,
+     "level": 1,
+     "text": "2  LIST OF ABBREVIATIONS"
+    },
+    {
+     "page": 8,
+     "level": 1,
+     "text": "3  RESPONSIBLE PARTIES"
+    },
+    {
+     "page": 9,
+     "level": 1,
+     "text": "4  ABSTRACT"
+    },
+    {
+     "page": 12,
+     "level": 1,
+     "text": "5  AMENDMENTS AND UPDATES"
+    },
+    {
+     "page": 12,
+     "level": 1,
+     "text": "6  MILESTONES"
+    },
+    {
+     "page": 13,
+     "level": 1,
+     "text": "7  RATIONALE AND BACKGROUND"
+    },
+    {
+     "page": 15,
+     "level": 1,
+     "text": "8  RESEARCH QUESTION AND OBJECTIVES"
+    },
+    {
+     "page": 15,
+     "level": 1,
+     "text": "9  RESEARCH METHODS"
+    },
+    {
+     "page": 15,
+     "level": 2,
+     "text": "9.1 STUDY DESIGN"
+    },
+    {
+     "page": 18,
+     "level": 2,
+     "text": "9.2 SETTING"
+    },
+    {
+     "page": 20,
+     "level": 2,
+     "text": "9.3 VARIABLES"
+    },
+    {
+     "page": 21,
+     "level": 2,
+     "text": "9.4 DATA SOURCES"
+    },
+    {
+     "page": 23,
+     "level": 2,
+     "text": "9.5 STUDY SIZE"
+    },
+    {
+     "page": 23,
+     "level": 2,
+     "text": "9.6 DATA MANAGEMENT"
+    },
+    {
+     "page": 23,
+     "level": 2,
+     "text": "9.7 DATA ANALYSIS"
+    },
+    {
+     "page": 25,
+     "level": 2,
+     "text": "9.8 QUALITY CONTROL"
+    },
+    {
+     "page": 26,
+     "level": 2,
+     "text": "9.9 LIMITATIONS OF THE RESEARCH METHODS"
+    },
+    {
+     "page": 27,
+     "level": 2,
+     "text": "9.10 OTHER ASPECTS"
+    },
+    {
+     "page": 28,
+     "level": 1,
+     "text": "10 PROTECTION OF HUMAN SUBJECTS"
+    },
+    {
+     "page": 28,
+     "level": 1,
+     "text": "11 MANAGEMENT AND REPORTING OF ADVERSE EVENTS/ADVERSE REACTIONS"
+    },
+    {
+     "page": 28,
+     "level": 1,
+     "text": "12 PLANS FOR DISSEMINATING AND COMMUNATING STUDY RESULTS"
+    },
+    {
+     "page": 29,
+     "level": 1,
+     "text": "13 REFERENCES"
+    },
+    {
+     "page": 33,
+     "level": 1,
+     "text": "APPENDIX 1 - CASE-POPULATION RATIO (CPR)"
+    },
+    {
+     "page": 34,
+     "level": 1,
+     "text": "APPENDIX 2 - CASE-POPULATION RATIOS (CPR) FOR VARIOUS VALUES OF"
+    },
+    {
+     "page": 35,
+     "level": 1,
+     "text": "APPENDIX 3 - ALCAPONE EVENT OF INTEREST CODES"
+    },
+    {
+     "page": 37,
+     "level": 1,
+     "text": "APPENDIX 4 - OMOP REFERENCE SET"
+    },
+    {
+     "page": 41,
+     "level": 1,
+     "text": "APPENDIX 5 - ENCEPP CHEKLIST FOR STUDY PROTOCOLS"
+    },
+    {
+     "page": 46,
+     "level": 1,
+     "text": "APPENDIX 6 - SIGNATURE PAGES"
+    }
+   ],
+   "checklist": {
+    "start_page": 41,
+    "start_text": "ENCePP Checklist for Study Protocols (Revision 2, amended)",
+    "end_page": 45
+   },
+   "key_passages": [
+    {
+     "page": 15,
+     "kind": "design",
+     "location": "9.1 STUDY DESIGN",
+     "quote": "This study will be a several-stage study using historical data in the national claims databases SNIIRAM and EGB"
+    },
+    {
+     "page": 16,
+     "kind": "index_follow_up",
+     "location": "9.1 STUDY DESIGN",
+     "quote": "Principal index date will be considered for each sub-study as the date of hospital admission for the first occurrence of the event of interest"
+    },
+    {
+     "page": 19,
+     "kind": "cohort_criterion",
+     "location": "9.2 SETTING",
+     "quote": "Besides, patients presenting one of the following associated diagnoses will be excluded:"
+    },
+    {
+     "page": 19,
+     "kind": "outcome_definition",
+     "location": "9.2 SETTING",
+     "quote": "Acute liver injury will be defined as “toxic liver disease” and “acute and subacute hepatic failure”."
+    },
+    {
+     "page": 20,
+     "kind": "outcome_definition",
+     "location": "9.2 SETTING",
+     "quote": "Upper gastrointestinal bleeding will be defined as gastric, duodenal, peptic or gastrojejunal ulcer."
+    },
+    {
+     "page": 21,
+     "kind": "exposure_definition",
+     "location": "9.3 VARIABLES",
+     "quote": "exposure to the drugs of interest will be defined initially as any exposure within 30 days before event onset (exposure window)."
+    },
+    {
+     "page": 21,
+     "kind": "data_source",
+     "location": "9.4 DATA SOURCES",
+     "quote": "SNIIRAM database is the nationwide healthcare insurance system database that contains individual anonymous information"
+    },
+    {
+     "page": 23,
+     "kind": "analysis",
+     "location": "9.7 DATA ANALYSIS",
+     "quote": "Odds ratios (OR) will be calculated according to standard procedures using conditional logistic regression models (49)."
+    },
+    {
+     "page": 25,
+     "kind": "analysis",
+     "location": "9.7 DATA ANALYSIS",
+     "quote": "the receptor operating characteristics (ROC) will be used to choose the best compromise between sensitivity and specificity"
+    },
+    {
+     "page": 35,
+     "kind": "code_list",
+     "location": "APPENDIX 3 - ALCAPONE EVENT OF INTEREST CODES",
+     "quote": "K71.1 Toxic liver disease with hepatic necrosis K71.2 Toxic liver disease with acute hepatitis"
+    },
+    {
+     "page": 10,
+     "kind": "index_follow_up",
+     "location": "4  ABSTRACT",
+     "quote": "Principal index date will be considered as the date of hospital admission for the event of interest."
+    }
+   ]
+  },
+  {
+   "study_id": "32664",
+   "file": "pdf_32664_a14e401f3c1a2e7506f7c225089c650248dc040a70400c617862cd8f0b29d822.pdf",
+   "sha256": "a14e401f3c1a2e7506f7c225089c650248dc040a70400c617862cd8f0b29d822",
+   "headings": [
+    {
+     "page": 2,
+     "level": 1,
+     "text": "1.    PASS INFORMATION"
+    },
+    {
+     "page": 3,
+     "level": 1,
+     "text": "2.    MARKETING AUTHORIZATION HOLDER(S)"
+    },
+    {
+     "page": 3,
+     "level": 1,
+     "text": "3.    RESPONSIBLE PARTIES"
+    },
+    {
+     "page": 5,
+     "level": 1,
+     "text": "4.    Amendments and UpdatesVersion:1.0"
+    },
+    {
+     "page": 5,
+     "level": 1,
+     "text": "5.    ABSTRACT"
+    },
+    {
+     "page": 7,
+     "level": 1,
+     "text": "6.    MILESTONES"
+    },
+    {
+     "page": 8,
+     "level": 1,
+     "text": "LIST OF ABBREVIATIONS AND DEFINITIONS OF TERMS"
+    },
+    {
+     "page": 8,
+     "level": 1,
+     "text": "7.    BACKGROUND AND RATIONALE"
+    },
+    {
+     "page": 9,
+     "level": 1,
+     "text": "8.    RESEARCH QUESTION AND OBJECTIVES"
+    },
+    {
+     "page": 10,
+     "level": 1,
+     "text": "9.    RESEARCH METHODS"
+    },
+    {
+     "page": 10,
+     "level": 2,
+     "text": "9.1.   Study DesignStatus:Approved      This is an evaluation of existing data sources to study the real-world abuse, misuse, and non-"
+    },
+    {
+     "page": 11,
+     "level": 2,
+     "text": "9.2.    Setting and Patient PopulationID:"
+    },
+    {
+     "page": 12,
+     "level": 2,
+     "text": "9.3.    Variables"
+    },
+    {
+     "page": 12,
+     "level": 2,
+     "text": "9.4.   Data Sources"
+    },
+    {
+     "page": 13,
+     "level": 2,
+     "text": "9.5.   Study Size"
+    },
+    {
+     "page": 14,
+     "level": 2,
+     "text": "9.6.   Data ManagementStatus:Approved      All data used in this study are considered secondary data sources. Data management specific to"
+    },
+    {
+     "page": 14,
+     "level": 2,
+     "text": "Doc        9.7.   Data Analysis"
+    },
+    {
+     "page": 15,
+     "level": 2,
+     "text": "9.8.    Quality Control"
+    },
+    {
+     "page": 15,
+     "level": 2,
+     "text": "9.9.    Limitations of the Research Methods"
+    },
+    {
+     "page": 15,
+     "level": 1,
+     "text": "10.   PROTECTION OF HUMAN SUBJECTS"
+    },
+    {
+     "page": 15,
+     "level": 1,
+     "text": "11.   MANAGEMENT AND REPORTING OF ADVERSE EVENTS/ADVERSE"
+    },
+    {
+     "page": 16,
+     "level": 1,
+     "text": "12.   PLANS FOR DISSEMINATING AND COMMUNICATING STUDY RESULTS"
+    },
+    {
+     "page": 16,
+     "level": 1,
+     "text": "J0255846     13.   REFERENCES"
+    },
+    {
+     "page": 16,
+     "level": 1,
+     "text": "ANNEX 1: STAND-ALONE DOCUMENTS AND ADDITIONAL INFORMATION"
+    },
+    {
+     "page": 17,
+     "level": 1,
+     "text": "Version:1.0    ANNEX 2: ENCEPP CHECKLIST FOR STUDY PROTOCOLS"
+    }
+   ],
+   "checklist": {
+    "start_page": 17,
+    "start_text": "ANNEX 2: ENCEPP CHECKLIST FOR STUDY PROTOCOLS",
+    "end_page": 20
+   },
+   "key_passages": [
+    {
+     "page": 6,
+     "kind": "design",
+     "location": "5.    ABSTRACT",
+     "quote": "This is a retrospective non-interventional study of secondary data sources to document the misuse and abuse of loperamide in the US."
+    },
+    {
+     "page": 10,
+     "kind": "design",
+     "location": "9.1.   Study DesignStatus:Approved      This is an evaluation of existing data sources to study the real-world abuse, misuse, and non-",
+     "quote": "This is a retrospective, non-interventional study to document abuse, misuse, and non-medical use of loperamide in the US"
+    },
+    {
+     "page": 10,
+     "kind": "data_source",
+     "location": "9.1.   Study DesignStatus:Approved      This is an evaluation of existing data sources to study the real-world abuse, misuse, and non-",
+     "quote": "For this study, NPDS will be queried for all exposures to loperamide-containing products from 2012 to 2017."
+    },
+    {
+     "page": 11,
+     "kind": "cohort_criterion",
+     "location": "9.2.    Setting and Patient PopulationID:",
+     "quote": "Exposure to at least one loperamide-containing product. 2. Exposure occurred between 01 January 2012 and 31 December 2017."
+    },
+    {
+     "page": 11,
+     "kind": "cohort_criterion",
+     "location": "9.2.    Setting and Patient PopulationID:",
+     "quote": "1. Completion of the 2016 NMU-Rx survey. 2. Residing in the US at the time of survey completion."
+    },
+    {
+     "page": 12,
+     "kind": "exposure_definition",
+     "location": "9.4.   Data Sources",
+     "quote": "Exposures are defined as any actual or suspected contact with any substance which has been ingested, inhaled, absorbed, applied to, or injected"
+    },
+    {
+     "page": 13,
+     "kind": "exposure_definition",
+     "location": "9.4.   Data Sources",
+     "quote": "Lifetime NMU on the questionnaire is defined as ever using the product for any reason other than what was recommended by your"
+    },
+    {
+     "page": 13,
+     "kind": "data_source",
+     "location": "9.4.   Data Sources",
+     "quote": "IRI is a commercially available data source providing point of sales data for loperamide products."
+    },
+    {
+     "page": 14,
+     "kind": "analysis",
+     "location": "Doc        9.7.   Data Analysis",
+     "quote": "Descriptive statistics only are utilized in this study; no formal statistical analyses are planned."
+    },
+    {
+     "page": 14,
+     "kind": "analysis",
+     "location": "Doc        9.7.   Data Analysis",
+     "quote": "For the NPDS analyses, patients will be stratified by those who report intentional abuse or misuse and those who report another reason for exposure."
+    },
+    {
+     "page": 8,
+     "kind": "outcome_definition",
+     "location": "LIST OF ABBREVIATIONS AND DEFINITIONS OF TERMS",
+     "quote": "An exposure resulting from the intentional improper or incorrect use of a substance where"
+    }
+   ]
+  },
+  {
+   "study_id": "34735",
+   "file": "pdf_34735_8ef50e112456643ca05510bf5a287bf51bd87c344291f619875a70f9fcb67857.pdf",
+   "sha256": "8ef50e112456643ca05510bf5a287bf51bd87c344291f619875a70f9fcb67857",
+   "headings": [
+    {
+     "page": 1,
+     "level": 1,
+     "text": "1 Introduction"
+    },
+    {
+     "page": 1,
+     "level": 1,
+     "text": "2 Aim"
+    },
+    {
+     "page": 1,
+     "level": 1,
+     "text": "3 Methods"
+    },
+    {
+     "page": 2,
+     "level": 2,
+     "text": "3.1 Study population"
+    },
+    {
+     "page": 2,
+     "level": 2,
+     "text": "3.2 Data sources"
+    },
+    {
+     "page": 2,
+     "level": 2,
+     "text": "3.3 Follow up"
+    },
+    {
+     "page": 3,
+     "level": 2,
+     "text": "3.4 Exposure"
+    },
+    {
+     "page": 3,
+     "level": 2,
+     "text": "3.5 Outcomes"
+    },
+    {
+     "page": 4,
+     "level": 2,
+     "text": "3.6 Confounding"
+    },
+    {
+     "page": 5,
+     "level": 2,
+     "text": "3.7 Descriptive analyses"
+    },
+    {
+     "page": 6,
+     "level": 2,
+     "text": "3.8 Statistical analysis and risk estimates"
+    },
+    {
+     "page": 6,
+     "level": 2,
+     "text": "3.9 Sensitivity analyses"
+    },
+    {
+     "page": 7,
+     "level": 2,
+     "text": "3.10 Ethical aspects and data protection"
+    },
+    {
+     "page": 7,
+     "level": 1,
+     "text": "4 Timeline"
+    },
+    {
+     "page": 8,
+     "level": 1,
+     "text": "5. Data management"
+    },
+    {
+     "page": 8,
+     "level": 1,
+     "text": "6. Dissemination"
+    },
+    {
+     "page": 8,
+     "level": 1,
+     "text": "7. Amendments and deviations"
+    },
+    {
+     "page": 9,
+     "level": 1,
+     "text": "Figures"
+    },
+    {
+     "page": 10,
+     "level": 1,
+     "text": "References"
+    },
+    {
+     "page": 12,
+     "level": 1,
+     "text": "7 Appendix"
+    }
+   ],
+   "checklist": {
+    "start_page": 15,
+    "start_text": "ENCePP Checklist for Study Protocols (Revision 4)",
+    "end_page": 21
+   },
+   "key_passages": [
+    {
+     "page": 1,
+     "kind": "design",
+     "location": "3 Methods",
+     "quote": "Danish nationwide registry-based cohort study. All individuals tested positive for severe acute respiratory syndrome coronavirus 2"
+    },
+    {
+     "page": 2,
+     "kind": "cohort_criterion",
+     "location": "3.1 Study population",
+     "quote": "all individuals are required to have resided in Denmark continuously the year preceding the positive test result."
+    },
+    {
+     "page": 2,
+     "kind": "data_source",
+     "location": "3.2 Data sources",
+     "quote": "All Danish RT-PCR tests for SARS-CoV-2 are reported to the Danish Microbiology Database, from which the study population will be identified (5)."
+    },
+    {
+     "page": 2,
+     "kind": "index_follow_up",
+     "location": "3.3 Follow up",
+     "quote": "Follow-up will begin at the date of the first positive RT-PCR for SARS-CoV-2 (Figure 1). The outcome assessment window for death is 30 days."
+    },
+    {
+     "page": 3,
+     "kind": "cohort_criterion",
+     "location": "3.3 Follow up",
+     "quote": "Patients with an outcome of interest occurring in 30 days to one day before the test date is excluded."
+    },
+    {
+     "page": 3,
+     "kind": "exposure_definition",
+     "location": "3.4 Exposure",
+     "quote": "The exposure of interest is a filled prescription for any NSAID in the 30 days leading up to the date of positive SARS-CoV-2 test"
+    },
+    {
+     "page": 3,
+     "kind": "outcome_definition",
+     "location": "3.5 Outcomes",
+     "quote": "30-day mortality after positive RT-PCR for SARS-CoV-2 as identified using the Danish Register of Causes of Deaths (9)."
+    },
+    {
+     "page": 4,
+     "kind": "analysis",
+     "location": "3.6 Confounding",
+     "quote": "Individuals in the unexposed cohort will be matched to exposed individuals on PS in a variable 4:1 ratio (15) using a nearest neighbour algorithm"
+    },
+    {
+     "page": 6,
+     "kind": "analysis",
+     "location": "3.8 Statistical analysis and risk estimates",
+     "quote": "Risk, risk difference, risk ratio estimated using generalized linear models (binomial distribution)."
+    },
+    {
+     "page": 12,
+     "kind": "code_list",
+     "location": "7 Appendix",
+     "quote": "NSAID ATC M01A (excluding M01AX)"
+    },
+    {
+     "page": 13,
+     "kind": "code_list",
+     "location": "7 Appendix",
+     "quote": "NABB, NABE Admission to intensive care unit SKS"
+    }
+   ]
+  },
+  {
+   "study_id": "50477",
+   "file": "pdf_50477_b1f5d013211d2c93ed8775b6e63d09a2f42b46ad0b30c0d306d7915c95572bf2.pdf",
+   "sha256": "b1f5d013211d2c93ed8775b6e63d09a2f42b46ad0b30c0d306d7915c95572bf2",
+   "headings": [
+    {
+     "page": 5,
+     "level": 1,
+     "text": "2  LIST OF ABBREVIATIONS"
+    },
+    {
+     "page": 7,
+     "level": 1,
+     "text": "3  RESPONSIBLE PARTIES"
+    },
+    {
+     "page": 9,
+     "level": 1,
+     "text": "4  ABSTRACT"
+    },
+    {
+     "page": 13,
+     "level": 1,
+     "text": "5  AMENDMENTS AND UPDATES"
+    },
+    {
+     "page": 14,
+     "level": 1,
+     "text": "6  MILESTONES"
+    },
+    {
+     "page": 14,
+     "level": 1,
+     "text": "7  RATIONALE AND BACKGROUND"
+    },
+    {
+     "page": 19,
+     "level": 1,
+     "text": "8  RESEARCH QUESTION AND OBJECTIVES"
+    },
+    {
+     "page": 20,
+     "level": 1,
+     "text": "9  RESEARCH METHODS"
+    },
+    {
+     "page": 20,
+     "level": 2,
+     "text": "9.1  Study design"
+    },
+    {
+     "page": 21,
+     "level": 2,
+     "text": "9.2   Setting"
+    },
+    {
+     "page": 24,
+     "level": 2,
+     "text": "9.3   Variables"
+    },
+    {
+     "page": 35,
+     "level": 2,
+     "text": "9.4  Data sources"
+    },
+    {
+     "page": 35,
+     "level": 2,
+     "text": "9.5  Study size"
+    },
+    {
+     "page": 35,
+     "level": 2,
+     "text": "9.6  Data management"
+    },
+    {
+     "page": 37,
+     "level": 2,
+     "text": "9.7  Data analysis"
+    },
+    {
+     "page": 48,
+     "level": 2,
+     "text": "9.8  Quality control"
+    },
+    {
+     "page": 48,
+     "level": 2,
+     "text": "9.9   Limitations of the research methods"
+    },
+    {
+     "page": 50,
+     "level": 2,
+     "text": "9.10 Other aspects"
+    },
+    {
+     "page": 50,
+     "level": 1,
+     "text": "10 PROTECTION OF HUMAN SUBJECTS"
+    },
+    {
+     "page": 51,
+     "level": 1,
+     "text": "11 MANAGEMENT AND REPORTING OF ADVERSE EVENTS/ADVERSE REACTIONS"
+    },
+    {
+     "page": 51,
+     "level": 1,
+     "text": "12 PLANS FOR DISSEMINATING AND COMMUNICATING STUDY RESULTS"
+    },
+    {
+     "page": 51,
+     "level": 1,
+     "text": "13 REFERENCES"
+    },
+    {
+     "page": 54,
+     "level": 1,
+     "text": "APPENDIX 1. LIST OF STAND-ALONE DOCUMENTS"
+    },
+    {
+     "page": 54,
+     "level": 1,
+     "text": "APPENDIX 2. ENCEPP CHECKLIST FOR STUDY PROTOCOLS"
+    },
+    {
+     "page": 54,
+     "level": 1,
+     "text": "APPENDIX 3. ADDITIONAL INFORMATION"
+    },
+    {
+     "page": 55,
+     "level": 1,
+     "text": "APPENDIX 4. DESCRIPTION OF DIFFERENT DATA SOURCES"
+    }
+   ],
+   "checklist": null,
+   "key_passages": [
+    {
+     "page": 20,
+     "kind": "design",
+     "location": "9.1  Study design",
+     "quote": "The study will be a non-interventional retrospective cohort study of SMA patients using 7 European registries federated in the TREAT-NMD network."
+    },
+    {
+     "page": 21,
+     "kind": "cohort_criterion",
+     "location": "9.2   Setting",
+     "quote": "The primary study population will include all SMA patients with genetically confirmed 5q SMA entered in each of the registries selected"
+    },
+    {
+     "page": 22,
+     "kind": "cohort_criterion",
+     "location": "9.2   Setting",
+     "quote": "Patients with at least the month and the year of birth date"
+    },
+    {
+     "page": 23,
+     "kind": "index_follow_up",
+     "location": "9.2   Setting",
+     "quote": "Patients will be followed from the cohort entry date (registry entry) until the earliest of end of study, or death"
+    },
+    {
+     "page": 24,
+     "kind": "exposure_definition",
+     "location": "9.3   Variables",
+     "quote": "Treated with at least one DMT is defined as: ● The “DMT received field” is Yes"
+    },
+    {
+     "page": 25,
+     "kind": "exposure_definition",
+     "location": "9.3   Variables",
+     "quote": "For risdiplam (Evrysdi®) that should be taken daily, patients are considered exposed from the first intake date to the stop date"
+    },
+    {
+     "page": 32,
+     "kind": "outcome_definition",
+     "location": "9.3   Variables",
+     "quote": "≥16 hours of invasive or non-invasive ventilation/day continuously for >21 days in the absence of an acute reversible event."
+    },
+    {
+     "page": 33,
+     "kind": "outcome_definition",
+     "location": "9.3   Variables",
+     "quote": "The following events will be searched among the causes of death and hospitalisation, even if they were not identified as DMT-related"
+    },
+    {
+     "page": 35,
+     "kind": "data_source",
+     "location": "9.4  Data sources",
+     "quote": "This study will use data from multiple existing SMA registries across Europe."
+    },
+    {
+     "page": 37,
+     "kind": "analysis",
+     "location": "9.7  Data analysis",
+     "quote": "Pooled analysis using patient-level data or meta-analysis using aggregate data will be performed when appropriate."
+    },
+    {
+     "page": 55,
+     "kind": "data_source",
+     "location": "APPENDIX 4. DESCRIPTION OF DIFFERENT DATA SOURCES",
+     "quote": "The 7 is a national clinician-based registry which started in 2010, with 177 adults and children SMA patients included"
+    },
+    {
+     "page": 9,
+     "kind": "index_follow_up",
+     "location": "4  ABSTRACT",
+     "quote": "Patients will be followed from registry entry to the date of latest available information."
+    }
+   ]
+  },
+  {
+   "study_id": "46425",
+   "file": "pdf_46425_ec3692fda0fc8da6cc2603134041e3d478a394209558521c131d555ce8ff16de.pdf",
+   "sha256": "ec3692fda0fc8da6cc2603134041e3d478a394209558521c131d555ce8ff16de",
+   "headings": [
+    {
+     "page": 2,
+     "level": 1,
+     "text": "PASS INFORMATION"
+    },
+    {
+     "page": 4,
+     "level": 1,
+     "text": "VERSION HISTORY"
+    },
+    {
+     "page": 12,
+     "level": 1,
+     "text": "LIST OF ABBREVATIONS"
+    },
+    {
+     "page": 13,
+     "level": 1,
+     "text": "PRODUCT INFORMATION (SPECIFIC COLUMN FOR PMDA)"
+    },
+    {
+     "page": 13,
+     "level": 1,
+     "text": "1  RESPONSIBLE PARTIES"
+    },
+    {
+     "page": 15,
+     "level": 1,
+     "text": "2  ABSTRACT"
+    },
+    {
+     "page": 18,
+     "level": 1,
+     "text": "3  AMENDMENTS AND UPDATES"
+    },
+    {
+     "page": 18,
+     "level": 1,
+     "text": "4  MILESTONES"
+    },
+    {
+     "page": 18,
+     "level": 1,
+     "text": "5  RATIONALE AND BACKGROUND"
+    },
+    {
+     "page": 21,
+     "level": 1,
+     "text": "6  RESEARCH QUESTION AND OBJECTIVES"
+    },
+    {
+     "page": 22,
+     "level": 1,
+     "text": "7  RESEARCH METHODS"
+    },
+    {
+     "page": 22,
+     "level": 2,
+     "text": "7.1    Surveillance Design"
+    },
+    {
+     "page": 24,
+     "level": 2,
+     "text": "7.2    Setting"
+    },
+    {
+     "page": 31,
+     "level": 2,
+     "text": "7.3    Variables"
+    },
+    {
+     "page": 35,
+     "level": 2,
+     "text": "7.4   Data Sources"
+    },
+    {
+     "page": 37,
+     "level": 2,
+     "text": "7.5     Surveillance Size"
+    },
+    {
+     "page": 38,
+     "level": 2,
+     "text": "7.6   Data Management"
+    },
+    {
+     "page": 38,
+     "level": 2,
+     "text": "7.7   Data Analysis"
+    },
+    {
+     "page": 40,
+     "level": 2,
+     "text": "7.8    Quality Control"
+    },
+    {
+     "page": 41,
+     "level": 2,
+     "text": "7.9    Limitations of the research methods"
+    },
+    {
+     "page": 42,
+     "level": 1,
+     "text": "8  PROTECTION OF HUMAN SUBJECTS"
+    },
+    {
+     "page": 43,
+     "level": 1,
+     "text": "9  MANAGEMENT AND REPORTING OF ADVERSE EVENTS/ADVERSE"
+    },
+    {
+     "page": 43,
+     "level": 1,
+     "text": "10  PLANS FOR DISSEMINATING AND COMMUNICATING SURVEILLANCE"
+    },
+    {
+     "page": 44,
+     "level": 1,
+     "text": "11 REFERENCES"
+    },
+    {
+     "page": 53,
+     "level": 1,
+     "text": "12  APPENDICES"
+    },
+    {
+     "page": 54,
+     "level": 1,
+     "text": "13 ATTACHMENTS"
+    }
+   ],
+   "checklist": null,
+   "key_passages": [
+    {
+     "page": 22,
+     "kind": "design",
+     "location": "7.1    Surveillance Design",
+     "quote": "This is a non-interventional post-marketing database surveillance (PMS) to investigate the safety of ATOZET"
+    },
+    {
+     "page": 24,
+     "kind": "data_source",
+     "location": "7.2    Setting",
+     "quote": "This surveillance will be analyzed using a database provided by MID-NET."
+    },
+    {
+     "page": 25,
+     "kind": "code_list",
+     "location": "7.2    Setting",
+     "quote": "The prescription / injection (order), YJ code matches one of C10BA05, C10AX09 or C10AA05, AND"
+    },
+    {
+     "page": 26,
+     "kind": "cohort_criterion",
+     "location": "7.2    Setting",
+     "quote": "Patients who have a hypercholesterolemia diagnosis (ICD code: E78.5) during the selection period, AND"
+    },
+    {
+     "page": 26,
+     "kind": "index_follow_up",
+     "location": "7.2    Setting",
+     "quote": "The index date is the first prescription date of ATOZET in patients in the exposure group."
+    },
+    {
+     "page": 27,
+     "kind": "cohort_criterion",
+     "location": "7.2    Setting",
+     "quote": "Patients who do not have a 6-month lookback period prior to the index date, OR"
+    },
+    {
+     "page": 30,
+     "kind": "index_follow_up",
+     "location": "7.2    Setting",
+     "quote": "The follow-up end date will be defined as the date of loss to follow-up, the treatment period end, date of death, or the end of surveillance period"
+    },
+    {
+     "page": 31,
+     "kind": "exposure_definition",
+     "location": "7.3    Variables",
+     "quote": "The group of patients who are newly exposed to ATOZET during the selection period will be considered as the ATZ-group."
+    },
+    {
+     "page": 32,
+     "kind": "outcome_definition",
+     "location": "7.3    Variables",
+     "quote": "Laboratory test value: AST > 3 × ULN or ALT > 3 × ULN AND Diagnosis code (ICD-10) of hepatic diagnoses."
+    },
+    {
+     "page": 32,
+     "kind": "code_list",
+     "location": "7.3    Variables",
+     "quote": "K71 Toxic liver disease K71.0 Toxic liver disease with cholestasis"
+    },
+    {
+     "page": 38,
+     "kind": "analysis",
+     "location": "7.7   Data Analysis",
+     "quote": "Incidence rate ratios (IRR) will also be calculated using Poisson regression analysis to compare the incidence of HOI"
+    },
+    {
+     "page": 6,
+     "kind": "outcome_definition",
+     "location": "VERSION HISTORY",
+     "quote": "If an abnormal test value and any of diagnostic codes of hepatic diagnosis are recorded in the same month, the HOI is defined to occur."
+    }
+   ]
+  },
+  {
+   "study_id": "108231",
+   "file": "pdf_108231_426e3558de32ca20f83fc07281dabcae8394f9a4dd8d32a1dadb2a99cc13c411.pdf",
+   "sha256": "426e3558de32ca20f83fc07281dabcae8394f9a4dd8d32a1dadb2a99cc13c411",
+   "headings": [
+    {
+     "page": 7,
+     "level": 1,
+     "text": "1.      LIST OF ABBREVIATIONS AND DEFINITION OF TERMS"
+    },
+    {
+     "page": 9,
+     "level": 1,
+     "text": "2.     RESPONSIBLE PARTIES"
+    },
+    {
+     "page": 11,
+     "level": 1,
+     "text": "3.     ABSTRACT"
+    },
+    {
+     "page": 15,
+     "level": 1,
+     "text": "4.     AMENDMENTS AND UPDATES"
+    },
+    {
+     "page": 16,
+     "level": 1,
+     "text": "5.     MILESTONES"
+    },
+    {
+     "page": 17,
+     "level": 1,
+     "text": "6.     RATIONALE AND BACKGROUND"
+    },
+    {
+     "page": 19,
+     "level": 1,
+     "text": "7.     RESEARCH QUESTION AND OBJECTIVES"
+    },
+    {
+     "page": 21,
+     "level": 1,
+     "text": "8.     RESEARCH METHODS"
+    },
+    {
+     "page": 21,
+     "level": 2,
+     "text": "8.1.     Study Design"
+    },
+    {
+     "page": 22,
+     "level": 2,
+     "text": "8.2.      Setting"
+    },
+    {
+     "page": 26,
+     "level": 2,
+     "text": "8.3.      Variables"
+    },
+    {
+     "page": 32,
+     "level": 2,
+     "text": "8.4.     Data Sources"
+    },
+    {
+     "page": 38,
+     "level": 2,
+     "text": "8.5.     Study Size"
+    },
+    {
+     "page": 41,
+     "level": 2,
+     "text": "8.6.     Data Management"
+    },
+    {
+     "page": 43,
+     "level": 2,
+     "text": "8.7.     Data Analysis"
+    },
+    {
+     "page": 50,
+     "level": 2,
+     "text": "8.8.      Quality Control"
+    },
+    {
+     "page": 51,
+     "level": 2,
+     "text": "8.9.      Limitations of the Research Methods"
+    },
+    {
+     "page": 52,
+     "level": 2,
+     "text": "8.10.    Other Aspects"
+    },
+    {
+     "page": 52,
+     "level": 1,
+     "text": "9.     PROTECTION OF HUMAN SUBJECTS"
+    },
+    {
+     "page": 54,
+     "level": 1,
+     "text": "10.    MANAGEMENT AND REPORTING OF ADVERSE EVENTS/"
+    },
+    {
+     "page": 54,
+     "level": 1,
+     "text": "11.    PLANS FOR DISSEMINATING AND COMMUNICATING STUDY"
+    },
+    {
+     "page": 56,
+     "level": 1,
+     "text": "12.    REFERENCES"
+    },
+    {
+     "page": 63,
+     "level": 1,
+     "text": "13.    APPENDIX"
+    },
+    {
+     "page": 63,
+     "level": 1,
+     "text": "Annex 1 List of Stand-alone Documents"
+    },
+    {
+     "page": 64,
+     "level": 1,
+     "text": "Annex 2 ENCePP Checklist for Study Protocols"
+    },
+    {
+     "page": 72,
+     "level": 1,
+     "text": "Annex 3 Additional Information"
+    },
+    {
+     "page": 92,
+     "level": 1,
+     "text": "Annex 4 Power Calculations"
+    },
+    {
+     "page": 95,
+     "level": 1,
+     "text": "SIGNATURE PAGE – INVESTIGATOR"
+    },
+    {
+     "page": 96,
+     "level": 1,
+     "text": "SIGNATURE PAGE – SPONSOR"
+    }
+   ],
+   "checklist": {
+    "start_page": 64,
+    "start_text": "ENCEPP CHECKLIST FOR STUDY PROTOCOLS (REVISION 4)",
+    "end_page": 71
+   },
+   "key_passages": [
+    {
+     "page": 21,
+     "kind": "design",
+     "location": "8.1.     Study Design",
+     "quote": "This is a non-interventional, post-authorization, prospective, multicountry, registry-based safety cohort study with secondary use of data"
+    },
+    {
+     "page": 21,
+     "kind": "data_source",
+     "location": "8.1.     Study Design",
+     "quote": "the ENEIDA Register from Spain (ES), (ii) the ICC Register from the Netherlands (NL), and (iii) SWIBREG from Sweden (SWE)."
+    },
+    {
+     "page": 24,
+     "kind": "cohort_criterion",
+     "location": "8.2.      Setting",
+     "quote": "Adult patients (≥18 years of age) of both sexes with active UC that are enrolled in one of the 3 IBD registries"
+    },
+    {
+     "page": 25,
+     "kind": "cohort_criterion",
+     "location": "8.2.      Setting",
+     "quote": "patients initiating filgotinib who had prior exposure to a JAKi other than filgotinib within 12 months prior to starting filgotinib treatment"
+    },
+    {
+     "page": 25,
+     "kind": "index_follow_up",
+     "location": "8.2.      Setting",
+     "quote": "For all analyses, the index date (= start of follow-up) will be the date each patient starts the cohort-defining UC treatment"
+    },
+    {
+     "page": 26,
+     "kind": "exposure_definition",
+     "location": "8.3.      Variables",
+     "quote": "Male or female patients with UC ≥18 years of age initiating filgotinib and fulfilling the inclusion criteria."
+    },
+    {
+     "page": 29,
+     "kind": "exposure_definition",
+     "location": "8.3.      Variables",
+     "quote": "An “on-drug” approach will be applied as the primary analysis for all acute onset outcomes"
+    },
+    {
+     "page": 31,
+     "kind": "outcome_definition",
+     "location": "8.3.      Variables",
+     "quote": "The following important identified and potential risks (assessed at baseline and follow-up) listed in the RMP have been prespecified"
+    },
+    {
+     "page": 32,
+     "kind": "data_source",
+     "location": "8.4.     Data Sources",
+     "quote": "ENEIDA is a large, prospectively maintained registry of patients with IBD in Spain established in 2005 (Zabana et al., 2020)."
+    },
+    {
+     "page": 47,
+     "kind": "analysis",
+     "location": "8.7.     Data Analysis",
+     "quote": "Time-to-event analyses using Cox proportional-hazards models including the approach to modelling and adjustment for confounders to estimate HRs"
+    },
+    {
+     "page": 89,
+     "kind": "code_list",
+     "location": "Annex 3 Additional Information",
+     "quote": "N41.2, N43.1, N45.2, N45.3, N45.4, N48.2, N61, N70, N73, N75.1."
+    },
+    {
+     "page": 12,
+     "kind": "cohort_criterion",
+     "location": "3.     ABSTRACT",
+     "quote": "Patients who do not meet the eligibility criteria and those with a history of prior surgery for UC will be excluded from the study."
+    }
+   ]
+  },
+  {
+   "study_id": "107980",
+   "file": "pdf_107980_cff264ffedae6fb1da099b9d21f084af87f8c1ee3c7d54a9d02a9629ad8497dc.pdf",
+   "sha256": "cff264ffedae6fb1da099b9d21f084af87f8c1ee3c7d54a9d02a9629ad8497dc",
+   "headings": [
+    {
+     "page": 1,
+     "level": 1,
+     "text": "PASS Information"
+    },
+    {
+     "page": 2,
+     "level": 1,
+     "text": "Marketing Authorisation Holder"
+    },
+    {
+     "page": 3,
+     "level": 1,
+     "text": "Approval"
+    },
+    {
+     "page": 6,
+     "level": 1,
+     "text": "2.  List of Abbreviations"
+    },
+    {
+     "page": 8,
+     "level": 1,
+     "text": "3.  Responsible Parties"
+    },
+    {
+     "page": 9,
+     "level": 1,
+     "text": "4.  Abstract"
+    },
+    {
+     "page": 11,
+     "level": 1,
+     "text": "5. Amendments and Updates"
+    },
+    {
+     "page": 12,
+     "level": 1,
+     "text": "6.  Milestones"
+    },
+    {
+     "page": 13,
+     "level": 1,
+     "text": "7.  Rationale and Background"
+    },
+    {
+     "page": 14,
+     "level": 1,
+     "text": "8. Research Question and Objectives"
+    },
+    {
+     "page": 15,
+     "level": 1,
+     "text": "9.  Research Methods"
+    },
+    {
+     "page": 15,
+     "level": 2,
+     "text": "9.1.  Study Design"
+    },
+    {
+     "page": 15,
+     "level": 2,
+     "text": "9.2.  Setting"
+    },
+    {
+     "page": 16,
+     "level": 2,
+     "text": "9.3.  Variables"
+    },
+    {
+     "page": 16,
+     "level": 2,
+     "text": "9.4.  Data Sources"
+    },
+    {
+     "page": 17,
+     "level": 2,
+     "text": "9.5.  Study Size"
+    },
+    {
+     "page": 18,
+     "level": 2,
+     "text": "9.6.  Data Management"
+    },
+    {
+     "page": 18,
+     "level": 2,
+     "text": "9.7.  Data Analysis"
+    },
+    {
+     "page": 23,
+     "level": 2,
+     "text": "9.8.  Quality Control"
+    },
+    {
+     "page": 24,
+     "level": 2,
+     "text": "9.9.  Limitations of the Research Methods"
+    },
+    {
+     "page": 24,
+     "level": 2,
+     "text": "9.10. Other Aspects"
+    },
+    {
+     "page": 25,
+     "level": 1,
+     "text": "10. Protection of Human Subjects"
+    },
+    {
+     "page": 26,
+     "level": 1,
+     "text": "11. Management and Reporting of Adverse Events/Adverse"
+    },
+    {
+     "page": 27,
+     "level": 1,
+     "text": "12. Plans for Disseminating and Communicating Study"
+    },
+    {
+     "page": 28,
+     "level": 1,
+     "text": "13. References"
+    },
+    {
+     "page": 29,
+     "level": 1,
+     "text": "Annex 1. List of Standalone Documents"
+    },
+    {
+     "page": 55,
+     "level": 1,
+     "text": "Annex 2. ENCePP Checklist for Study Protocols"
+    },
+    {
+     "page": 61,
+     "level": 1,
+     "text": "Annex 3. Additional Information"
+    }
+   ],
+   "checklist": {
+    "start_page": 55,
+    "start_text": "Annex 2. ENCePP Checklist for Study Protocols",
+    "end_page": 60
+   },
+   "key_passages": [
+    {
+     "page": 15,
+     "kind": "design",
+     "location": "9.1.  Study Design",
+     "quote": "This study uses a multi-national, observational cross-sectional design."
+    },
+    {
+     "page": 15,
+     "kind": "design",
+     "location": "9.2.  Setting",
+     "quote": "The assessment survey will be initiated 18 months after market launch of KIMMTRAK in Germany, France, Austria, Belgium, Italy and Poland."
+    },
+    {
+     "page": 15,
+     "kind": "cohort_criterion",
+     "location": "9.2.  Setting",
+     "quote": "Must identify themselves having prescribed KIMMTRAK to treat HLA-A*02:01- positive adult patients who have unresectable or metastatic uveal melanoma."
+    },
+    {
+     "page": 15,
+     "kind": "cohort_criterion",
+     "location": "9.2.  Setting",
+     "quote": "Individuals who currently work directly for, or whose immediate family members"
+    },
+    {
+     "page": 16,
+     "kind": "data_source",
+     "location": "9.4.  Data Sources",
+     "quote": "the data source will be a list of medical oncologists and dermato-oncologists (HCPs) who have been provided with the aRMM materials by"
+    },
+    {
+     "page": 16,
+     "kind": "data_source",
+     "location": "9.4.  Data Sources",
+     "quote": "A structured, self-administered questionnaire will be used to collect survey data (Appendix I.1)."
+    },
+    {
+     "page": 18,
+     "kind": "outcome_definition",
+     "location": "9.7.  Data Analysis",
+     "quote": "The aRMM will be considered successful if at least 80% of physicians understand each of the 7 key risk messages (KRM) (Table 2)."
+    },
+    {
+     "page": 18,
+     "kind": "analysis",
+     "location": "9.7.  Data Analysis",
+     "quote": "Data collected from the survey will be reported as descriptive statistics. Frequency distributions with 95% CIs will be calculated"
+    },
+    {
+     "page": 19,
+     "kind": "outcome_definition",
+     "location": "9.7.  Data Analysis",
+     "quote": "KRM 1: Description of CRS Correctly responding to all 3 elements of KRM1."
+    },
+    {
+     "page": 9,
+     "kind": "outcome_definition",
+     "location": "4.  Abstract",
+     "quote": "The additional Risk Minimisation Measure will be considered effective if at least 80% of respondents understand the key messages"
+    }
+   ]
+  },
+  {
+   "study_id": "43069",
+   "file": "pdf_43069_af69947130a4dce854f3079a42d2f37d832c55bea3c215ccdcb815cb74b4a40a.pdf",
+   "sha256": "af69947130a4dce854f3079a42d2f37d832c55bea3c215ccdcb815cb74b4a40a",
+   "headings": [
+    {
+     "page": 1,
+     "level": 1,
+     "text": "Study information"
+    },
+    {
+     "page": 5,
+     "level": 1,
+     "text": "1. LIST OF ABBREVIATIONS"
+    },
+    {
+     "page": 6,
+     "level": 1,
+     "text": "2. RESPONSIBLE PARTIES"
+    },
+    {
+     "page": 6,
+     "level": 1,
+     "text": "3. ABSTRACT"
+    },
+    {
+     "page": 9,
+     "level": 1,
+     "text": "4. AMENDMENTS AND UPDATES"
+    },
+    {
+     "page": 9,
+     "level": 1,
+     "text": "5. MILESTONES"
+    },
+    {
+     "page": 10,
+     "level": 1,
+     "text": "6. RATIONALE AND BACKGROUND"
+    },
+    {
+     "page": 11,
+     "level": 1,
+     "text": "7. RESEARCH QUESTION AND OBJECTIVES"
+    },
+    {
+     "page": 11,
+     "level": 1,
+     "text": "8. RESEARCH METHODS"
+    },
+    {
+     "page": 11,
+     "level": 2,
+     "text": "8.1. Study Design"
+    },
+    {
+     "page": 11,
+     "level": 2,
+     "text": "8.2. Setting"
+    },
+    {
+     "page": 12,
+     "level": 2,
+     "text": "8.3. Variables"
+    },
+    {
+     "page": 12,
+     "level": 2,
+     "text": "8.4. Data Sources"
+    },
+    {
+     "page": 13,
+     "level": 2,
+     "text": "8.5. Study Size"
+    },
+    {
+     "page": 13,
+     "level": 2,
+     "text": "8.6. Data Management"
+    },
+    {
+     "page": 17,
+     "level": 2,
+     "text": "8.7. Data Analysis"
+    },
+    {
+     "page": 18,
+     "level": 2,
+     "text": "8.8. Quality Control"
+    },
+    {
+     "page": 19,
+     "level": 2,
+     "text": "8.9. Limitations of Research Methods"
+    },
+    {
+     "page": 19,
+     "level": 2,
+     "text": "8.10. Other Aspects"
+    },
+    {
+     "page": 19,
+     "level": 1,
+     "text": "9. PROTECTION OF HUMAN SUBJECTS"
+    },
+    {
+     "page": 20,
+     "level": 1,
+     "text": "10. MANAGEMENT AND REPORTING OF ADVERSE EVENTS"
+    },
+    {
+     "page": 20,
+     "level": 1,
+     "text": "11. PLANS FOR DISSEMINATING AND COMMUNICATING STUDY RESULTS"
+    },
+    {
+     "page": 20,
+     "level": 1,
+     "text": "12. REFERENCES"
+    },
+    {
+     "page": 21,
+     "level": 1,
+     "text": "13. LIST OF TABLES"
+    },
+    {
+     "page": 21,
+     "level": 1,
+     "text": "14. LIST OF FIGURES"
+    },
+    {
+     "page": 21,
+     "level": 1,
+     "text": "15. ANNEXES"
+    }
+   ],
+   "checklist": null,
+   "key_passages": [
+    {
+     "page": 11,
+     "kind": "design",
+     "location": "8.1. Study Design",
+     "quote": "This non-interventional PASS will use de-identified healthcare data from the CIBMTR database."
+    },
+    {
+     "page": 11,
+     "kind": "cohort_criterion",
+     "location": "8.2. Setting",
+     "quote": "The study population will include all adult and pediatric patients in the US with B-cell ALL in the CIBMTR database"
+    },
+    {
+     "page": 12,
+     "kind": "cohort_criterion",
+     "location": "8.2. Setting",
+     "quote": "At least 1 dose of inotuzumab ozogamicin prior to proceeding to HSCT. 3. Received HSCT from a US transplant center."
+    },
+    {
+     "page": 12,
+     "kind": "cohort_criterion",
+     "location": "8.2. Setting",
+     "quote": "Only data from patients who have consented will be used in this study."
+    },
+    {
+     "page": 12,
+     "kind": "data_source",
+     "location": "8.4. Data Sources",
+     "quote": "CIBMTR is also mandated by the US HRSA to collect data from all patients undergoing allogeneic HSCT in the US."
+    },
+    {
+     "page": 13,
+     "kind": "index_follow_up",
+     "location": "8.6. Data Management",
+     "quote": "CIBMTR data are collected at pre-transplant, 100-days, 6 months and annually post-HSCT or until death."
+    },
+    {
+     "page": 17,
+     "kind": "index_follow_up",
+     "location": "8.7. Data Analysis",
+     "quote": "The study ‘baseline’ time point is the date of the ‘current’ HSCT"
+    },
+    {
+     "page": 17,
+     "kind": "analysis",
+     "location": "8.7. Data Analysis",
+     "quote": "There will be no hypothesis testing in this study. All statistical analyses performed will be descriptive."
+    },
+    {
+     "page": 17,
+     "kind": "outcome_definition",
+     "location": "8.7. Data Analysis",
+     "quote": "Post-HSCT adverse events of interest, including VOD/SOS in the first 100 days;"
+    },
+    {
+     "page": 18,
+     "kind": "outcome_definition",
+     "location": "8.7. Data Analysis",
+     "quote": "VOD up to day 100 Post HSCT Follow-up Data, Post-Transplant Essential Data, VOD/SOS Supplemental Data Collection Form"
+    },
+    {
+     "page": 8,
+     "kind": "cohort_criterion",
+     "location": "3. ABSTRACT",
+     "quote": "The study population will include all adult and pediatric US patients with B-cell ALL treated with inotuzumab ozogamicin who proceeded to HSCT"
+    }
+   ]
+  },
+  {
+   "study_id": "105807",
+   "file": "pdf_105807_14246890c76572847e3ffd7fe004236a9cc11d41b11b7030699061b44fce81bd.pdf",
+   "sha256": "14246890c76572847e3ffd7fe004236a9cc11d41b11b7030699061b44fce81bd",
+   "headings": [
+    {
+     "page": 4,
+     "level": 1,
+     "text": "Abbreviations"
+    },
+    {
+     "page": 9,
+     "level": 1,
+     "text": "Responsible Parties"
+    },
+    {
+     "page": 11,
+     "level": 1,
+     "text": "1.  BACKGROUND"
+    },
+    {
+     "page": 26,
+     "level": 1,
+     "text": "2.  STUDY OBJECTIVES"
+    },
+    {
+     "page": 27,
+     "level": 1,
+     "text": "3.  METHODOLOGY"
+    },
+    {
+     "page": 27,
+     "level": 2,
+     "text": "3.1    Study Design"
+    },
+    {
+     "page": 35,
+     "level": 2,
+     "text": "3.2    Data analysis"
+    },
+    {
+     "page": 43,
+     "level": 2,
+     "text": "3.3      List of Variables"
+    },
+    {
+     "page": 44,
+     "level": 2,
+     "text": "3.4    Data source description"
+    },
+    {
+     "page": 49,
+     "level": 2,
+     "text": "3.5    Data Management"
+    },
+    {
+     "page": 49,
+     "level": 2,
+     "text": "3.6     Statistical Analyses"
+    },
+    {
+     "page": 49,
+     "level": 2,
+     "text": "3.7    Study Limitations"
+    },
+    {
+     "page": 50,
+     "level": 2,
+     "text": "3.8     Publication of Results and Value"
+    },
+    {
+     "page": 51,
+     "level": 1,
+     "text": "4.   MILESTONES"
+    },
+    {
+     "page": 56,
+     "level": 1,
+     "text": "5.   APPENDICES"
+    },
+    {
+     "page": 75,
+     "level": 1,
+     "text": "6.   REFERENCES"
+    }
+   ],
+   "checklist": null,
+   "key_passages": [
+    {
+     "page": 27,
+     "kind": "design",
+     "location": "3.1    Study Design",
+     "quote": "This is a retrospective longitudinal cohort study, based on claims databases in France and Germany, and electronic medical records (EMRs) in the UK."
+    },
+    {
+     "page": 27,
+     "kind": "index_follow_up",
+     "location": "3.1    Study Design",
+     "quote": "Lookback period: minimum of 24 months before the index date"
+    },
+    {
+     "page": 27,
+     "kind": "index_follow_up",
+     "location": "3.1    Study Design",
+     "quote": "Follow-up period: Patients will be followed from index date until:"
+    },
+    {
+     "page": 29,
+     "kind": "cohort_criterion",
+     "location": "3.1    Study Design",
+     "quote": "Patients with a recorded PH diagnosis (I27.0 or I27.2) whether primary or secondary (Table 5 or Table 6) during the inclusion period"
+    },
+    {
+     "page": 29,
+     "kind": "cohort_criterion",
+     "location": "3.1    Study Design",
+     "quote": "Any record indicative of a PH diagnosis other than Group 1 PAH during the lookback period"
+    },
+    {
+     "page": 32,
+     "kind": "cohort_criterion",
+     "location": "3.1    Study Design",
+     "quote": "Patients with a LD diagnosis (see Table 19), primary or secondary, inpatient occurring up to 24 months lookback period prior to"
+    },
+    {
+     "page": 32,
+     "kind": "code_list",
+     "location": "3.1    Study Design",
+     "quote": "I27.0 Primary pulmonary hypertension"
+    },
+    {
+     "page": 33,
+     "kind": "code_list",
+     "location": "3.1    Study Design",
+     "quote": "G410.00 Primary pulmonary hypertension G41y000 Secondary pulmonary hypertension"
+    },
+    {
+     "page": 36,
+     "kind": "analysis",
+     "location": "3.2    Data analysis",
+     "quote": "The prevalence will be expressed in number of cases per 10,000."
+    },
+    {
+     "page": 36,
+     "kind": "analysis",
+     "location": "3.2    Data analysis",
+     "quote": "A treatment pathway analysis will be used to describe the therapeutic management of incident patients (PH-LD, PH-ILD and PAH)"
+    },
+    {
+     "page": 44,
+     "kind": "data_source",
+     "location": "3.4    Data source description",
+     "quote": "In France, the main data source will be the national claims data source, the French Healthcare Database (SNDS)."
+    },
+    {
+     "page": 68,
+     "kind": "exposure_definition",
+     "location": "5.   APPENDICES",
+     "quote": "Endothelin Receptor Antagonists (ERAs) - Ambrisentan (Letairis®) - Bosentan (Tracleer®)"
+    }
+   ]
+  },
+  {
+   "study_id": "1000001054",
+   "file": "pdf_1000001054_981e308948406905a4327e397b78bddee70a981354f7626cd3d5aec1f9def5bc.pdf",
+   "sha256": "981e308948406905a4327e397b78bddee70a981354f7626cd3d5aec1f9def5bc",
+   "headings": [
+    {
+     "page": 4,
+     "level": 1,
+     "text": "LIST OF ABBREVIATIONS"
+    },
+    {
+     "page": 5,
+     "level": 1,
+     "text": "LIST OF DEFINITIONS"
+    },
+    {
+     "page": 5,
+     "level": 1,
+     "text": "1  RESPONSIBLE PARTIES"
+    },
+    {
+     "page": 6,
+     "level": 1,
+     "text": "2  ABSTRACT"
+    },
+    {
+     "page": 10,
+     "level": 1,
+     "text": "3  PROTOCOL REVISION TABLE"
+    },
+    {
+     "page": 13,
+     "level": 1,
+     "text": "4  RATIONALE AND BACKGROUND"
+    },
+    {
+     "page": 15,
+     "level": 1,
+     "text": "5  RESEARCH QUESTION AND OBJECTIVES"
+    },
+    {
+     "page": 17,
+     "level": 1,
+     "text": "6  RESEARCH METHODS"
+    },
+    {
+     "page": 17,
+     "level": 2,
+     "text": "6.1   Study Design"
+    },
+    {
+     "page": 23,
+     "level": 2,
+     "text": "6.2    Setting (study population and selection criteria)"
+    },
+    {
+     "page": 26,
+     "level": 2,
+     "text": "6.3    Variables"
+    },
+    {
+     "page": 28,
+     "level": 2,
+     "text": "6.4   Data Sources"
+    },
+    {
+     "page": 29,
+     "level": 2,
+     "text": "6.5   Study Procedures"
+    },
+    {
+     "page": 38,
+     "level": 2,
+     "text": "6.6   Study Size"
+    },
+    {
+     "page": 41,
+     "level": 2,
+     "text": "6.7   Data Management"
+    },
+    {
+     "page": 43,
+     "level": 2,
+     "text": "6.8   Data Analysis"
+    },
+    {
+     "page": 49,
+     "level": 2,
+     "text": "6.9    Quality Control"
+    },
+    {
+     "page": 49,
+     "level": 2,
+     "text": "6.10   Limitations of the Research Methods"
+    },
+    {
+     "page": 51,
+     "level": 1,
+     "text": "7  PROTECTION OF HUMAN SUBJECTS"
+    },
+    {
+     "page": 53,
+     "level": 1,
+     "text": "8  MANAGEMENT AND REPORTING OF ADVERSE EVENTS/ADVERSE"
+    },
+    {
+     "page": 56,
+     "level": 1,
+     "text": "9  PLANS FOR DISSEMINATING AND COMMUNICATING STUDY RESULTS"
+    },
+    {
+     "page": 58,
+     "level": 1,
+     "text": "10 REFERENCES"
+    },
+    {
+     "page": 61,
+     "level": 1,
+     "text": "11SIGNATURES"
+    }
+   ],
+   "checklist": null,
+   "key_passages": [
+    {
+     "page": 17,
+     "kind": "design",
+     "location": "6.1   Study Design",
+     "quote": "This is a prospective, longitudinal cohort study in which participants are enrolled through day-care centers (DCCs) in France."
+    },
+    {
+     "page": 18,
+     "kind": "index_follow_up",
+     "location": "6.1   Study Design",
+     "quote": "Two cohorts will be enrolled and followed for one year each (cohort 1 from September 2027 to August 2028"
+    },
+    {
+     "page": 23,
+     "kind": "exposure_definition",
+     "location": "6.1   Study Design",
+     "quote": "Children will be followed for monthly CMV shedding, a key exposure measure for parental infection."
+    },
+    {
+     "page": 24,
+     "kind": "cohort_criterion",
+     "location": "6.2    Setting (study population and selection criteria)",
+     "quote": "Parent or caregiver* of at least one child who recently (≤3 months before enrollment) started attending a participating DCC"
+    },
+    {
+     "page": 24,
+     "kind": "cohort_criterion",
+     "location": "6.2    Setting (study population and selection criteria)",
+     "quote": "Aged 18 to 49 years at the time of informed consent."
+    },
+    {
+     "page": 25,
+     "kind": "cohort_criterion",
+     "location": "6.2    Setting (study population and selection criteria)",
+     "quote": "Prior receipt of an experimental CMV vaccine. • Parent of a child with known congenital CMV infection and/or disease."
+    },
+    {
+     "page": 27,
+     "kind": "outcome_definition",
+     "location": "6.3    Variables",
+     "quote": "Primary CMV infection is defined as seroconversion, i.e. appearance of CMV IgG and/or IgM antibodies, using a commercial serology assay or CCI"
+    },
+    {
+     "page": 28,
+     "kind": "data_source",
+     "location": "6.4   Data Sources",
+     "quote": "All data will be collected prospectively. Outcomes will be generated through biospecimen testing using commercial CCI"
+    },
+    {
+     "page": 43,
+     "kind": "cohort_criterion",
+     "location": "6.8   Data Analysis",
+     "quote": "Adults who are CMV-seronegative at baseline, followed for identification of primary CMV infection."
+    },
+    {
+     "page": 44,
+     "kind": "outcome_definition",
+     "location": "6.8   Data Analysis",
+     "quote": "The refined PCR rule that will be evaluated: wild-type DNA load of >450 IU/mL in saliva and wild-type DNA detected in urine at the same timepoint"
+    },
+    {
+     "page": 45,
+     "kind": "analysis",
+     "location": "6.8   Data Analysis",
+     "quote": "All analyses will be descriptive or exploratory; no hypothesis testing is planned."
+    },
+    {
+     "page": 8,
+     "kind": "design",
+     "location": "2  ABSTRACT",
+     "quote": "Study Design Prospective cohort study Population Parents and caregivers of children in day-care centers in France"
+    }
+   ]
+  },
+  {
+   "study_id": "12698",
+   "file": "pdf_12698_ac3a9e145b7d31900c3dec3cb9bacf8677711d3f71ccbd3bce6d5d6d6574dca2.pdf",
+   "sha256": "ac3a9e145b7d31900c3dec3cb9bacf8677711d3f71ccbd3bce6d5d6d6574dca2",
+   "headings": [
+    {
+     "page": 2,
+     "level": 1,
+     "text": "1. Información general"
+    },
+    {
+     "page": 5,
+     "level": 1,
+     "text": "3. Información general"
+    },
+    {
+     "page": 7,
+     "level": 1,
+     "text": "4. Resumen"
+    },
+    {
+     "page": 8,
+     "level": 1,
+     "text": "5. Abreviaturas"
+    },
+    {
+     "page": 9,
+     "level": 1,
+     "text": "6. Justificación"
+    },
+    {
+     "page": 12,
+     "level": 1,
+     "text": "7. Hipótesis y objetivos del estudio"
+    },
+    {
+     "page": 13,
+     "level": 1,
+     "text": "8. Diseño del estudio"
+    },
+    {
+     "page": 13,
+     "level": 2,
+     "text": "8.1.   Diseño general del estudio"
+    },
+    {
+     "page": 14,
+     "level": 2,
+     "text": "8.2.   Obtención de los datos"
+    },
+    {
+     "page": 14,
+     "level": 2,
+     "text": "8.3.   Plan de trabajo"
+    },
+    {
+     "page": 15,
+     "level": 1,
+     "text": "9. Población en estudio"
+    },
+    {
+     "page": 16,
+     "level": 1,
+     "text": "10.  Variables estudiadas"
+    },
+    {
+     "page": 16,
+     "level": 2,
+     "text": "10.1.  Características demográficas y antropométricas"
+    },
+    {
+     "page": 16,
+     "level": 2,
+     "text": "10.2.  Hábitos tóxicos"
+    },
+    {
+     "page": 16,
+     "level": 2,
+     "text": "10.3.  Comorbilidades"
+    },
+    {
+     "page": 16,
+     "level": 2,
+     "text": "10.4.  Exploraciones complementarias"
+    },
+    {
+     "page": 17,
+     "level": 2,
+     "text": "10.5.  Exposiciones a medicamentos"
+    },
+    {
+     "page": 18,
+     "level": 1,
+     "text": "11.  Farmacovigilancia"
+    },
+    {
+     "page": 19,
+     "level": 1,
+     "text": "12.  Análisis estadístico"
+    },
+    {
+     "page": 19,
+     "level": 2,
+     "text": "12.1.  Descripción de los métodos estadísticos"
+    },
+    {
+     "page": 19,
+     "level": 2,
+     "text": "12.2.  Datos demográficos y otras características basales"
+    },
+    {
+     "page": 19,
+     "level": 2,
+     "text": "12.3.  Análisis principal"
+    },
+    {
+     "page": 20,
+     "level": 2,
+     "text": "12.4. Tamaño previsto de la muestra"
+    },
+    {
+     "page": 21,
+     "level": 2,
+     "text": "12.5.  Nivel de significación"
+    },
+    {
+     "page": 21,
+     "level": 2,
+     "text": "12.6.  Procedimiento de gestión de los datos faltantes"
+    },
+    {
+     "page": 21,
+     "level": 1,
+     "text": "13.  Consideraciones prácticas"
+    },
+    {
+     "page": 23,
+     "level": 1,
+     "text": "14.  Informe y publicación de los resultados"
+    },
+    {
+     "page": 24,
+     "level": 1,
+     "text": "15.  Limitaciones"
+    },
+    {
+     "page": 26,
+     "level": 1,
+     "text": "16.  Referencias"
+    },
+    {
+     "page": 29,
+     "level": 1,
+     "text": "Anexo I. Códigos de identificación de los diagnósticos"
+    },
+    {
+     "page": 31,
+     "level": 1,
+     "text": "Anexo II. Códigos de identificación exposiciones medicamentosas"
+    }
+   ],
+   "checklist": null,
+   "key_passages": [
+    {
+     "page": 13,
+     "kind": "design",
+     "location": "8.1.   Diseño general del estudio",
+     "quote": "Se realizará un estudio de casos y controles con datos procedentes de los registros sanitarios de atención primaria"
+    },
+    {
+     "page": 14,
+     "kind": "data_source",
+     "location": "8.2.   Obtención de los datos",
+     "quote": "Para identificar los casos y los controles se utilizará el Sistema de Información para el Desarrollo de la Investigación en Atención Primaria (SIDIAP)"
+    },
+    {
+     "page": 15,
+     "kind": "outcome_definition",
+     "location": "9. Población en estudio",
+     "quote": "Se define como caso aquellos pacientes con registro médico activo en el SIDIAP según la definición anterior que tengan registrado un nuevo diagnóstico"
+    },
+    {
+     "page": 15,
+     "kind": "code_list",
+     "location": "9. Población en estudio",
+     "quote": "C18 Tumor maligno de colon, o C19 Tumor maligno de la unión rectosigmoidea"
+    },
+    {
+     "page": 15,
+     "kind": "index_follow_up",
+     "location": "9. Población en estudio",
+     "quote": "Se definirá como fecha índice de los casos la primera fecha de registro de uno de los diagnósticos de interés"
+    },
+    {
+     "page": 15,
+     "kind": "cohort_criterion",
+     "location": "9. Población en estudio",
+     "quote": "estratificado en frecuencia según la distribución de los casos respecto a sexo, edad (± 1 año) y zona territorial"
+    },
+    {
+     "page": 16,
+     "kind": "cohort_criterion",
+     "location": "9. Población en estudio",
+     "quote": "Se excluirán del estudio aquellos sujetos con diagnóstico de CCR previo al periodo de definición de caso."
+    },
+    {
+     "page": 17,
+     "kind": "exposure_definition",
+     "location": "10.5.  Exposiciones a medicamentos",
+     "quote": "Los medicamentos serán identificados mediante el diccionario ATC (Anatomical Therapeutic Chemical Classification)45"
+    },
+    {
+     "page": 18,
+     "kind": "exposure_definition",
+     "location": "10.5.  Exposiciones a medicamentos",
+     "quote": "Exposición actual: el paciente ha recibido al menos una prescripción en un periodo menor a un año previo a la fecha índice."
+    },
+    {
+     "page": 19,
+     "kind": "analysis",
+     "location": "12.3.  Análisis principal",
+     "quote": "mediante modelos multivariantes de regresión logística en los que el ajuste por factores de riesgo incluirá edad, sexo"
+    },
+    {
+     "page": 29,
+     "kind": "code_list",
+     "location": "Anexo I. Códigos de identificación de los diagnósticos",
+     "quote": "Tabla 1. Criterios de inclusión de los casos Código CIE-10 Diagnóstico e-CAP C18* Tumor maligno de colon"
+    },
+    {
+     "page": 7,
+     "kind": "design",
+     "location": "4. Resumen",
+     "quote": "Se trata de un estudio de casos y controles para evaluar la asociación entre el CCR y la exposición crónica a medicamentos."
+    }
+   ]
+  }
+ ]
+}
