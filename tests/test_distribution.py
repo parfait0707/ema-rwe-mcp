@@ -1,7 +1,10 @@
 """Wheel installs (uvx --from git+...) must carry the catalogue and seed the user data dir once."""
 
+import shutil
 import tomllib
 from pathlib import Path
+
+import pytest
 
 from ema_rwe import config
 
@@ -47,6 +50,36 @@ def test_wheel_install_seeds_user_data_dir_once(tmp_path, monkeypatch):
     (user_dir / "ema.sqlite3").write_text("user edited")
     config.default_data_dir()
     assert (user_dir / "ema.sqlite3").read_text() == "user edited"
+
+
+def test_interrupted_first_copy_leaves_no_file_and_is_retried(tmp_path, monkeypatch):
+    bundled, user_dir = tmp_path / "bundled", tmp_path / "user"
+    bundled.mkdir()
+    for name in config.SEEDED_FILES:
+        (bundled / name).write_text(f"bundled {name}")
+    monkeypatch.setattr(config, "REPO_ROOT", tmp_path / "no-checkout")
+    monkeypatch.setattr(config, "BUNDLED_DATA", bundled)
+    monkeypatch.setattr(config, "user_data_path", lambda _app: user_dir)
+    write_bytes = Path.write_bytes
+
+    def interrupted(self, data):
+        write_bytes(self, data[:3])  # half-written, then the process fails
+        raise OSError("disk full")
+
+    def interrupted_copy(source, destination):
+        interrupted(Path(destination), Path(source).read_bytes())
+
+    monkeypatch.setattr(Path, "write_bytes", interrupted)
+    monkeypatch.setattr(shutil, "copyfile", interrupted_copy)
+    with pytest.raises(OSError):
+        config.default_data_dir()
+    assert not (user_dir / "ema.sqlite3").exists()  # never a truncated database under the real name
+    monkeypatch.undo()
+    monkeypatch.setattr(config, "REPO_ROOT", tmp_path / "no-checkout")
+    monkeypatch.setattr(config, "BUNDLED_DATA", bundled)
+    monkeypatch.setattr(config, "user_data_path", lambda _app: user_dir)
+    config.default_data_dir()
+    assert (user_dir / "ema.sqlite3").read_text() == "bundled ema.sqlite3"
 
 
 def catalogue(path, imported_at, *titles):

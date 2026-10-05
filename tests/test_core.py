@@ -6,10 +6,12 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from ema_rwe.config import Settings
 from ema_rwe.domain import Document, Extraction, RWEError
 from ema_rwe.ema import BASE, is_non_interventional, parse_date, parse_documents, select_protocol
+from ema_rwe.llm import drop_invalid_evidence
 from ema_rwe.pdf import Page, extract_pages, sections, validate_evidence
 from ema_rwe.selection import SearchFilters
 from ema_rwe.service import Service, source_type_from_filename
@@ -327,6 +329,21 @@ def test_fabricated_evidence_rejected(pdf_bytes, change):
         )
     with pytest.raises(RWEError, match="Quote|Section|Data source"):
         validate_evidence(analysis, extract_pages(pdf_bytes))
+
+
+@pytest.mark.parametrize("quote", [" " * 8, "a" + " " * 9, "\u00ad" * 8 + "abc"])
+def test_quote_must_have_text_once_whitespace_is_collapsed(quote):
+    # A blank quote normalizes to '' and would otherwise be found on every page
+    raw = sample_analysis().model_dump()
+    raw["study_design"]["evidence"][0]["quote"] = quote
+    with pytest.raises(ValidationError, match="quote needs at least 8 characters"):
+        Extraction.model_validate(raw)
+    assert (
+        drop_invalid_evidence({"population": {"value": "x", "evidence": [{"page": 1, "quote": quote}]}})[
+            "population"
+        ]
+        is None
+    )
 
 
 def test_non_pdf_rejected():

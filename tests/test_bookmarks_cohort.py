@@ -138,3 +138,48 @@ def test_drop_invalid_evidence_keeps_nested_cohort_block():
     assert cleaned["cohort"]["inclusion_criteria"][0]["value"] == "kept"
     assert cleaned["cohort"]["exclusion_criteria"] == []
     assert cleaned["cohort"]["design_schema"]["figure_pages"] == [4]
+
+
+def test_bookmark_chapter_boundary_ends_the_previous_text_heading():
+    # Page 2 starts the methods chapter in the outline but its text has no detectable heading:
+    # the background heading of page 1 must not carry over and hide the methods text.
+    quote = "Patients aged 18 years or older with a first dispensing are included in the cohort."
+    with pymupdf.open() as doc:
+        doc.new_page().insert_text(
+            (50, 50),
+            "4. BACKGROUND\nEarlier studies reported an increased risk of the outcome in treated patients.",
+            fontsize=9,
+        )
+        doc.new_page().insert_text((50, 50), quote, fontsize=9)
+        doc.set_toc([[1, "4 Background", 1], [1, "9 Research methods", 2], [2, "9.2 Study population", 2]])
+        pages = extract_pages(doc.tobytes())
+    chunks = sections(pages)
+    page2 = next(c for c in chunks if c["page"] == 2)
+    assert page2["role"] == "population" and page2["context_role"] == "methods"
+    assert page2 in reading_order(chunks)
+    validate_evidence(Extraction(population=fact(quote, page=2)), pages, chunks)
+
+
+def test_sub_bookmark_of_a_referenced_annex_is_read():
+    # '12.3.2 Terms for outcome mapping' sits under '12.3 Annex 3', which the body cites.
+    with pymupdf.open() as doc:
+        doc.new_page().insert_text(
+            (50, 50),
+            "9. RESEARCH METHODS\nThe outcome terms used to identify myotoxicity cases are listed in Annex 3.",
+            fontsize=9,
+        )
+        doc.new_page().insert_text(
+            (50, 50),
+            "12.3.2.1 Myotoxicity\nRhabdomyolysis, Muscle necrosis, Myoglobinaemia, Myopathy, Myositis",
+            fontsize=9,
+        )
+        doc.set_toc(
+            [
+                [1, "9 Research methods", 1],
+                [1, "12 Annexes", 2],
+                [2, "12.3 Annex 3 Additional information", 2],
+                [3, "12.3.2 Terms for outcome mapping", 2],
+            ]
+        )
+        chunks = sections(extract_pages(doc.tobytes()))
+    assert any(c["page"] == 2 and c["role"] == "appendix" for c in reading_order(chunks))

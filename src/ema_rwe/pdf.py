@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 import pymupdf
 
-from .domain import Extraction, RWEError
+from .domain import Extraction, RWEError, with_notes
 from .terminology import search_units
 from .vocabulary import canonical, contains, expand
 
@@ -61,7 +61,7 @@ ROLES = {
     "administrative": ("responsible parties", "study team", "milestones", "governance", "signatures"),
     "background": ("background", "rationale", "introduction"),
     "abstract": ("abstract", "synopsis", "summary"),
-    "appendix": ("appendix", "appendices", "annex", "supplement"),
+    "appendix": ("appendix", "appendices", "annex", "annexes", "supplement"),
     "methods": ("research methods", "methodology", "methods", "study design", "research design"),
     "data_sources": ("data sources", "data source", "study setting", "databases", "data provenance"),
     "population": ("population", "eligibility", "inclusion", "exclusion", "participants", "study subjects"),
@@ -105,6 +105,8 @@ class Page:
     # and its top-level ancestor. None when the PDF has no bookmarks (text headings are used instead).
     chapter: str | None = None
     chapter_top: str | None = None
+    # Every bookmark title from the top level down to `chapter` ('12 Annexes / 12.3 Annex 3 / 12.3.2 ...').
+    chapter_path: str | None = None
 
 
 def apply_bookmarks(pages: list[Page], toc: list) -> None:
@@ -127,6 +129,7 @@ def apply_bookmarks(pages: list[Page], toc: list) -> None:
         if current is not None:
             page.chapter = current
             page.chapter_top = ancestors.get(min(ancestors)) if ancestors else current
+            page.chapter_path = " / ".join(ancestors[lvl] for lvl in sorted(ancestors)) or current
 
 
 def extract_pages(data: bytes) -> list[Page]:
@@ -162,18 +165,19 @@ def text_layer(data: bytes) -> str | None:
 def sections(pages: list[Page]) -> list[dict]:
     result = []
 
-    chapters = {p.page: (p.chapter, p.chapter_top) for p in pages}
+    chapters = {p.page: (p.chapter, p.chapter_top, p.chapter_path) for p in pages}
 
     def flush(buffer, page_number, current_heading):
         text = "\n".join(buffer).strip()
         if text:
-            chapter, chapter_top = chapters.get(page_number, (None, None))
+            chapter, chapter_top, chapter_path = chapters.get(page_number, (None, None, None))
             result.append(
                 {
                     "page": page_number,
                     "section": current_heading,
                     "chapter": chapter,
                     "chapter_top": chapter_top,
+                    "chapter_path": chapter_path,
                     "text": text,
                     "relevant": bool(RELEVANT.search((current_heading or "") + " " + text)),
                 }
@@ -210,6 +214,15 @@ def sections(pages: list[Page]) -> list[dict]:
             continue
         lines = p.text.splitlines()
         current_heading = result[-1]["section"] if result and not result[-1].get("toc") else None
+        if (
+            current_heading
+            and result[-1].get("chapter") != p.chapter
+            and not any(is_heading(line.strip()) for line in lines)
+        ):
+            # A page without a text heading that starts a new bookmark chapter begins that chapter, so the
+            # previous page's heading does not carry over. A page with headings may start the chapter
+            # midway; its leading text still continues the previous section.
+            current_heading = None
         buffer = []
         for line in lines:
             line = line.strip()
@@ -249,6 +262,15 @@ def sections(pages: list[Page]) -> list[dict]:
             "rationale",
             "introduction",
         } or bool(re.match(r"^(appendix|annex)\b", heading or "", re.IGNORECASE))
+        top = chunk.get("chapter_top")
+        if (
+            top
+            and top != (result[i - 1].get("chapter_top") if i else None)
+            and heading_role(top) != "unknown"
+        ):
+            # A top-level bookmark chapter with a known role becomes the parent context; an outline title
+            # without one ('Part B') keeps the parent found from text headings.
+            parent = {"heading": top, "role": heading_role(top)}
         if heading and (len(number) == 1 or (not number and major_unnumbered) or parent is None):
             parent = {"heading": heading, "role": role}
         inherited = parent["role"] if parent else "unknown"
@@ -299,7 +321,10 @@ def reading_order(chunks: list[dict]) -> list[dict]:
     referenced = {m.group(1).casefold() for c in body for m in APPENDIX_REF.finditer(c["text"]) if m.group(1)}
 
     def is_referenced(chunk) -> bool:
-        label = " ".join(filter(None, (chunk.get("chapter"), chunk.get("section"))))
+        # The whole outline path: a sub-bookmark ('12.3.2 Terms for outcome mapping') belongs to its annex.
+        label = " ".join(
+            filter(None, (chunk.get("chapter_path") or chunk.get("chapter"), chunk.get("section")))
+        )
         chapter = chunk.get("chapter") or ""
         if "checklist" in chapter.casefold():
             return False  # ENCePP checklists mimic method headings but are not this study's methods
@@ -467,7 +492,7 @@ def finalize_extraction(
         )
     notes += audit_extraction(pruned, pages, catalogue_sources)
     if notes:
-        pruned.missing_information = (pruned.missing_information + notes)[-30:]
+        pruned.missing_information = with_notes(pruned.missing_information, notes)
     return pruned, dropped
 
 
