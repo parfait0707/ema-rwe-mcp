@@ -193,7 +193,7 @@ class Service:
         self.comparisons = Comparisons(self)
         # ponytail: in-process registry of running provider extractions; a server restart loses them
         # and the next analyze_protocol simply starts over (add DB checkpoints if that ever matters).
-        self._extractions: dict[str, tuple[asyncio.Task, dict]] = {}
+        self._extractions: dict[tuple[str, str], tuple[asyncio.Task, dict]] = {}  # (study, fingerprint)
         self._partials: dict[tuple[str, str], dict[int, Extraction]] = {}
 
     @property
@@ -1395,15 +1395,23 @@ class Service:
 
     async def _provider_extraction(self, study_id: str, pdf: bytes, source: dict) -> dict:
         """Run (or keep running) the server-side extraction; return status=extracting when it outlasts the wait."""
-        entry = self._extractions.get(study_id)
+        key = (study_id, source["fingerprint"])
+        for stale in [k for k in self._extractions if k[0] == study_id and k != key]:
+            # The protocol changed under a running extraction: its result would describe the old PDF.
+            self._extractions.pop(stale)[0].cancel()
+        entry = self._extractions.get(key)
         if entry is None or (entry[0].done() and entry[0].exception() is not None):
             progress: dict = {}
             task = asyncio.create_task(self._extract_and_save(study_id, pdf, source, progress))
-            entry = self._extractions[study_id] = (task, progress)
+            entry = self._extractions[key] = (task, progress)
         task, progress = entry
         done, _ = await asyncio.wait({task}, timeout=self.settings.llm_wait_seconds)
         if task in done:
-            self._extractions.pop(study_id, None)
+            self._extractions.pop(key, None)
+            if task.cancelled():
+                raise RWEError(
+                    "PROTOCOL_CHANGED", "Protocol changed during extraction; call analyze_protocol again."
+                )
             return task.result()
         return {
             "status": "extracting",

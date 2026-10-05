@@ -99,6 +99,38 @@ async def test_analyze_protocol_returns_extracting_then_result(service, monkeypa
     assert (await service.analyze_protocol(study_id))["cached"] is True
 
 
+async def test_protocol_changed_during_extraction_never_returns_the_old_result(
+    service, website, pdf_bytes, monkeypatch
+):
+    service.settings.llm_model = "mock-model"
+    service.settings.llm_base_url = "https://provider.invalid/v1"
+    service.settings.llm_wait_seconds = 0.05
+    releases = []
+
+    async def slow_extract(_settings, _chunks, progress=None):
+        releases.append(asyncio.Event())
+        await releases[-1].wait()
+        return sample_analysis()
+
+    monkeypatch.setattr("ema_rwe.service.extract_with_provider", slow_extract)
+    old = await service.analyze_protocol("123")
+    assert old["status"] == "extracting"
+    website["/system/files/protocol.pdf"] = pdf_bytes + b"\n%updated"
+    new = await service.analyze_protocol("123", force_refresh=True)
+    assert new["status"] == "extracting"
+    assert new["source"]["fingerprint"] != old["source"]["fingerprint"]
+    for release in releases:
+        release.set()
+    for _ in range(50):
+        done = await service.analyze_protocol("123")
+        if done["status"] == "analyzed":
+            break
+        await asyncio.sleep(0.02)
+    # The result and the saved analysis describe the new PDF, not the one the first task was reading
+    assert done["source"]["fingerprint"] == new["source"]["fingerprint"]
+    assert service.repo.analysis("123")["source"]["fingerprint"] == new["source"]["fingerprint"]
+
+
 @pytest.mark.parametrize("value", [0, -1])
 def test_settings_concurrency_floor(settings, value):
     settings.llm_concurrency = value
