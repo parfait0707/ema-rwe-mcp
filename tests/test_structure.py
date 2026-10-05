@@ -301,3 +301,57 @@ def test_conduct_chapter_is_read_even_without_method_words():
     )
     section = chunk_with(chunks, "Approval will be obtained")
     assert section["role"] == "conduct" and section in reading_order(chunks)
+
+
+def test_text_above_an_outline_title_keeps_the_previous_chapter():
+    # Given the references chapter starting midway down a page, under the end of the limitations section
+    pages = extract_pages(
+        pdf(
+            METHODS + "\n9.9 Limitations\nMisclassification of the outcome is possible.",
+            "Exposure misclassification may also bias the comparison towards the null.\n13 References\n"
+            "1. Smith J, et al. Outcome validation in claims. 2019.",
+            toc=[[1, "9 Research methods", 1], [1, "13 References", 2]],
+        )
+    )
+    chunks = sections(pages)
+    # Then the leading text stays in the methods chapter and is read; the reference list is not
+    tail = chunk_with(chunks, "towards the null")
+    assert tail["chapter"] == "9 Research methods" and tail["role"] != "references"
+    assert tail in reading_order(chunks)
+    assert chunk_with(chunks, "Smith J")["role"] == "references"
+
+
+def test_unnumbered_contents_lines_are_sub_items_of_the_numbered_entry():
+    from ema_rwe.pdf import Page, text_outline
+
+    contents = "\n".join(
+        f"{t} {'.' * 12} {n}"
+        for t, n in [
+            ("1. Overview", 1),
+            ("- Pre-pandemic period", 1),
+            ("2. Methods", 2),
+            ("Annex 1 Code list", 3),
+        ]
+    )
+    pages = [Page(1, "Title page"), Page(2, contents)]
+    pages += [
+        Page(3, "1. Overview\n- Pre-pandemic period\nText."),
+        Page(4, "2. Methods\nText."),
+        Page(5, "Annex 1 Code list\nK85"),
+    ]
+    levels = {title: level for level, title, _ in text_outline(pages)}
+    assert levels == {"1. Overview": 1, "- Pre-pandemic period": 2, "2. Methods": 1, "Annex 1 Code list": 1}
+
+
+def test_appendix_filter_needs_the_pdfs_own_bookmarks():
+    # A contents-page outline keeps every relevant section, including an appendix the body never cites
+    data = toc_pdf()
+    with pymupdf.open(stream=data, filetype="pdf") as doc:
+        doc.new_page().insert_text(
+            (40, 40),
+            "Annex 9 Selection criteria\nICD-10 K85 acute pancreatitis code list for the outcome.",
+            fontsize=8,
+        )
+        data = doc.tobytes()
+    chunks = sections(extract_pages(data))
+    assert chunk_with(chunks, "K85") in reading_order(chunks)

@@ -48,6 +48,7 @@ CHAPTER_TITLES = {
     "plans for disseminating and communicating study results",
     "references",
     "annexes",
+    "appendices",
     "study population",
     "disease definitions",
 }
@@ -100,6 +101,9 @@ def is_heading(line: str) -> bool:
         if len(section_number(line)) > 1:
             return True  # '9.2 Setting', 'II.4 Abstract': multi-level numbering is not a list item
         title = match.group(2)
+        if match.group(1).isalpha() and canonical(title) not in CHAPTER_TITLES:
+            # 'IV Q5106', 'IV ORAL': a route or code in a table row, not a roman chapter number.
+            return title.isupper() and len(re.findall(r"[A-Za-z]{3,}", title)) >= 2
     elif match := LETTERED.match(line):
         title = match.group(1)
     else:
@@ -299,11 +303,20 @@ def text_outline(pages: list[Page]) -> list[list]:
     offset, support = offsets.most_common(1)[0]
     if support < 3 or support < 0.4 * len(entries):
         return []
-    rows = []
+    rows, previous_level = [], 0
     for (number, title, printed, _), found in anchors:
         near = [pg for pg in found if abs(pg - (printed + offset)) <= 1]
         if near:
-            level = len(section_number(f"{number.rstrip('.')} title")) if number else 1
+            if number:
+                level = len(section_number(f"{number.rstrip('.')} title"))
+            elif (
+                re.match(r"(?:appendix|annex|appendices|annexes)\b", title, re.IGNORECASE)
+                or canonical(title) in CHAPTER_TITLES
+            ):
+                level = 1
+            else:  # an unnumbered line between numbered entries is a sub-item, not a chapter
+                level = previous_level + 1
+            previous_level = level
             rows.append(
                 [
                     max(level, 1),
@@ -315,7 +328,7 @@ def text_outline(pages: list[Page]) -> list[list]:
 
 
 # Version of the section/role/reading rules; part of the analysis fingerprint, so a change re-extracts.
-PARSER_VERSION = "structural-v9"
+PARSER_VERSION = "structural-v11"
 
 
 def extract_pages(data: bytes, use_outline: bool = True) -> list[Page]:
@@ -413,11 +426,15 @@ def sections(pages: list[Page]) -> list[dict]:
     result = []
 
     chapters = {p.page: (p.chapter, p.chapter_top, p.chapter_path) for p in pages}
+    outline = {p.page: p.outline_source for p in pages}
+    # The chapter of the text being read: a page's outline chapter starts at its title line, so the text
+    # above that line still belongs to the previous page's chapter.
+    current = {"chapter": (None, None, None)}
 
     def flush(buffer, page_number, current_heading, checklist=False):
         text = "\n".join(buffer).strip()
         if text:
-            chapter, chapter_top, chapter_path = chapters.get(page_number, (None, None, None))
+            chapter, chapter_top, chapter_path = current["chapter"]
             result.append(
                 {
                     "page": page_number,
@@ -425,6 +442,7 @@ def sections(pages: list[Page]) -> list[dict]:
                     "chapter": chapter,
                     "chapter_top": chapter_top,
                     "chapter_path": chapter_path,
+                    "outline_source": outline[page_number] if chapter else None,
                     "text": text,
                     "relevant": not checklist and bool(RELEVANT.search((current_heading or "") + " " + text)),
                     **({"checklist": True} if checklist else {}),
@@ -442,7 +460,20 @@ def sections(pages: list[Page]) -> list[dict]:
             re.search(r"(?im)^\s*(?:table of )?contents\s*$", p.text)
             or len(re.findall(r"\.{4,}\s*\d+", p.text)) >= 3
         ):
-            result.append({"page": p.page, "section": None, "text": p.text, "relevant": False, "toc": True})
+            chapter, chapter_top, chapter_path = chapters[p.page]
+            result.append(
+                {
+                    "page": p.page,
+                    "section": None,
+                    "chapter": chapter,
+                    "chapter_top": chapter_top,
+                    "chapter_path": chapter_path,
+                    "outline_source": p.outline_source,
+                    "text": p.text,
+                    "relevant": False,
+                    "toc": True,
+                }
+            )
             continue
         current_heading = result[-1]["section"] if result and not result[-1].get("toc") else None
         if (
@@ -455,7 +486,12 @@ def sections(pages: list[Page]) -> list[dict]:
             # midway; its leading text still continues the previous section.
             current_heading = None
         buffer = []
+        titled = any(canonical(line) in p.outline_titles for line in lines if line)
+        current["chapter"] = chapters[pages[index - 1].page] if titled and index else chapters[p.page]
         for n, line in enumerate(lines):
+            if titled and line and canonical(line) in p.outline_titles:
+                flush(buffer, p.page, in_checklist or current_heading, checklist=bool(in_checklist))
+                current["chapter"] = chapters[p.page]
             if in_checklist:
                 if not ends_checklist(line, p):
                     buffer.append(line)
@@ -523,13 +559,17 @@ def sections(pages: list[Page]) -> list[dict]:
         ):
             # A top-level bookmark chapter with a known role becomes the parent context; an outline title
             # without one ('Part B') keeps the parent found from text headings.
-            parent = {"heading": top, "role": heading_role(top)}
+            parent = {"heading": top, "role": heading_role(top), "number": section_number(top)}
+        if parent and number and parent["number"] and number[0] != parent["number"][0]:
+            # A numbered section outside the parent's chapter ('3.1' after '1. Background'): the chapter
+            # heading in between was missed, so the old parent must not impose its role.
+            parent = None
         if heading and (len(number) == 1 or (not number and major_unnumbered) or parent is None):
-            parent = {"heading": heading, "role": role}
+            parent = {"heading": heading, "role": role, "number": number}
         inherited = parent["role"] if parent else "unknown"
         if chunk.get("checklist"):
             role, basis = "checklist", "page_type"
-            parent = {"heading": heading, "role": role}
+            parent = {"heading": heading, "role": role, "number": ()}
         elif chunk.get("toc"):
             role, basis = "contents", "page_type"
             parent = None
@@ -569,7 +609,9 @@ def reading_order(chunks: list[dict]) -> list[dict]:
     plus its code lists. Without bookmarks every relevant section is returned as before.
     """
     relevant = [c for c in chunks if c["relevant"]]
-    if not any(c.get("chapter") for c in chunks):
+    # The appendix filter needs the PDF's own bookmarks: an outline read from a contents page may miss the
+    # appendices' structure, so those PDFs read every relevant section as before.
+    if not any(c.get("outline_source") == "bookmarks" for c in chunks):
         return relevant
     body = [c for c in relevant if c["role"] != "appendix"]
     referenced = {m.group(1).casefold() for c in body for m in APPENDIX_REF.finditer(c["text"]) if m.group(1)}
