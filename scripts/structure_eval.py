@@ -12,7 +12,7 @@ distinctive word stands for the producer's template, else the study is its own f
 - weak-label headings: on PDFs with bookmarks, headings detected from the text alone (outline ignored)
   against bookmark titles printed as a line on their page. Detected lines no bookmark names are
   reported as unsupported, not as errors: bookmarks are incomplete.
-- template chapters: on PDFs without bookmarks, numbered lines naming an EMA PASS template chapter
+- template chapters: on PDFs without bookmarks (a contents-page outline may still be used), numbered lines naming an EMA PASS template chapter
   (EMA/623947/2012) and whether they are detected as headings.
 - reading set: characters read per page, reference-list-like chunks read (a proxy, see below) and
   ENCePP questionnaire text read.
@@ -38,6 +38,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
+import pymupdf
 from pydantic import ValidationError
 
 from ema_rwe.domain import Extraction, RWEError
@@ -150,8 +151,6 @@ def heading_lines(chunks) -> set[tuple[int, str]]:
 
 
 def weak_label_headings(data: bytes, pages) -> dict:
-    import pymupdf
-
     with pymupdf.open(stream=data, filetype="pdf") as doc:
         toc = doc.get_toc()
     lines = {p.page: {canonical(l) for l in p.text.splitlines() if l.strip()} for p in pages}
@@ -324,7 +323,8 @@ def cmd_measure(args) -> None:
         pages = extract_pages(data)
         chunks = sections(pages)
         read = reading_order(chunks)
-        has_outline = any(p.chapter for p in pages)
+        with pymupdf.open(stream=data, filetype="pdf") as doc:
+            has_bookmarks = bool(doc.get_toc())
         questionnaire = questionnaire_pages(pages)
         page_chars = Counter()
         for c in read:
@@ -334,7 +334,8 @@ def cmd_measure(args) -> None:
             "sha256": info["sha256"],
             "family": info["family"],
             "pages": len(pages),
-            "has_outline": has_outline,
+            "has_bookmarks": has_bookmarks,
+            "outline_source": next((s for p in pages if (s := getattr(p, "outline_source", None))), None),
             "read_chars": sum(page_chars.values()),
             "total_chars": sum(len(p.text) for p in pages),
             "read_chars_by_page": dict(sorted(page_chars.items())),
@@ -345,7 +346,7 @@ def cmd_measure(args) -> None:
             "questionnaire_pages": len(questionnaire),
             "questionnaire_read_chars": sum(len(c["text"]) for c in read if c["page"] in questionnaire),
         }
-        if has_outline:
+        if has_bookmarks:
             row["weak_label_headings"] = weak_label_headings(data, pages)
         else:
             row["template_chapters"] = template_chapters(pages, chunks)
@@ -392,8 +393,8 @@ def totals(per_pdf: dict) -> dict:
                 t["label_checklist_read_chars"] += lab["checklist"]["read_chars"]
         for key, value in (r.get("evidence") or {}).items():
             t[f"evidence_{key}"] += value
-    t["pdfs_with_outline"] = sum(r["has_outline"] for r in rows)
-    t["pdfs_without_outline"] = sum(not r["has_outline"] for r in rows)
+    t["pdfs_with_bookmarks"] = sum(r["has_bookmarks"] for r in rows)
+    t["pdfs_with_contents_outline"] = sum(r.get("outline_source") == "toc" for r in rows)
     return dict(sorted(t.items()))
 
 
