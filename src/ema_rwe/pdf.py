@@ -344,7 +344,7 @@ def text_outline(pages: list[Page]) -> list[list]:
 
 
 # Version of the section/role/reading rules; part of the analysis fingerprint, so a change re-extracts.
-PARSER_VERSION = "structural-v14"
+PARSER_VERSION = "structural-v15"
 
 
 def extract_pages(data: bytes, use_outline: bool = True) -> list[Page]:
@@ -608,6 +608,13 @@ def sections(pages: list[Page]) -> list[dict]:
         chunk["relevant"] = role not in NON_METHOD_ROLES and (
             role != "unknown" or chunk["relevant"] or bool(expand(chunk["text"][:1900])["concepts"])
         )
+    headed = [c for c in result if c["section"] and not c.get("toc") and not c.get("checklist")]
+    if headed and sum(c["role"] == "unknown" for c in headed) > 0.6 * len(headed):
+        # The role and signal words are English: when they recognise few of the document's headings (another
+        # language or an unusual template), an unknown section is read rather than dropped for lack of them.
+        for c in result:
+            if c["role"] == "unknown":
+                c["relevant"] = True
     return result
 
 

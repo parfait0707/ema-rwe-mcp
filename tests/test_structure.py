@@ -450,3 +450,18 @@ def test_contents_outline_skips_table_captions_and_places_unprinted_annex_headin
     rows = {title: (level, page) for level, title, page in text_outline(pages)}
     assert rows["Annex I: Code lists"] == (1, 6)  # placed by the verified offset
     assert "Table A1.2. Product codes" not in rows  # navigation, not structure
+
+
+def test_sections_are_read_when_the_role_words_do_not_know_the_language():
+    # A Spanish protocol: no heading has a known role and the English signal words do not occur
+    chunks = sections(
+        extract_pages(
+            pdf(
+                "8. DISEÑO DEL ESTUDIO\nEstudio de casos y controles anidado.\n"
+                "9. POBLACIÓN EN ESTUDIO\n9.1 Criterios de exclusión\nPacientes con cáncer previo al diagnóstico.",
+                "11. PLAN DE TRABAJO\nLos datos se extraerán en 2024 por el equipo investigador del centro.",
+            )
+        )
+    )
+    exclusion = chunk_with(chunks, "cáncer previo")
+    assert exclusion["role"] == "unknown" and exclusion in reading_order(chunks)
