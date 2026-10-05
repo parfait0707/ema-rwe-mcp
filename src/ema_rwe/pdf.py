@@ -12,7 +12,7 @@ from .vocabulary import canonical, contains, expand
 RELEVANT = re.compile(
     r"design|method|setting|data source|database|population|inclusion|exclusion|exposure|"
     r"comparator|outcome|variable|definition|phenotyp|code list|codelist|concept|"
-    r"analysis|analyses|statistic|follow.up|washout|objective|appendix|annex|cohort",
+    r"analysis|analyses|statistic|follow.up|washout|objective|appendix|annex|cohort|consent|enrol",
     re.IGNORECASE,
 )
 HEADING = re.compile(r"^(?:\d{1,2}(?:\.\d{1,2})*\.?\s+|[A-Z]\.\s+).{3,110}$")
@@ -57,11 +57,39 @@ def is_heading(line: str) -> bool:
 
 
 ROLES = {
+    "contents": (
+        "table of contents",
+        "list of tables",
+        "list of figures",
+        "list of appendices",
+        "list of annexes",
+    ),
     "references": ("references", "bibliography", "literature cited"),
     "administrative": ("responsible parties", "study team", "milestones", "governance", "signatures"),
     "background": ("background", "rationale", "introduction"),
     "abstract": ("abstract", "synopsis", "summary"),
     "appendix": ("appendix", "appendices", "annex", "annexes", "supplement"),
+    # Protocol changes: read, but superseded conditions must not be extracted as current ones.
+    "amendments": (
+        "amendments",
+        "amendment",
+        "document history",
+        "description of changes",
+        "protocol changes",
+    ),
+    # Study conduct chapters of the PASS template (ethics, safety reporting, dissemination). They may hold
+    # study-specific conditions or definitions (consent before enrolment, adverse event definitions).
+    "conduct": (
+        "protection of human subjects",
+        "ethics",
+        "ethical",
+        "consent",
+        "reporting of adverse events",
+        "safety reporting",
+        "disseminating",
+        "dissemination",
+        "publication",
+    ),
     "methods": ("research methods", "methodology", "methods", "study design", "research design"),
     "data_sources": ("data sources", "data source", "study setting", "databases", "data provenance"),
     "population": ("population", "eligibility", "inclusion", "exclusion", "participants", "study subjects"),
@@ -83,11 +111,18 @@ ROLES = {
         "sensitivity",
         "confounding",
     ),
+    "objectives": ("research question", "research questions", "objectives", "objective"),
 }
 
 
-# Section roles whose text describes something other than this study's methods.
+# Three separate decisions use the section role:
+# - NON_METHOD_ROLES are not read for extraction (and rank low in search);
+# - LOW_PRIORITY_ROLES (and unknown) are read only when the section itself shows method content;
+# - EVIDENCE_REJECT_ROLES are the roles whose text is confidently not this study's methods, so a method
+#   fact quoted only from them is rejected. An uncertain role never rejects a verbatim quote.
 NON_METHOD_ROLES = {"references", "contents", "background", "administrative", "checklist"}
+LOW_PRIORITY_ROLES = {"unknown", "conduct", "amendments"}
+EVIDENCE_REJECT_ROLES = {"references", "contents", "background", "checklist"}
 
 
 def heading_role(heading: str | None) -> str:
@@ -133,7 +168,7 @@ def apply_bookmarks(pages: list[Page], toc: list) -> None:
 
 
 # Version of the section/role/reading rules; part of the analysis fingerprint, so a change re-extracts.
-PARSER_VERSION = "structural-v4"
+PARSER_VERSION = "structural-v5"
 
 
 def extract_pages(data: bytes, use_outline: bool = True) -> list[Page]:
@@ -246,11 +281,13 @@ def sections(pages: list[Page]) -> list[dict]:
         match = re.match(r"^(\d+(?:\.\d+)*)\.?\s", heading or "")
         number = tuple(int(x) for x in match.group(1).split(".")) if match else ()
         role = heading_role(heading)
+        basis = "heading" if role != "unknown" else "none"
         if role == "unknown" and chunk.get("chapter"):
             # Bookmark outline beats a missed text heading; the top-level chapter supplies the context.
             role = heading_role(chunk["chapter"])
             if role == "unknown":
                 role = heading_role(chunk.get("chapter_top"))
+            basis = "bookmark" if role != "unknown" else basis
         warnings = []
         if number and previous_number and number < previous_number and heading != result[i - 1]["section"]:
             warnings.append("section_number_regression; verify heading against outline")
@@ -281,17 +318,17 @@ def sections(pages: list[Page]) -> list[dict]:
             parent = {"heading": heading, "role": role}
         inherited = parent["role"] if parent else "unknown"
         if chunk.get("checklist"):
-            role = "checklist"
+            role, basis = "checklist", "page_type"
             parent = {"heading": heading, "role": role}
         elif chunk.get("toc"):
-            role = "contents"
+            role, basis = "contents", "page_type"
             parent = None
         elif (
             inherited in {"references", "administrative", "background"}
             and len(number) != 1
             or role == "unknown"
         ):
-            role = inherited
+            role, basis = inherited, ("parent" if inherited != "unknown" else "none")
         chunk.update(
             section_id=f"s{i + 1:04}",
             role=role,
@@ -300,9 +337,12 @@ def sections(pages: list[Page]) -> list[dict]:
             previous_section=result[i - 1]["section"] if i else None,
             next_section=result[i + 1]["section"] if i + 1 < len(result) else None,
             structure_warnings=warnings,
+            role_basis=basis,  # heading, bookmark, parent, page_type or none: how sure the role is
         )
         chunk["relevant"] = role not in NON_METHOD_ROLES and (
-            role != "unknown" or chunk["relevant"] or bool(expand(chunk["text"][:1900])["concepts"])
+            role not in LOW_PRIORITY_ROLES
+            or chunk["relevant"]
+            or bool(expand(chunk["text"][:1900])["concepts"])
         )
     return result
 
@@ -388,11 +428,11 @@ def validate_evidence(extraction: Extraction, pages: list[Page], chunks: list[di
             if (
                 require_methods
                 and containing_chunks
-                and all(c["role"] in NON_METHOD_ROLES for c in containing_chunks)
+                and all(c["role"] in EVIDENCE_REJECT_ROLES for c in containing_chunks)
             ):
                 raise RWEError(
                     "EVIDENCE_WRONG_SECTION",
-                    "Method/data-source evidence comes only from background, references, checklist or administrative content.",
+                    "Method/data-source evidence comes only from background, references, contents or checklist content.",
                 )
             if evidence.section is not None:
                 matching = [

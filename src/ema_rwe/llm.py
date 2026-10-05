@@ -40,7 +40,9 @@ Data source values must be exact names appearing in evidence; distinguish used, 
 Do not treat organisations, investigators, software, OMOP CDM, cited prior studies or abbreviations alone as
 proof of an actually used database. Include all participating data sources stated in the relevant sections.
 Check section role, parent and neighbours; do not extract this study's methods from background, references,
-or template/checklist questions. Report contradictory methods rather than silently reconciling them.
+or template/checklist questions. Sections with role amendments describe protocol changes: keep superseded and
+current conditions apart and never report a superseded condition as current. Sections with role conduct
+(ethics, safety reporting, dissemination) count only where they state study-specific conditions or definitions. Report contradictory methods rather than silently reconciling them.
 Disease definitions should preserve diagnostic codes, code systems, lookback, inclusion/exclusion and
 algorithm details where stated. Separate study design, population, exposure, comparator, outcomes and analysis.
 Fill cohort with how the analysis cohort is built: every inclusion and exclusion criterion as its own fact,
