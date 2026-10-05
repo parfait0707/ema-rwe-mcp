@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 def now() -> str:
@@ -74,10 +74,23 @@ class Document(Model):
     published_date: str | None = None
 
 
+def quote_length(quote: str) -> int:
+    """Length of a quote as evidence validation compares it: whitespace runs collapsed, soft hyphens removed."""
+    return len(" ".join(quote.replace("\u00ad", "").split()))
+
+
 class Evidence(Model):
     page: int = Field(ge=1)
     section: str | None = None
     quote: str = Field(min_length=8, max_length=1000)
+
+    @field_validator("quote")
+    @classmethod
+    def quote_has_text(cls, quote: str) -> str:
+        # A blank quote normalizes to '' and would be found on every page.
+        if quote_length(quote) < 8:
+            raise ValueError("quote needs at least 8 characters once whitespace is collapsed")
+        return quote
 
 
 class Fact(Model):

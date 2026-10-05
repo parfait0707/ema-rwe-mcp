@@ -6,7 +6,7 @@ import httpx
 from pydantic import ValidationError
 
 from .config import Settings
-from .domain import Extraction, RWEError
+from .domain import Extraction, RWEError, quote_length
 
 SOURCE_ASSESSMENT_PROMPT = """Assess source types from this protocol, never from database names alone.
 Inspect data sources, methods, cohort/outcome/exposure definitions, code appendices and adjacent chapters;
@@ -82,7 +82,7 @@ def drop_invalid_evidence(raw: dict) -> dict:
         fact["evidence"] = [
             e
             for e in fact.get("evidence") or []
-            if isinstance(e, dict) and len(str(e.get("quote") or "")) >= 8
+            if isinstance(e, dict) and quote_length(str(e.get("quote") or "")) >= 8
         ][:8]
         return fact if fact["evidence"] else None
 
