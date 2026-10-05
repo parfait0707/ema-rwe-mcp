@@ -1,9 +1,10 @@
 import os
-import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from platformdirs import user_cache_path, user_data_path
+
+from .domain import atomic_write
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 BUNDLED_DATA = Path(__file__).resolve().parent / "data"
@@ -24,7 +25,9 @@ def default_data_dir() -> Path:
     for name in SEEDED_FILES:
         source, destination = BUNDLED_DATA / name, target / name
         if source.is_file() and not destination.exists():
-            shutil.copyfile(source, destination)
+            # Temporary file then rename: an interrupted or concurrent first start never leaves a
+            # half-copied database under the name that later starts take as already seeded.
+            atomic_write(destination, source.read_bytes())
     if target not in _refreshed:  # once per process: startup calls this several times
         _refreshed.add(target)
         from .storage import refresh_from_bundle  # storage imports this module indirectly
