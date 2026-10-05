@@ -279,7 +279,8 @@ def test_bookmarks_under_a_list_of_tables_are_navigation_not_chapters():
         "LIST OF TABLES\nTable 3 Outcome codes ....",
         METHODS,
         "Table 3 Outcome codes\nThe index date is the first dispensing; follow-up ends at the outcome.",
-        toc=[[1, "List of Tables", 1], [2, "Table 3 Outcome codes", 3], [1, "9 Research methods", 2]],
+        # As many PDFs do, the list entry itself points at the first table in the body, not at the list
+        toc=[[1, "9 Research methods", 2], [1, "List of Tables", 3], [2, "Table 3 Outcome codes", 3]],
     )
     pages = extract_pages(data)
     # Then that page stays in the methods chapter and is read

@@ -226,14 +226,18 @@ def apply_line_styles(pages: list[Page], doc) -> None:
 def apply_bookmarks(pages: list[Page], toc: list, source: str = "bookmarks") -> None:
     """Label each page with the bookmark chapter that starts on or before it (pymupdf get_toc rows).
 
-    The entries under a list of tables or figures point at single tables inside other chapters: they are
-    navigation, not structure, and are skipped (the list entry itself is kept).
+    A list of tables, figures or contents and the entries under it are navigation, not structure: they point
+    at single tables inside other chapters (often at the first one, not at the list), so they are skipped.
+    Contents pages are recognised from their text instead.
     """
     rows, navigation_level = [], None
     for lvl, title, page in toc:
         if navigation_level is not None and lvl > navigation_level:
             continue
-        navigation_level = lvl if heading_role(str(title)) == "contents" else None
+        navigation_level = None
+        if heading_role(str(title)) == "contents":
+            navigation_level = lvl
+            continue
         rows.append((lvl, title, page))
     toc = rows
     entries = sorted(
