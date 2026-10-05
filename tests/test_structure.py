@@ -561,6 +561,7 @@ def test_annexes_listed_under_a_list_of_annexes_bookmark_are_structure():
         ("3.3 million, by applying the prevalence of the deficiency", False),  # a value in running text
         ("Appendix  I. The  following  protocols  will  continue  to be  developed  taking  into", False),
         ("Annex 5 CASE DEFINITIONS FOR ADVERSE EVENTS OF SPECIAL INTEREST AND SURVEILLANCE INDICATORS", True),
+        ("ANNEX 4 Amendments and administrative changes to the protocol", True),
     ],
 )
 def test_heading_candidates_from_the_review_of_real_protocols(line, expected):

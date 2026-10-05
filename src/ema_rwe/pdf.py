@@ -78,8 +78,8 @@ def is_heading(line: str) -> bool:
         return False
     if re.match(r"^(?:appendix|annex)\s+[A-Z0-9]+\b", line, re.IGNORECASE):
         # 'Appendix I. The following protocols will continue to be developed' is a sentence citing the
-        # appendix: running text carries lower-case function words, titles hardly any.
-        return sum(w in ENGLISH_WORDS for w in re.findall(r"\b[a-z]+\b", line)) < 3
+        # appendix: running text has verbs and pronouns that titles ('Amendments and changes to the protocol') lack.
+        return sum(w in SENTENCE_WORDS for w in re.findall(r"\b[a-z]+\b", line)) < 2
     if canonical(line) in {
         "study design",
         "research methods",
@@ -364,7 +364,7 @@ def text_outline(pages: list[Page]) -> list[list]:
 
 
 # Version of the section/role/reading rules; part of the analysis fingerprint, so a change re-extracts.
-PARSER_VERSION = "structural-v23"
+PARSER_VERSION = "structural-v24"
 
 
 def mark_contents_titles(pages: list[Page], rows: list[list]) -> None:
@@ -417,6 +417,24 @@ def text_layer(data: bytes) -> str | None:
     return "partial" if blank * 2 >= len(pages) else "full"
 
 
+SENTENCE_WORDS = frozenset(
+    [
+        "will",
+        "be",
+        "is",
+        "are",
+        "was",
+        "were",
+        "has",
+        "have",
+        "this",
+        "that",
+        "these",
+        "which",
+        "shall",
+        "should",
+    ]
+)
 ENGLISH_WORDS = frozenset(
     [
         "the",
