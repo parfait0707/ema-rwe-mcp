@@ -15,7 +15,59 @@ RELEVANT = re.compile(
     r"analysis|analyses|statistic|follow.up|washout|objective|appendix|annex|cohort|consent|enrol",
     re.IGNORECASE,
 )
-HEADING = re.compile(r"^(?:\d{1,2}(?:\.\d{1,2})*\.?\s+|[A-Z]\.\s+).{3,110}$")
+# Section numbers: arabic (9, 9.2) or roman (II, II.4); a leading zero ('0.03 MG/ML') is a value, not a section.
+SECTION_NUMBER = re.compile(r"^((?:[1-9]\d?|[IVX]{1,4})(?:\.\d{1,2})*)\.?\s+(\S.{2,109})$")
+LETTERED = re.compile(r"^[A-Z]\.\s+(\S.{2,109})$")
+ROMAN = {"I": 1, "V": 5, "X": 10}
+# Chapter titles of the EMA PASS protocol template (EMA/623947/2012), matched as whole titles: a single-level
+# numbered line with one of them is a heading even in title case ('13 References'), unlike a numbered list item.
+CHAPTER_TITLES = {
+    "table of contents",
+    "list of abbreviations",
+    "responsible parties",
+    "abstract",
+    "amendments and updates",
+    "milestones",
+    "rationale and background",
+    "research question and objectives",
+    "research methods",
+    "study design",
+    "setting",
+    "variables",
+    "data sources",
+    "study size",
+    "data management",
+    "data analysis",
+    "quality control",
+    "limitations of the research methods",
+    "other aspects",
+    "protection of human subjects",
+    "management and reporting of adverse events",
+    "management and reporting of adverse events adverse reactions",
+    "plans for disseminating and communicating study results",
+    "references",
+    "annexes",
+    "study population",
+    "disease definitions",
+}
+
+
+def roman_value(text: str) -> int | None:
+    values = [ROMAN.get(ch) for ch in text]
+    if None in values:
+        return None
+    total = sum(-v if i + 1 < len(values) and v < values[i + 1] else v for i, v in enumerate(values))
+    return total if total > 0 else None
+
+
+def section_number(heading: str | None) -> tuple[int, ...]:
+    """(2, 4) for 'II.4 Abstract' or '2.4 Abstract'; () when the heading carries no section number."""
+    match = SECTION_NUMBER.match(heading or "")
+    if not match:
+        return ()
+    first, *rest = match.group(1).split(".")
+    value = int(first) if first.isdigit() else roman_value(first)
+    return (value, *map(int, rest)) if value else ()
 
 
 def is_heading(line: str) -> bool:
@@ -41,19 +93,18 @@ def is_heading(line: str) -> bool:
         "outcomes",
     }:
         return True
-    if not HEADING.match(line) or re.search(r"\.{3,}|\s\d+\s*$", line):
+    if re.search(r"\.{3,}|\s\d+\s*$", line):
         return False
-    # Numbered database lists and footnotes are not section headings.
-    if re.match(r"^\d+\.\d+", line):
-        return True
-    title = re.sub(r"^(?:\d+\.?|[A-Z]\.)\s+", "", line)
-    return title.isupper() or bool(
-        re.fullmatch(
-            r"Study design|Data sources|Study population|Research methods|Data analysis|Disease definitions",
-            title,
-            re.IGNORECASE,
-        )
-    )
+    if (match := SECTION_NUMBER.match(line)) and section_number(line):
+        if len(section_number(line)) > 1:
+            return True  # '9.2 Setting', 'II.4 Abstract': multi-level numbering is not a list item
+        title = match.group(2)
+    elif match := LETTERED.match(line):
+        title = match.group(1)
+    else:
+        return False
+    # A single-level number is also how lists are written: only an all-caps or template chapter title counts.
+    return title.isupper() or canonical(title) in CHAPTER_TITLES
 
 
 ROLES = {
@@ -168,7 +219,7 @@ def apply_bookmarks(pages: list[Page], toc: list) -> None:
 
 
 # Version of the section/role/reading rules; part of the analysis fingerprint, so a change re-extracts.
-PARSER_VERSION = "structural-v5"
+PARSER_VERSION = "structural-v6"
 
 
 def extract_pages(data: bytes, use_outline: bool = True) -> list[Page]:
@@ -278,8 +329,7 @@ def sections(pages: list[Page]) -> list[dict]:
     previous_number = ()
     for i, chunk in enumerate(result):
         heading = chunk["section"]
-        match = re.match(r"^(\d+(?:\.\d+)*)\.?\s", heading or "")
-        number = tuple(int(x) for x in match.group(1).split(".")) if match else ()
+        number = section_number(heading)
         role = heading_role(heading)
         basis = "heading" if role != "unknown" else "none"
         if role == "unknown" and chunk.get("chapter"):

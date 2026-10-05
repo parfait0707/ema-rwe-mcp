@@ -4,7 +4,15 @@ import pymupdf
 import pytest
 
 from ema_rwe.domain import DataSource, Evidence, Extraction, Fact, RWEError
-from ema_rwe.pdf import extract_pages, heading_role, reading_order, sections, validate_evidence
+from ema_rwe.pdf import (
+    extract_pages,
+    heading_role,
+    is_heading,
+    reading_order,
+    section_number,
+    sections,
+    validate_evidence,
+)
 
 
 def pdf(*texts: str, toc=None) -> bytes:
@@ -92,3 +100,55 @@ def test_role_basis_records_where_each_role_came_from():
     by_page = {c["page"]: c for c in sections(pages)}
     assert by_page[1]["role_basis"] == "heading"
     assert by_page[2]["role"] == "population" and by_page[2]["role_basis"] == "bookmark"
+
+
+@pytest.mark.parametrize(
+    ("line", "expected"),
+    [
+        ("II.4 Abstract", True),  # roman multi-level
+        ("III.13 References", True),
+        ("I BACKGROUND AND PREAMBLE", True),  # roman single level, all caps
+        ("13 References", True),  # template chapter in title case
+        ("7. Milestones", True),
+        ("11 Management and Reporting of Adverse Events/Adverse Reactions", True),
+        ("1. Patients aged 18 years or older", False),  # a numbered list item
+        ("2. Abstract submitted to the congress", False),  # template word, not the whole title
+        ("0.03 MG/ML Injectable Suspension", False),  # a value, not a section number
+        ("I agree to the terms of the study", False),
+    ],
+)
+def test_heading_numbering_and_template_titles(line, expected):
+    assert is_heading(line) is expected
+
+
+def test_section_numbers_parse_roman_and_arabic_alike():
+    assert section_number("II.4 Abstract") == (2, 4) == section_number("2.4 Abstract")
+    assert section_number("IX. ANNEXES") == (9,) and section_number("0.03 MG/ML") == ()
+
+
+def test_title_case_references_chapter_ends_the_methods_context():
+    # Given a protocol without bookmarks whose reference chapter title is not in capitals
+    pages = extract_pages(
+        pdf(
+            METHODS + "\n9.9 Limitations\nMisclassification of the outcome is possible in claims data.",
+            "13 References\n1. Smith J, et al. Outcome validation in claims. Pharmacoepidemiol Drug Saf. 2019.",
+        )
+    )
+    chunks = sections(pages)
+    reference = chunk_with(chunks, "Smith J")
+    # Then the reference list is its own chapter and is not read as part of the limitations section
+    assert reference["section"] == "13 References" and reference["role"] == "references"
+    assert reference not in reading_order(chunks)
+
+
+def test_roman_chapters_set_the_parent_context():
+    chunks = sections(
+        extract_pages(
+            pdf(
+                "II.9 Research Methods\nA retrospective cohort design is used for the outcome analysis.",
+                "III.13 References\nJones A, et al. Drug utilisation in Nordic registries. 2018.",
+            )
+        )
+    )
+    assert chunk_with(chunks, "retrospective")["role"] == "methods"
+    assert chunk_with(chunks, "Jones")["role"] == "references"
