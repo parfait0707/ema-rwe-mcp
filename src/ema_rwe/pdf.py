@@ -13,7 +13,7 @@ from .vocabulary import canonical, contains, expand
 RELEVANT = re.compile(
     r"design|method|setting|data source|database|population|inclusion|exclusion|exposure|"
     r"comparator|outcome|variable|definition|phenotyp|code list|codelist|concept|"
-    r"analysis|analyses|statistic|follow.up|washout|objective|appendix|annex|cohort",
+    r"analysis|analyses|statistic|follow.up|washout|objective|appendix|annex|cohort|eligib",
     re.IGNORECASE,
 )
 # Section numbers: arabic (9, 9.2) or roman (II, II.4); a leading zero ('0.03 MG/ML') is a value, not a section.
@@ -167,7 +167,7 @@ ROLES = {
         "sensitivity",
         "confounding",
     ),
-    "objectives": ("research question", "research questions", "objectives", "objective"),
+    "objectives": ("research question", "research questions", "objectives", "objective", "aims", "aim"),
 }
 
 
@@ -179,6 +179,8 @@ ROLES = {
 # - EVIDENCE_REJECT_ROLES are the roles whose text is confidently not this study's methods, so a method
 #   fact quoted only from them is rejected. An uncertain role never rejects a verbatim quote.
 NON_METHOD_ROLES = {"references", "contents", "background", "administrative", "checklist"}
+# A section whose own heading names one of these keeps it inside a background chapter.
+METHOD_ROLES = {"methods", "objectives", "population", "definitions", "data_sources", "analysis"}
 EVIDENCE_REJECT_ROLES = {"references", "contents", "background", "checklist"}
 
 
@@ -311,20 +313,19 @@ def text_outline(pages: list[Page]) -> list[list]:
     offset, support = offsets.most_common(1)[0]
     if support < 3 or support < 0.4 * len(entries):
         return []
-    rows, previous_level = [], 0
+    rows, numbered_level = [], 0
     for (number, title, printed, _), found in anchors:
         near = [pg for pg in found if abs(pg - (printed + offset)) <= 1]
         if near:
             if number:
-                level = len(section_number(f"{number.rstrip('.')} title"))
+                level = numbered_level = len(section_number(f"{number.rstrip('.')} title"))
             elif (
                 re.match(r"(?:appendix|annex|appendices|annexes)\b", title, re.IGNORECASE)
                 or canonical(title) in CHAPTER_TITLES
             ):
                 level = 1
-            else:  # an unnumbered line between numbered entries is a sub-item, not a chapter
-                level = previous_level + 1
-            previous_level = level
+            else:  # an unnumbered line under a numbered entry is its sub-item; unnumbered entries are siblings
+                level = numbered_level + 1
             rows.append(
                 [
                     max(level, 1),
@@ -336,7 +337,7 @@ def text_outline(pages: list[Page]) -> list[list]:
 
 
 # Version of the section/role/reading rules; part of the analysis fingerprint, so a change re-extracts.
-PARSER_VERSION = "structural-v12"
+PARSER_VERSION = "structural-v13"
 
 
 def extract_pages(data: bytes, use_outline: bool = True) -> list[Page]:
@@ -560,13 +561,9 @@ def sections(pages: list[Page]) -> list[dict]:
             "introduction",
         } or bool(re.match(r"^(appendix|annex)\b", heading or "", re.IGNORECASE))
         top = chunk.get("chapter_top")
-        if (
-            top
-            and top != (result[i - 1].get("chapter_top") if i else None)
-            and heading_role(top) != "unknown"
-        ):
-            # A top-level bookmark chapter with a known role becomes the parent context; an outline title
-            # without one ('Part B') keeps the parent found from text headings.
+        if top and top != (result[i - 1].get("chapter_top") if i else None):
+            # A new top-level outline chapter replaces the parent context, also when its title has no known
+            # role: the previous chapter (often 'Background') has ended.
             parent = {"heading": top, "role": heading_role(top), "number": section_number(top)}
         if parent and number and parent["number"] and number[0] != parent["number"][0]:
             # A numbered section outside the parent's chapter ('3.1' after '1. Background'): the chapter
@@ -585,6 +582,9 @@ def sections(pages: list[Page]) -> list[dict]:
             inherited in {"references", "administrative", "background"}
             and len(number) != 1
             and basis != "bookmark"  # the outline places this section; a text parent does not override it
+            # A background chapter may hold this study's own objectives or methods ('7.4 Research question and
+            # objectives' in '7 Rationale and background'); sections of a reference list never do.
+            and not (inherited == "background" and role in METHOD_ROLES)
             or role == "unknown"
         ):
             role, basis = inherited, ("parent" if inherited != "unknown" else "none")

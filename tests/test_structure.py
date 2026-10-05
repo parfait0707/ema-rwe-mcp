@@ -379,3 +379,46 @@ def test_outline_ancestry_places_a_section_whose_own_title_has_no_role():
     setting = chunk_with(chunks, "diabetes register")
     assert setting["role"] == "methods" and setting["role_basis"] == "bookmark"
     assert setting in reading_order(chunks)
+
+
+def test_objectives_inside_a_background_chapter_keep_their_role():
+    chunks = sections(
+        extract_pages(
+            pdf(
+                "7. RATIONALE AND BACKGROUND\n7.1. Treatment of depression\nEarlier studies reported the risk.\n"
+                "7.4 Research Question and Objectives\nThe objective is to estimate the risk of malformations.",
+                "13. REFERENCES\n13.1 Missing data\nPrior authors used complete case analysis.",
+            )
+        )
+    )
+    assert chunk_with(chunks, "Earlier studies")["role"] == "background"
+    objectives = chunk_with(chunks, "estimate the risk")
+    assert objectives["role"] == "objectives" and objectives in reading_order(chunks)
+    # A method-like heading in a reference list is still the reference list
+    assert chunk_with(chunks, "Prior authors")["role"] == "references"
+
+
+def test_new_top_level_chapter_ends_the_previous_parent_even_without_a_known_role():
+    data = pdf(
+        "BACKGROUND\nEarlier cohorts reported neurodevelopmental effects of exposure in utero.",
+        "PROTOCOL 1 NEURODEVELOPMENTAL FOLLOW-UP\n1.1 Recruitment of children\nChildren exposed in utero will be recruited.",
+        toc=[
+            [1, "Background", 1],
+            [1, "Protocol 1 Neurodevelopmental follow-up", 2],
+            [2, "1.1 Recruitment of children", 2],
+        ],
+    )
+    chunks = sections(extract_pages(data))
+    recruitment = chunk_with(chunks, "will be recruited")
+    assert recruitment["role"] != "background" and recruitment["context_role"] != "background"
+
+
+def test_consecutive_unnumbered_contents_lines_are_siblings():
+    from ema_rwe.pdf import Page, text_outline
+
+    entries = [("Background", 1), ("Aims", 1), ("Objectives", 1), ("1.1 Recruitment", 2), ("Notes", 2)]
+    contents = "\n".join(f"{t} {'.' * 12} {n}" for t, n in entries)
+    pages = [Page(1, "Title page"), Page(2, contents)]
+    pages += [Page(3, "Background\nAims\nObjectives\nText."), Page(4, "1.1 Recruitment\nNotes\nText.")]
+    levels = {title: level for level, title, _ in text_outline(pages)}
+    assert levels == {"Background": 1, "Aims": 1, "Objectives": 1, "1.1 Recruitment": 2, "Notes": 3}

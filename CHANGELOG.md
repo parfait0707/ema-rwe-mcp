@@ -5,6 +5,24 @@
 - `ema-rwe import-all` and `ema-rwe merge-observations`, the commands that build the bundled database,
   end with `VACUUM` (the result reports `bytes_before`/`bytes_after`). On a copy of the current bundle:
   45.8 MB -> 43.1 MB, gzip 17.1 MB -> 12.1 MB. The committed database is compacted at its next rebuild.
+- Protocol structure detection is generalised (spec v1.5, parser `structural-v13`; cached analyses and
+  research answers are re-extracted):
+  - Section roles drive three separate decisions. Contents, background, administrative, reference and
+    checklist sections are not read; ethics, safety-reporting and dissemination chapters (`conduct`) and
+    amendment chapters (`amendments`) are read, and the extraction prompt keeps superseded amendment
+    conditions apart from current ones. A method quote is rejected only when it occurs solely in
+    references, contents, background or checklist text. Each section records its `role_basis`.
+  - Section numbers are parsed alike for arabic and roman numbering (`II.4`); a single-level number is a
+    heading when its title is in capitals or is an EMA PASS template chapter title (`13 References`).
+  - Without bookmarks, a contents page is used as the outline once its printed-to-physical page offset is
+    confirmed by at least three entries; otherwise a larger or bold line with the next chapter number is a
+    chapter heading. Outline titles start sections, and text above them stays in the previous chapter.
+    List-of-tables/figures bookmarks are ignored as navigation.
+  - The ENCePP checklist range runs from its title or heading to the next appendix or chapter, and only
+    when questions and Yes/No/N/A answer columns follow; a title merely listed in contents is kept as text
+    with a warning.
+  - `scripts/structure_eval.py` measures structure detection reproducibly (PDF hashes, parser version,
+    denominators, a template-family dev/eval split and independent eval labels).
 - Prompts no longer encode examples from individual verified studies: the stated-count rule covers any
   list (outcomes, endpoints, cohorts, analyses, definitions) instead of "two types of outcomes", the
   database rule asks for every database named for the study with its supported usage (an assessed one is
