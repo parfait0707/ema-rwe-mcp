@@ -5,6 +5,10 @@
 - `ema-rwe import-all` and `ema-rwe merge-observations`, the commands that build the bundled database,
   end with `VACUUM` (the result reports `bytes_before`/`bytes_after`). On a copy of the current bundle:
   45.8 MB -> 43.1 MB, gzip 17.1 MB -> 12.1 MB. The committed database is compacted at its next rebuild.
+- Salt words: choline, diolamine, meglumine, semisodium and anhydrous are counter-ion/hydrate words (a base
+  name now finds e.g. Yselty, Orepaxam and Vyndaqel); words reviewed as other substances or product lines
+  (disoproxil, pegol, ...) are listed separately. `refresh_drug_dictionary` reports unreviewed candidates
+  as `salt_word_candidates`; additions stay a code-review decision.
 - Protocol structure detection is generalised (spec v1.5, parser `structural-v24`; cached analyses and
   research answers are re-extracted):
   - Section roles drive three separate decisions. Contents, background, administrative, reference and

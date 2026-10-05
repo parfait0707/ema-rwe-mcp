@@ -316,3 +316,33 @@ def test_catalogue_code_joins_only_the_whole_ingredient_set(drug_file):
     assert same_medicine("Metformin hydrochloride / sitagliptin phosphate", ["sitagliptin", "metformin"])
     label = "sitagliptin phosphate and metformin hydrochloride"
     assert label in expand_medicine("Janumet", {"A10BD07": label})["queries"]
+
+
+async def test_refresh_reports_unreviewed_salt_word_candidates(tmp_path, monkeypatch):
+    path = tmp_path / "salts.json"
+    monkeypatch.setenv("EMA_DRUG_DICTIONARY_PATH", str(path))
+    payload = {
+        "meta": {},
+        "data": [
+            row("Yselty", "linzagolix choline", "H01CC04"),
+            row("Generic linzagolix", "linzagolix", "H01CC04"),
+            row("Orepaxam", "treprostinil diolamine", "B01AC21"),
+            row("Remodulin", "treprostinil", "B01AC21"),
+            row("Viread", "tenofovir disoproxil", "J05AF07"),
+            row("Generic tenofovir", "tenofovir", "J05AF07"),
+            row("Futuremab", "futuremab xyzate", "L01XX99"),
+            row("Futuremab base", "futuremab", "L01XX99"),
+        ],
+    }
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    result = await refresh_dictionary(False)
+    # Reviewed counter-ions and reviewed non-salts are not reported; an unknown trailing word is
+    assert result["cached"] and result["salt_word_candidates"] == ["xyzate"]
+    # A counter-ion only adds the base-name lookup; a reviewed product-line word does not
+    assert {m["product_name"] for m in drug_expansion("linzagolix", whole_term=True)["matches"]} == {
+        "Generic linzagolix",
+        "Yselty",
+    }
+    assert "Viread" not in [
+        m["product_name"] for m in drug_expansion("tenofovir", whole_term=True)["matches"]
+    ]

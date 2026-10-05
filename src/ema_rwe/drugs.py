@@ -65,6 +65,7 @@ async def refresh_dictionary(force=False, transport=None):
         return {
             "cached": True,
             "records": len(records),
+            "salt_word_candidates": salt_word_candidates(records),
             "source": SOURCE_URL,
             "source_metadata": meta,
             "sha256": digest,
@@ -91,6 +92,7 @@ async def refresh_dictionary(force=False, transport=None):
     return {
         "cached": False,
         "records": len(records),
+        "salt_word_candidates": salt_word_candidates(records),
         "source": SOURCE_URL,
         "source_metadata": meta,
         "sha256": hashlib.sha256(raw).hexdigest(),
@@ -147,13 +149,15 @@ def load_dictionary():
 COMBINATION = re.compile(r"\s*(?:/|\+|,|;|\band\b|\bwith\b)\s*", re.IGNORECASE)
 
 
-# Trailing salt, ester and hydrate words observed in the catalogue and the EMA dictionary (2026-10-02):
-# words W such that both "X W" and "X" occur as medicine names there, kept when W is a salt, ester or
-# hydrate. Excluded although they look alike: alafenamide, flufenamide, rinfabate (they name another
-# active substance or product) and seretide (a product name).
+# Trailing salt, ester and hydrate words observed in the catalogue and the EMA dictionary (2026-10-02,
+# extended 2026-10-05 with choline, diolamine, meglumine, semisodium and anhydrous): words W such that both
+# "X W" and "X" occur as medicine names there, kept when W is a counter-ion, ester or hydrate. They only add a
+# base-name lookup key; the ingredient set of a product never changes. Words reviewed and rejected are in
+# NOT_SALT_WORDS. A new candidate is added here by code review, never automatically.
 SALT_WORDS = frozenset(
     [
         "acetate",
+        "anhydrous",
         "benzoate",
         "besilate",
         "besylate",
@@ -162,10 +166,12 @@ SALT_WORDS = frozenset(
         "calcium",
         "carbonate",
         "chloride",
+        "choline",
         "citrate",
         "dihydrate",
         "dihydrochloride",
         "dimaleate",
+        "diolamine",
         "dipropionate",
         "disodium",
         "etexilate",
@@ -179,6 +185,7 @@ SALT_WORDS = frozenset(
         "hydrogen",
         "magnesium",
         "maleate",
+        "meglumine",
         "mesilate",
         "mesylate",
         "methanesulfonate",
@@ -186,6 +193,7 @@ SALT_WORDS = frozenset(
         "phosphate",
         "potassium",
         "propionate",
+        "semisodium",
         "sodium",
         "subcitrate",
         "succinate",
@@ -200,6 +208,36 @@ SALT_WORDS = frozenset(
         "xinafoate",
     ]
 )
+
+
+# Trailing words reviewed and rejected (they name another substance, a conjugate, a product or a form):
+# a product line differs ('tenofovir disoproxil' vs 'tenofovir alafenamide'), so they are no lookup key.
+NOT_SALT_WORDS = frozenset(
+    [
+        "alafenamide",
+        "beta",
+        "deruxtecan",
+        "disoproxil",
+        "emtansine",
+        "flufenamide",
+        "ivig",
+        "live",
+        "netarsudil",
+        "pegol",
+        "rdna",
+        "rinfabate",
+        "scig",
+        "seretide",
+    ]
+)
+
+
+def salt_word_candidates(records: list[dict]) -> list[str]:
+    """Unreviewed trailing words W with both 'X W' and 'X' among the dictionary's ingredient names: reported by
+    refresh_drug_dictionary for a person to classify into SALT_WORDS or NOT_SALT_WORDS."""
+    names = {canonical(i) for row in records for i in row["ingredients"]}
+    words = {n.rsplit(" ", 1)[1] for n in names if " " in n and n.rsplit(" ", 1)[0] in names}
+    return sorted(words - SALT_WORDS - NOT_SALT_WORDS)
 
 
 def without_salt(name: str) -> str:

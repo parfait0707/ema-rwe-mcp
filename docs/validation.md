@@ -521,6 +521,13 @@ PDF 取得先ディレクトリ名から X/Y が推測可能だった（P）、�
 - テスト：`tests/test_structure.py` ほか。追加した回帰テストは修正前のコードで失敗することを確かめた（一部は既存の振る舞いを守るためのテスト）。全体 382 passed、ruff 合格。
 - 限界：評価側ラベルで見つけた問題（19786 の組入条件、12698 のスペイン語の本文）を直したため、評価側はこの 2 件について未調整ではなくなった。50436 の背景の章にある AESI の表（方法の節が参照する）は読まれないまま。英語以外の文書は unknown の節をすべて読むので、読む量が増える（30695 で +516k 字）。ラベルは人が確かめていない。抽出そのものの比較は 2 件だけである。作業中に、未 push のコミット 1 件を `git commit --amend` で修正した（版番号の更新を含めるため）。
 
+## 2026-10-06 塩の語の一覧と辞書更新時の候補報告
+
+- `SALT_WORDS` に choline、diolamine、meglumine、semisodium、anhydrous を加えた（2026-10-05 のカタログと EMA 辞書で「X W」と「X」が両方ある語のうち、対イオンか水和の語）。別の物質・製品系列・剤形を表す語（disoproxil、pegol、deruxtecan など 14 語）は `NOT_SALT_WORDS` として記録した。
+- `refresh_drug_dictionary` は、どちらにも無い候補を `salt_word_candidates` で返す。現在の辞書では空。
+- 実データでの変化：カタログの医薬品名 5,503 語の展開のうち変わったのは 4 語で、すべて同じ有効成分の別の塩の製品が加わった（TAFAMIDIS MEGLUMINE → Vyndaqel ほか、linzagolix → Yselty、treprostinil と TREPROSTINIL SODIUM → Orepaxam）。ほかの医薬品の展開は変わらない。
+- テスト：`test_refresh_reports_unreviewed_salt_word_candidates`（修正前に失敗）。全体 383 passed、ruff 合格。
+
 ## 未検証事項（継続）
 
 - 外部LLM API呼出しの実認証検証は未実施。キーなしの呼出元LLM方式は合成PDFで保存・再利用まで検証。
