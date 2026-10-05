@@ -3,10 +3,10 @@ import json
 import os
 
 import httpx
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from .config import Settings
-from .domain import Extraction, RWEError, quote_length
+from .domain import Extraction, RWEError, quote_length, with_notes
 
 SOURCE_ASSESSMENT_PROMPT = """Assess source types from this protocol, never from database names alone.
 Inspect data sources, methods, cohort/outcome/exposure definitions, code appendices and adjacent chapters;
@@ -222,6 +222,7 @@ def merge_extractions(outputs: list[Extraction]) -> Extraction:
     merged = Extraction()
     for output in outputs:
         merge_into(merged, output)
+    merged.missing_information = with_notes(merged.missing_information, cap_lists(merged))
     try:
         return Extraction.model_validate(merged.model_dump())
     except ValidationError as exc:
@@ -229,8 +230,8 @@ def merge_extractions(outputs: list[Extraction]) -> Extraction:
 
 
 def merge_into(merged, output) -> None:
-    """Merge one model into another field by field; nested blocks (cohort, design_schema) recurse."""
-    limits = {n: p.get("maxItems") for n, p in type(merged).model_json_schema()["properties"].items()}
+    """Merge one model into another field by field; nested blocks (cohort, design_schema) recurse.
+    Lists may exceed the schema limits here; cap_lists trims them afterwards and reports what it drops."""
     for name in type(merged).model_fields:
         if name == "schema_version":
             continue
@@ -239,8 +240,6 @@ def merge_into(merged, output) -> None:
             for item in value:
                 if item not in existing:
                     existing.append(item)
-            if limits.get(name):
-                del existing[limits[name] :]
         elif value is None:
             continue
         elif not hasattr(value, "evidence"):  # nested block
@@ -256,3 +255,22 @@ def merge_into(merged, output) -> None:
             del existing.evidence[8:]
         elif not existing:
             setattr(merged, name, value)
+
+
+def cap_lists(model, prefix: str = "") -> list[str]:
+    """Trim list fields (nested blocks included) to the schema limits; one note per trimmed field."""
+    limits = {n: p.get("maxItems") for n, p in type(model).model_json_schema()["properties"].items()}
+    notes = []
+    for name in type(model).model_fields:
+        value = getattr(model, name)
+        if name == "missing_information":
+            continue
+        if isinstance(value, list) and limits.get(name) and len(value) > limits[name]:
+            notes.append(
+                f"{prefix}{name}: {len(value)} found across batches; only the first {limits[name]} are kept "
+                f"(schema limit), {len(value) - limits[name]} omitted."
+            )
+            del value[limits[name] :]
+        elif isinstance(value, BaseModel) and not hasattr(value, "evidence"):
+            notes += cap_lists(value, f"{prefix}{name}.")
+    return notes

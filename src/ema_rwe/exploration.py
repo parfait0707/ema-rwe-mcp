@@ -4,7 +4,7 @@ import json
 
 from pydantic import ValidationError
 
-from .domain import Extraction, ProtocolAnswer, RWEError, now
+from .domain import Extraction, ProtocolAnswer, RWEError, now, with_notes
 from .llm import SOURCE_ASSESSMENT_PROMPT, complete_json, configured, drop_invalid_evidence, split_batches
 from .pdf import (
     extract_pages,
@@ -187,8 +187,16 @@ class Explorer:
             )
         if invalid:
             missing.append(f"{invalid} provider batch response(s) did not match the answer schema.")
+        if len(kept) > 30:
+            missing.insert(
+                0, f"{len(kept)} verified answers found; only the first 30 are kept (schema limit)."
+            )
+        if len(assessments) > 120:
+            missing.insert(0, f"{len(assessments)} source assessments found; only the first 120 were kept.")
         answer = ProtocolAnswer(
-            answers=kept[:30], source_assessments=pruned.source_assessments, missing_information=missing[:30]
+            answers=kept[:30],
+            source_assessments=pruned.source_assessments,
+            missing_information=with_notes(missing, []),
         )
         return answer, {"mode": "provider_full_text", "batches": len(batches), "dropped": dropped}
 

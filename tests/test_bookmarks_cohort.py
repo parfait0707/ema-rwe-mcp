@@ -164,7 +164,9 @@ def test_sub_bookmark_of_a_referenced_annex_is_read():
     # '12.3.2 Terms for outcome mapping' sits under '12.3 Annex 3', which the body cites.
     with pymupdf.open() as doc:
         doc.new_page().insert_text(
-            (50, 50), "9. RESEARCH METHODS\nThe outcome terms used to identify myotoxicity cases are listed in Annex 3.", fontsize=9
+            (50, 50),
+            "9. RESEARCH METHODS\nThe outcome terms used to identify myotoxicity cases are listed in Annex 3.",
+            fontsize=9,
         )
         doc.new_page().insert_text(
             (50, 50),

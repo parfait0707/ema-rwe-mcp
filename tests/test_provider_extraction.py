@@ -6,7 +6,7 @@ import json
 import pytest
 from test_core import sample_analysis
 
-from ema_rwe.domain import Evidence, Extraction, Fact, RWEError
+from ema_rwe.domain import Evidence, Extraction, Fact, RWEError, with_notes
 from ema_rwe.llm import drop_invalid_evidence, extract_with_provider, split_batches
 from ema_rwe.pdf import extract_pages, prune_unverifiable
 
@@ -59,6 +59,23 @@ async def test_parallel_batches_merge_within_schema_limits(settings, monkeypatch
     assert len(seen) == 3 and progress == {"done": 3, "total": 3}
     assert len(result.key_notes) == max_notes
     assert all('"of": 3' in payload for payload in seen)
+    # The facts beyond the limit are reported, not dropped silently
+    assert result.missing_information == [
+        (
+            f"key_notes: 45 found across batches; only the first {max_notes} are kept (schema limit), "
+            f"{45 - max_notes} omitted."
+        )
+    ]
+
+
+def test_missing_information_overflow_keeps_the_notes_and_counts_the_rest():
+    missing = [f"model gap {i}" for i in range(30)]
+    merged = with_notes(missing, ["audit note"])
+    assert len(merged) == 30 and merged[-2:] == [
+        "audit note",
+        "2 further missing-information entries omitted (limit 30).",
+    ]
+    assert with_notes(["a"], ["b", "a"]) == ["a", "b"]
 
 
 def test_prune_unverifiable_keeps_verifiable_evidence_only(pdf_bytes):

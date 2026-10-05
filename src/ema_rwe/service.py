@@ -19,6 +19,7 @@ from .domain import (
     SourcePreference,
     Study,
     now,
+    with_notes,
 )
 from .drugs import refresh_dictionary
 from .ema import BASE, is_non_interventional, parse_documents, parse_study, select_protocol
@@ -1390,7 +1391,7 @@ class Service:
             analysis = merge_extractions([*partials.values(), analysis])
         notes = audit_extraction(analysis, pages, self.repo.get(study_id).catalogue_data_sources)
         if notes:
-            analysis.missing_information = (analysis.missing_information + notes)[-30:]
+            analysis.missing_information = with_notes(analysis.missing_information, notes)
         return self._save(study_id, analysis, source, "client_assisted", detail="summary")
 
     async def _provider_extraction(self, study_id: str, pdf: bytes, source: dict) -> dict:

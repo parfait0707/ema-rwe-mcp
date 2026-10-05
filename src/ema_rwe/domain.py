@@ -74,6 +74,20 @@ class Document(Model):
     published_date: str | None = None
 
 
+def with_notes(missing: list[str], notes: list[str], limit: int = 30) -> list[str]:
+    """missing_information plus notes within the schema limit: the notes are kept and any overflow is
+    counted in a final entry, never dropped silently."""
+    notes = [n for n in notes if n not in missing]
+    combined = [*missing, *notes]
+    if len(combined) <= limit:
+        return combined
+    kept = [*missing[: max(limit - 1 - len(notes), 0)], *notes][: limit - 1]
+    return [
+        *kept,
+        f"{len(combined) - len(kept)} further missing-information entries omitted (limit {limit}).",
+    ]
+
+
 def quote_length(quote: str) -> int:
     """Length of a quote as evidence validation compares it: whitespace runs collapsed, soft hyphens removed."""
     return len(" ".join(quote.replace("\u00ad", "").split()))

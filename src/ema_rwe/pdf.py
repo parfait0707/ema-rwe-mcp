@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 import pymupdf
 
-from .domain import Extraction, RWEError
+from .domain import Extraction, RWEError, with_notes
 from .terminology import search_units
 from .vocabulary import canonical, contains, expand
 
@@ -492,7 +492,7 @@ def finalize_extraction(
         )
     notes += audit_extraction(pruned, pages, catalogue_sources)
     if notes:
-        pruned.missing_information = (pruned.missing_information + notes)[-30:]
+        pruned.missing_information = with_notes(pruned.missing_information, notes)
     return pruned, dropped
 
 
