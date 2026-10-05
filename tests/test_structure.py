@@ -355,3 +355,27 @@ def test_appendix_filter_needs_the_pdfs_own_bookmarks():
         data = doc.tobytes()
     chunks = sections(extract_pages(data))
     assert chunk_with(chunks, "K85") in reading_order(chunks)
+
+
+def test_outline_ancestry_places_a_section_whose_own_title_has_no_role():
+    # Given two protocols in one PDF: chapter III starts on the same page as its responsible-parties
+    # section, and its methods subsection 'III.9.2 Setting' has no role of its own
+    data = pdf(
+        "III PATIENT REGISTRY STUDY\nThis registry follows adults with type 2 diabetes.\n"
+        "III.3 Responsible Parties\nThe sponsor is responsible for the registry conduct.",
+        "III.9.2 Setting\nPatients will be identified in the national diabetes register and followed for outcomes.",
+        toc=[
+            [1, "Programme of studies", 1],
+            [2, "III Patient Registry Study", 1],
+            [3, "III.3 Responsible Parties", 1],
+            [3, "III.9 Research Methods", 2],
+            [4, "III.9.2 Setting", 2],
+        ],
+    )
+    chunks = sections(extract_pages(data))
+    # Then the chapter heading belongs to its own entry, not to the last entry on its page
+    assert chunk_with(chunks, "follows adults")["chapter"] == "III Patient Registry Study"
+    # And the setting takes 'methods' from its outline ancestor and is read
+    setting = chunk_with(chunks, "diabetes register")
+    assert setting["role"] == "methods" and setting["role_basis"] == "bookmark"
+    assert setting in reading_order(chunks)

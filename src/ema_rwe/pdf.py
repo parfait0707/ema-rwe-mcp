@@ -201,6 +201,8 @@ class Page:
     chapter_path: str | None = None
     # Canonical titles of the outline entries that start on this page: such a line is a section heading.
     outline_titles: set[str] = field(default_factory=set)
+    # Each such entry's own (chapter, top-level chapter, path), for the text below its title line.
+    outline_entries: dict[str, tuple[str, str, str]] = field(default_factory=dict)
     # Where the outline came from: 'bookmarks', 'toc' (a verified text table of contents) or None.
     outline_source: str | None = None
     # Canonical line text -> (largest font size, bold) from the PDF's text spans, and the document's body
@@ -258,10 +260,16 @@ def apply_bookmarks(pages: list[Page], toc: list, source: str = "bookmarks") -> 
     current = None
     for page in pages:
         while i < len(entries) and entries[i][0] <= page.page:
-            _, level, title = entries[i]
+            start, level, title = entries[i]
             ancestors = {lvl: t for lvl, t in ancestors.items() if lvl < level}
             ancestors[level] = title
             current = title
+            if start == page.page:
+                page.outline_entries[canonical(title)] = (
+                    title,
+                    ancestors[min(ancestors)],
+                    " / ".join(ancestors[lvl] for lvl in sorted(ancestors)),
+                )
             i += 1
         if current is not None:
             page.chapter = current
@@ -328,7 +336,7 @@ def text_outline(pages: list[Page]) -> list[list]:
 
 
 # Version of the section/role/reading rules; part of the analysis fingerprint, so a change re-extracts.
-PARSER_VERSION = "structural-v11"
+PARSER_VERSION = "structural-v12"
 
 
 def extract_pages(data: bytes, use_outline: bool = True) -> list[Page]:
@@ -491,7 +499,7 @@ def sections(pages: list[Page]) -> list[dict]:
         for n, line in enumerate(lines):
             if titled and line and canonical(line) in p.outline_titles:
                 flush(buffer, p.page, in_checklist or current_heading, checklist=bool(in_checklist))
-                current["chapter"] = chapters[p.page]
+                current["chapter"] = p.outline_entries.get(canonical(line), chapters[p.page])
             if in_checklist:
                 if not ends_checklist(line, p):
                     buffer.append(line)
@@ -527,10 +535,10 @@ def sections(pages: list[Page]) -> list[dict]:
         role = heading_role(heading)
         basis = "heading" if role != "unknown" else "none"
         if role == "unknown" and chunk.get("chapter"):
-            # Bookmark outline beats a missed text heading; the top-level chapter supplies the context.
-            role = heading_role(chunk["chapter"])
-            if role == "unknown":
-                role = heading_role(chunk.get("chapter_top"))
+            # Bookmark outline beats a missed text heading: the nearest outline ancestor with a known role
+            # ('II.9.2 Setting' under 'II.9 Research Methods') supplies it.
+            path = (chunk.get("chapter_path") or chunk["chapter"]).split(" / ")
+            role = next((r for t in reversed(path) if (r := heading_role(t)) != "unknown"), "unknown")
             basis = "bookmark" if role != "unknown" else basis
         warnings = []
         if (chunk["page"], heading) in unconfirmed:
@@ -576,6 +584,7 @@ def sections(pages: list[Page]) -> list[dict]:
         elif (
             inherited in {"references", "administrative", "background"}
             and len(number) != 1
+            and basis != "bookmark"  # the outline places this section; a text parent does not override it
             or role == "unknown"
         ):
             role, basis = inherited, ("parent" if inherited != "unknown" else "none")
