@@ -306,6 +306,7 @@ def commit() -> str:
 
 
 def cmd_measure(args) -> None:
+    code = commit()  # before the run: sources may change while hundreds of PDFs are measured
     split = json.loads((FIXTURES / "split.json").read_text(encoding="utf-8"))
     labels_path = FIXTURES / "labels.json"
     labels = json.loads(labels_path.read_text(encoding="utf-8")) if labels_path.exists() else {}
@@ -355,7 +356,7 @@ def cmd_measure(args) -> None:
         per_pdf[path.name] = row
     report = {
         "parser_version": PARSER_VERSION,
-        "code": commit(),
+        "code": code,
         "split": args.split,
         "pdfs": len(per_pdf),
         "totals": totals(per_pdf),

@@ -1,7 +1,8 @@
 """Native page-aware extraction. Raw PDF text remains in memory only."""
 
 import re
-from dataclasses import dataclass
+from collections import Counter
+from dataclasses import dataclass, field
 
 import pymupdf
 
@@ -193,15 +194,23 @@ class Page:
     chapter_top: str | None = None
     # Every bookmark title from the top level down to `chapter` ('12 Annexes / 12.3 Annex 3 / 12.3.2 ...').
     chapter_path: str | None = None
+    # Canonical titles of the outline entries that start on this page: such a line is a section heading.
+    outline_titles: set[str] = field(default_factory=set)
+    # Where the outline came from: 'bookmarks', 'toc' (a verified text table of contents) or None.
+    outline_source: str | None = None
 
 
-def apply_bookmarks(pages: list[Page], toc: list) -> None:
+def apply_bookmarks(pages: list[Page], toc: list, source: str = "bookmarks") -> None:
     """Label each page with the bookmark chapter that starts on or before it (pymupdf get_toc rows)."""
     entries = sorted(
-        ((int(p), int(lvl), str(t).strip()) for lvl, t, p in toc if p and p > 0), key=lambda e: e[0]
+        ((int(p), int(lvl), " ".join(str(t).split())) for lvl, t, p in toc if p and p > 0), key=lambda e: e[0]
     )
     if not entries:
         return
+    by_page = {p.page: p for p in pages}
+    for start, _, title in entries:
+        if start in by_page:
+            by_page[start].outline_titles.add(canonical(title))
     ancestors: dict[int, str] = {}
     i = 0
     current = None
@@ -216,6 +225,55 @@ def apply_bookmarks(pages: list[Page], toc: list) -> None:
             page.chapter = current
             page.chapter_top = ancestors.get(min(ancestors)) if ancestors else current
             page.chapter_path = " / ".join(ancestors[lvl] for lvl in sorted(ancestors)) or current
+            page.outline_source = source
+
+
+TOC_LINE = re.compile(
+    r"^\s*(?P<number>(?:[1-9]\d?|[IVX]{1,4})(?:\.\d{1,2})*\.?)?\s*(?P<title>\S.*?)\s*(?:\.{3,}|…+)\s*(?P<page>\d{1,3})\s*$"
+)
+
+
+def text_outline(pages: list[Page]) -> list[list]:
+    """Outline rows [level, title, physical page] read from a text table of contents, or [] when unverified.
+
+    Printed page numbers differ from physical ones by the front matter. An entry counts only where its
+    heading is printed as a line of the body; the printed-to-physical offset must agree for at least three
+    entries and two fifths of all entries, and only entries anchored at that offset (±1 page) are kept.
+    """
+    toc_pages = [p for p in pages[:25] if sum(bool(TOC_LINE.match(l)) for l in p.text.splitlines()) >= 3]
+    if not toc_pages:
+        return []
+    last_toc = max(p.page for p in toc_pages)
+    entries = []
+    for page in toc_pages:
+        for line in page.text.splitlines():
+            if m := TOC_LINE.match(line):
+                number = m["number"] or ""  # as printed ('9.2.'), for the outline title
+                key = canonical(f"{number} {m['title']}")
+                entries.append((number, m["title"].strip(), int(m["page"]), key))
+    body = {
+        p.page: {canonical(l) for l in p.text.splitlines() if l.strip()} for p in pages if p.page > last_toc
+    }
+    anchors = [(entry, [pg for pg, lines in body.items() if entry[3] in lines]) for entry in entries]
+    offsets = Counter(off for entry, found in anchors for off in {pg - entry[2] for pg in found})
+    if not offsets:
+        return []
+    offset, support = offsets.most_common(1)[0]
+    if support < 3 or support < 0.4 * len(entries):
+        return []
+    rows = []
+    for (number, title, printed, _), found in anchors:
+        near = [pg for pg in found if abs(pg - (printed + offset)) <= 1]
+        if near:
+            level = len(section_number(f"{number.rstrip('.')} title")) if number else 1
+            rows.append(
+                [
+                    max(level, 1),
+                    f"{number} {title}".strip(),
+                    min(near, key=lambda pg: abs(pg - printed - offset)),
+                ]
+            )
+    return rows
 
 
 # Version of the section/role/reading rules; part of the analysis fingerprint, so a change re-extracts.
@@ -223,8 +281,8 @@ PARSER_VERSION = "structural-v6"
 
 
 def extract_pages(data: bytes, use_outline: bool = True) -> list[Page]:
-    """Page texts with the bookmark outline applied; use_outline=False ignores the PDF's own outline
-    (structure evaluation measures text-only detection against the bookmarks)."""
+    """Page texts with an outline applied: the PDF's bookmarks, else a verified text table of contents.
+    use_outline=False ignores the bookmarks (structure evaluation measures text-only detection against them)."""
     if not data.lstrip().startswith(b"%PDF-"):
         raise RWEError("PDF_PARSE_FAILED", "Response is not a PDF.")
     try:
@@ -233,6 +291,8 @@ def extract_pages(data: bytes, use_outline: bool = True) -> list[Page]:
                 raise RWEError("PDF_PARSE_FAILED", "Encrypted PDF or page limit exceeded.")
             pages = [Page(i + 1, page.get_text(sort=True)) for i, page in enumerate(doc)]
             apply_bookmarks(pages, doc.get_toc() if use_outline else [])
+            if not any(p.chapter for p in pages):
+                apply_bookmarks(pages, text_outline(pages), source="toc")
     except RWEError:
         raise
     except Exception as exc:
@@ -252,6 +312,11 @@ def text_layer(data: bytes) -> str | None:
         return "none" if exc.code == "PDF_OCR_REQUIRED" else None
     blank = sum(len(p.text.strip()) < 50 for p in pages)
     return "partial" if blank * 2 >= len(pages) else "full"
+
+
+def starts_section(line: str, page: Page) -> bool:
+    """A detected heading, or a line naming an outline entry (bookmark or verified contents) of its page."""
+    return is_heading(line) or bool(line and canonical(line) in page.outline_titles)
 
 
 def sections(pages: list[Page]) -> list[dict]:
@@ -309,7 +374,7 @@ def sections(pages: list[Page]) -> list[dict]:
         if (
             current_heading
             and result[-1].get("chapter") != p.chapter
-            and not any(is_heading(line.strip()) for line in lines)
+            and not any(starts_section(line.strip(), p) for line in lines)
         ):
             # A page without a text heading that starts a new bookmark chapter begins that chapter, so the
             # previous page's heading does not carry over. A page with headings may start the chapter
@@ -318,7 +383,7 @@ def sections(pages: list[Page]) -> list[dict]:
         buffer = []
         for line in lines:
             line = line.strip()
-            if is_heading(line):
+            if starts_section(line, p):
                 flush(buffer, p.page, current_heading)
                 current_heading = line
             if sum(map(len, buffer)) + len(line) > 5500:

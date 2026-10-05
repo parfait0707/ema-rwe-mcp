@@ -152,3 +152,38 @@ def test_roman_chapters_set_the_parent_context():
     )
     assert chunk_with(chunks, "retrospective")["role"] == "methods"
     assert chunk_with(chunks, "Jones")["role"] == "references"
+
+
+def toc_pdf(printed_offset_ok: bool = True) -> bytes:
+    """A title page, a contents page, then four body pages printed as pages 1-4 (physical 3-6)."""
+    titles = ["1. Overview", "2. Work Packages", "3. Study Procedures", "4. Bibliographic Sources"]
+    printed = [1, 2, 3, 4] if printed_offset_ok else [1, 4, 2, 9]
+    contents = "\n".join(f"{t} {'.' * 20} {n}" for t, n in zip(titles, printed))
+    body = [
+        f"{t}\nThis chapter describes {t[3:].lower()} of the cohort study with outcome definitions."
+        for t in titles
+    ]
+    return pdf("Study protocol title page with sponsor and version information.", contents, *body)
+
+
+def test_verified_contents_page_becomes_the_outline():
+    pages = extract_pages(toc_pdf())
+    assert [p.outline_source for p in pages[2:]] == ["toc"] * 4
+    assert pages[3].chapter == "2. Work Packages" and pages[5].chapter_top == "4. Bibliographic Sources"
+    # A title-case chapter line named by the contents starts a section although is_heading rejects it
+    assert not is_heading("2. Work Packages")
+    assert chunk_with(sections(pages), "work packages of")["section"] == "2. Work Packages"
+
+
+def test_contents_with_disagreeing_page_numbers_is_not_used():
+    pages = extract_pages(toc_pdf(printed_offset_ok=False))
+    assert all(p.outline_source is None for p in pages)
+
+
+def test_pdf_bookmarks_take_precedence_over_the_contents_page():
+    with pymupdf.open(stream=toc_pdf(), filetype="pdf") as doc:
+        doc.set_toc([[1, "Body", 3]])
+        data = doc.tobytes()
+    pages = extract_pages(data)
+    assert pages[4].chapter == "Body" and pages[4].outline_source == "bookmarks"
+    assert extract_pages(data, use_outline=False)[4].outline_source == "toc"
