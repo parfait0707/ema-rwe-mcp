@@ -489,6 +489,13 @@ PDF 取得先ディレクトリ名から X/Y が推測可能だった（P）、�
 - 検証：ユーザーの指示により、実プロトコルでの抽出の前後比較は行っていない。既存テストの全体実行のみ（`COUNT_CLAIM` を検査していたテストは黒塗り検査だけを残す形に改めた）。
 - 未対応（別ブランチで検討）：見出し・役割の語の一覧、チェックリスト判定、`SALT_WORDS` など、EU PASS テンプレートや辞書の時点に依存する規則。
 
+## 2026-10-05 構造推定規則の汎用化案のレビュー
+
+- main `3da4933` の提案文書と `pdf.py`・`drugs.py`・`medicines.py`・解析fingerprintを照合した。実装は変更していない。詳細は `docs/research/20261005_structural_heuristics_review.md`。
+- ローカルPDF8件を現行コードで節分割し、50075の有害事象定義・同意条件、1000000479の改訂内容・付録一覧、106363の目次とチェックリストの題名をテキスト層で確認した。合成入力で administrative の引用が `EVIDENCE_WRONG_SECTION` になることも確認した。
+- `uv run pytest -q tests/test_bookmarks_cohort.py tests/test_extraction_audit.py tests/test_drugs.py`：44 passed。
+- 限界：提案の433件集計は元のスクリプト・PDF集合がなく再現していない。提案方式の実装、全件の前後比較、LLM再抽出は未実施。EMA様式PDFはブラウズ時429で取得できず、hash・詳細な章構成・利用条件は独立検証していない。
+
 ## 未検証事項（継続）
 
 - 外部LLM API呼出しの実認証検証は未実施。キーなしの呼出元LLM方式は合成PDFで保存・再利用まで検証。
