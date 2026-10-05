@@ -79,7 +79,12 @@ def test_checklist_questions_remain_inside_appendix_across_pages():
     chunks = sections(
         [
             Page(38, "APPENDIX II: Feasibility counts\nEight databases."),
-            Page(39, "APPENDIX III: ENCePP checklist\n1.1 Milestones\nDoes the protocol describe methods?"),
+            Page(
+                39,
+                "APPENDIX III: ENCePP checklist\nSection 1: Milestones Yes No N/A Section Number\n"
+                "1.1 Does the protocol specify timelines for start of data collection?\n"
+                "1.2 Does the protocol describe methods?\n2.1 Is the study design described?",
+            ),
             Page(43, "10.1 Analysis plan\nHow are missing data handled?\nmissing data?"),
         ]
     )

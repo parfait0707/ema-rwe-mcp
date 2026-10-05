@@ -222,3 +222,52 @@ def test_layout_and_chapter_sequence_find_title_case_chapters_without_an_outline
     assert "5 Study Procedures" in headings
     assert "1. Patients aged 18 years or older" not in headings
     assert "6 Work Packages" not in headings
+
+
+QUESTIONNAIRE = (
+    "Section 1: Milestones Yes No N/A Section Number\n"
+    "1.1 Does the protocol specify timelines for the start of data collection?\n"
+    "1.2 Does the protocol specify the end of data collection?\n"
+    "2.1 Does the formulation of the research question clearly explain why the study is conducted?\n"
+    "3.1 Is the study design described?\n"
+    "4.1 Is the source population described?"
+)
+
+
+def test_checklist_range_starts_at_its_title_and_ends_at_the_next_appendix():
+    # Given methods text and the checklist title on one page, the questionnaire, then another annex
+    chunks = sections(
+        extract_pages(
+            pdf(
+                METHODS
+                + "\nAPPENDIX 5 - ENCEPP CHEKLIST\nENCePP Checklist for Study Protocols (Revision 4)\n"
+                + QUESTIONNAIRE,
+                "9.2 Does the protocol describe the data sources?\n10.1 Are missing data handled?\n"
+                "APPENDIX 6 - CODE LIST\nICD-10 K85 acute pancreatitis defines the outcome.",
+            )
+        )
+    )
+    checklist = [c for c in chunks if c["role"] == "checklist"]
+    # Then the questionnaire is one block across both pages, despite the misspelt appendix heading
+    assert [c["page"] for c in checklist] == [1, 2]
+    assert checklist[0]["text"].startswith("ENCePP Checklist for Study Protocols")
+    assert not any(c["relevant"] for c in checklist)
+    # And the text before it and the next annex keep their own sections
+    assert chunk_with(chunks, "retrospective cohort")["role"] == "methods"
+    assert chunk_with(chunks, "K85")["role"] == "appendix"
+
+
+def test_checklist_title_in_a_list_of_annexes_is_not_the_checklist():
+    chunks = sections(
+        extract_pages(
+            pdf(
+                "17. ANNEXES\nAppendix I: Lists with concept definitions for exposure\n"
+                "Appendix III: ENCePP checklist for study protocols",
+                "APPENDIX I: Lists with concept definitions for exposure\nnaloxone 1114220 buprenorphine 45776270",
+            )
+        )
+    )
+    assert not any(c["role"] == "checklist" for c in chunks)
+    listing = chunk_with(chunks, "Appendix III: ENCePP checklist for study protocols")
+    assert "no questionnaire follows" in listing["structure_warnings"][0]
+    assert chunk_with(chunks, "naloxone")["role"] == "appendix"

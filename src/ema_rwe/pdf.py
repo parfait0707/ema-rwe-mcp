@@ -299,7 +299,7 @@ def text_outline(pages: list[Page]) -> list[list]:
 
 
 # Version of the section/role/reading rules; part of the analysis fingerprint, so a change re-extracts.
-PARSER_VERSION = "structural-v7"
+PARSER_VERSION = "structural-v8"
 
 
 def extract_pages(data: bytes, use_outline: bool = True) -> list[Page]:
@@ -363,12 +363,42 @@ def layout_chapter(line: str, page: Page, last_chapter: int | None) -> bool:
     )
 
 
+CHECKLIST_TITLE = re.compile(r"checklist\s+for\s+study\s+protocols", re.IGNORECASE)
+
+
+def names_checklist(line: str, heading: bool) -> bool:
+    """A heading naming a checklist, or the ENCePP questionnaire's own title line (headings may misspell it)."""
+    return len(line) <= 140 and (
+        bool(CHECKLIST_TITLE.search(line)) or (heading and "checklist" in line.casefold())
+    )
+
+
+def questionnaire_follows(page_lines: list[list[str]], index: int, line_number: int) -> bool:
+    """Questions and answer columns (Yes / No / N/A) within the next two pages: the title is not merely
+    listed in a contents page or a list of annexes."""
+    text = "\n".join(
+        page_lines[index][line_number + 1 :] + [l for p in page_lines[index + 1 : index + 3] for l in p]
+    )
+    return text.count("?") >= 5 and bool(re.search(r"\bYes\b[\s\S]{0,40}\bNo\b|\bN/A\b", text))
+
+
+def ends_checklist(line: str, page: Page) -> bool:
+    """The next appendix, outline entry or top-level chapter after the questionnaire."""
+    if "checklist" in line.casefold() or line.rstrip().endswith("?"):
+        return False
+    return (
+        bool(re.match(r"^(?:appendix|annex)\s+[A-Z0-9]+\b", line, re.IGNORECASE))
+        or canonical(line) in page.outline_titles
+        or (is_heading(line) and len(section_number(line)) == 1)
+    )
+
+
 def sections(pages: list[Page]) -> list[dict]:
     result = []
 
     chapters = {p.page: (p.chapter, p.chapter_top, p.chapter_path) for p in pages}
 
-    def flush(buffer, page_number, current_heading):
+    def flush(buffer, page_number, current_heading, checklist=False):
         text = "\n".join(buffer).strip()
         if text:
             chapter, chapter_top, chapter_path = chapters.get(page_number, (None, None, None))
@@ -380,62 +410,63 @@ def sections(pages: list[Page]) -> list[dict]:
                     "chapter_top": chapter_top,
                     "chapter_path": chapter_path,
                     "text": text,
-                    "relevant": bool(RELEVANT.search((current_heading or "") + " " + text)),
+                    "relevant": not checklist and bool(RELEVANT.search((current_heading or "") + " " + text)),
+                    **({"checklist": True} if checklist else {}),
                 }
             )
         buffer.clear()
 
-    checklist_heading = None
+    in_checklist = None  # the heading of the ENCePP questionnaire being read, if any
+    unconfirmed = set()  # (page, heading) named as a checklist without a questionnaire after it
     last_chapter = None  # first number of the latest numbered heading, for the layout chapter sequence
-    for p in pages:
-        appendix_headers = re.findall(r"(?im)^\s*((?:appendix|annex)\s+[^\n]{1,120})$", p.text)
-        if appendix_headers:
-            checklist_heading = (
-                appendix_headers[0].strip()
-                if len(appendix_headers) == 1 and "checklist" in appendix_headers[0].casefold()
-                else None
-            )
-        if checklist_heading:
-            # ENCePP's questionnaire contains numbered questions that mimic methods headings.
-            # Keep the appendix boundary across pages; those questions are not study methods.
-            result.append(
-                {
-                    "page": p.page,
-                    "section": checklist_heading,
-                    "text": p.text,
-                    "relevant": False,
-                    "checklist": True,
-                }
-            )
-            continue
-        if (
+    page_lines = [[line.strip() for line in p.text.splitlines()] for p in pages]
+    for index, p in enumerate(pages):
+        lines = page_lines[index]
+        if not in_checklist and (
             re.search(r"(?im)^\s*(?:table of )?contents\s*$", p.text)
             or len(re.findall(r"\.{4,}\s*\d+", p.text)) >= 3
         ):
             result.append({"page": p.page, "section": None, "text": p.text, "relevant": False, "toc": True})
             continue
-        lines = p.text.splitlines()
         current_heading = result[-1]["section"] if result and not result[-1].get("toc") else None
         if (
             current_heading
             and result[-1].get("chapter") != p.chapter
-            and not any(starts_section(line.strip(), p) for line in lines)
+            and not any(starts_section(line, p) for line in lines)
         ):
             # A page without a text heading that starts a new bookmark chapter begins that chapter, so the
             # previous page's heading does not carry over. A page with headings may start the chapter
             # midway; its leading text still continues the previous section.
             current_heading = None
         buffer = []
-        for line in lines:
-            line = line.strip()
-            if starts_section(line, p, last_chapter):
+        for n, line in enumerate(lines):
+            if in_checklist:
+                if not ends_checklist(line, p):
+                    buffer.append(line)
+                    continue
+                flush(buffer, p.page, in_checklist, checklist=True)
+                in_checklist = None
+            heading = starts_section(line, p, last_chapter)
+            if names_checklist(line, heading):
+                if questionnaire_follows(page_lines, index, n):
+                    # ENCePP's questionnaire has numbered questions that mimic methods headings: keep it as one
+                    # checklist block, from this line to the next appendix or top-level chapter.
+                    flush(buffer, p.page, current_heading)
+                    in_checklist = line
+                    buffer.append(line)
+                    continue
+                unconfirmed.add((p.page, line))
+            if heading:
                 flush(buffer, p.page, current_heading)
                 current_heading = line
                 last_chapter = section_number(line)[0] if section_number(line) else last_chapter
             if sum(map(len, buffer)) + len(line) > 5500:
                 flush(buffer, p.page, current_heading)
             buffer.append(line)
-        flush(buffer, p.page, current_heading)
+        if in_checklist:
+            flush(buffer, p.page, in_checklist, checklist=True)
+        else:
+            flush(buffer, p.page, current_heading)
     parent = None
     previous_number = ()
     for i, chunk in enumerate(result):
@@ -450,6 +481,8 @@ def sections(pages: list[Page]) -> list[dict]:
                 role = heading_role(chunk.get("chapter_top"))
             basis = "bookmark" if role != "unknown" else basis
         warnings = []
+        if (chunk["page"], heading) in unconfirmed:
+            warnings.append("named as a checklist but no questionnaire follows; kept as protocol text")
         if number and previous_number and number < previous_number and heading != result[i - 1]["section"]:
             warnings.append("section_number_regression; verify heading against outline")
         if number:
