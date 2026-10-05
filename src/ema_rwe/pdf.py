@@ -13,7 +13,7 @@ from .vocabulary import canonical, contains, expand
 RELEVANT = re.compile(
     r"design|method|setting|data source|database|population|inclusion|exclusion|exposure|"
     r"comparator|outcome|variable|definition|phenotyp|code list|codelist|concept|"
-    r"analysis|analyses|statistic|follow.up|washout|objective|appendix|annex|cohort|consent|enrol",
+    r"analysis|analyses|statistic|follow.up|washout|objective|appendix|annex|cohort",
     re.IGNORECASE,
 )
 # Section numbers: arabic (9, 9.2) or roman (II, II.4); a leading zero ('0.03 MG/ML') is a value, not a section.
@@ -167,13 +167,14 @@ ROLES = {
 }
 
 
-# Three separate decisions use the section role:
-# - NON_METHOD_ROLES are not read for extraction (and rank low in search);
-# - LOW_PRIORITY_ROLES (and unknown) are read only when the section itself shows method content;
+# Separate decisions use the section role:
+# - NON_METHOD_ROLES are not read for extraction (and rank low in search); an unknown role is read only
+#   when the section itself shows method content. Conduct and amendment chapters are read: they may state
+#   study-specific conditions (consent before enrolment, adverse event definitions and collection windows,
+#   a removed washout), and their role tells the extractor how to read them.
 # - EVIDENCE_REJECT_ROLES are the roles whose text is confidently not this study's methods, so a method
 #   fact quoted only from them is rejected. An uncertain role never rejects a verbatim quote.
 NON_METHOD_ROLES = {"references", "contents", "background", "administrative", "checklist"}
-LOW_PRIORITY_ROLES = {"unknown", "conduct", "amendments"}
 EVIDENCE_REJECT_ROLES = {"references", "contents", "background", "checklist"}
 
 
@@ -223,7 +224,18 @@ def apply_line_styles(pages: list[Page], doc) -> None:
 
 
 def apply_bookmarks(pages: list[Page], toc: list, source: str = "bookmarks") -> None:
-    """Label each page with the bookmark chapter that starts on or before it (pymupdf get_toc rows)."""
+    """Label each page with the bookmark chapter that starts on or before it (pymupdf get_toc rows).
+
+    The entries under a list of tables or figures point at single tables inside other chapters: they are
+    navigation, not structure, and are skipped (the list entry itself is kept).
+    """
+    rows, navigation_level = [], None
+    for lvl, title, page in toc:
+        if navigation_level is not None and lvl > navigation_level:
+            continue
+        navigation_level = lvl if heading_role(str(title)) == "contents" else None
+        rows.append((lvl, title, page))
+    toc = rows
     entries = sorted(
         ((int(p), int(lvl), " ".join(str(t).split())) for lvl, t, p in toc if p and p > 0), key=lambda e: e[0]
     )
@@ -299,7 +311,7 @@ def text_outline(pages: list[Page]) -> list[list]:
 
 
 # Version of the section/role/reading rules; part of the analysis fingerprint, so a change re-extracts.
-PARSER_VERSION = "structural-v8"
+PARSER_VERSION = "structural-v9"
 
 
 def extract_pages(data: bytes, use_outline: bool = True) -> list[Page]:
@@ -534,9 +546,7 @@ def sections(pages: list[Page]) -> list[dict]:
             role_basis=basis,  # heading, bookmark, parent, page_type or none: how sure the role is
         )
         chunk["relevant"] = role not in NON_METHOD_ROLES and (
-            role not in LOW_PRIORITY_ROLES
-            or chunk["relevant"]
-            or bool(expand(chunk["text"][:1900])["concepts"])
+            role != "unknown" or chunk["relevant"] or bool(expand(chunk["text"][:1900])["concepts"])
         )
     return result
 

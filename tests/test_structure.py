@@ -271,3 +271,32 @@ def test_checklist_title_in_a_list_of_annexes_is_not_the_checklist():
     listing = chunk_with(chunks, "Appendix III: ENCePP checklist for study protocols")
     assert "no questionnaire follows" in listing["structure_warnings"][0]
     assert chunk_with(chunks, "naloxone")["role"] == "appendix"
+
+
+def test_bookmarks_under_a_list_of_tables_are_navigation_not_chapters():
+    # Given a list-of-tables bookmark whose child points at a table on a later page of the methods chapter
+    data = pdf(
+        "LIST OF TABLES\nTable 3 Outcome codes ....",
+        METHODS,
+        "Table 3 Outcome codes\nThe index date is the first dispensing; follow-up ends at the outcome.",
+        toc=[[1, "List of Tables", 1], [2, "Table 3 Outcome codes", 3], [1, "9 Research methods", 2]],
+    )
+    pages = extract_pages(data)
+    # Then that page stays in the methods chapter and is read
+    assert pages[2].chapter == "9 Research methods" and pages[2].chapter_top == "9 Research methods"
+    chunks = sections(pages)
+    assert chunk_with(chunks, "index date")["role"] != "contents"
+    assert chunk_with(chunks, "index date") in reading_order(chunks)
+
+
+def test_conduct_chapter_is_read_even_without_method_words():
+    chunks = sections(
+        extract_pages(
+            pdf(
+                METHODS,
+                "10. PROTECTION OF HUMAN SUBJECTS\nApproval will be obtained before any data are recorded.",
+            )
+        )
+    )
+    section = chunk_with(chunks, "Approval will be obtained")
+    assert section["role"] == "conduct" and section in reading_order(chunks)
