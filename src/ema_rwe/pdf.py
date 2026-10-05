@@ -419,10 +419,6 @@ def validate_evidence(extraction: Extraction, pages: list[Page], chunks: list[di
 
 
 REDACTION = re.compile(r"\b(?:CCI|redacted|commercially confidential)\b", re.IGNORECASE)
-COUNT_CLAIM = re.compile(
-    r"\b(two|three|four|five|2|3|4|5)\s+(?:types?|kinds?|categories|groups)\s+of\s+(outcomes?|endpoints?)",
-    re.IGNORECASE,
-)
 PROPER_TERM = re.compile(
     r"\b(?:[A-Z][A-Za-z0-9\-]{3,}|[A-Z]{2,}[A-Za-z0-9\-]*|\d+(?:\.\d+)?\s?(?:mg|days?|months?|years?|%))\b"
 )
@@ -433,8 +429,7 @@ def audit_extraction(
 ) -> list[str]:
     """Deterministic self-checks appended to missing_information (never rejecting the extraction).
 
-    - redacted passages (CCI markers) near outcome/endpoint text, and stated outcome-type counts the
-      extraction does not reach;
+    - redacted passages (CCI markers) near outcome/endpoint text;
     - catalogue-listed data sources absent from the extracted data_sources;
     - proper names / quantities in fact values that no evidence quote contains.
     """
@@ -449,19 +444,6 @@ def audit_extraction(
         notes.append(
             f"Redacted (CCI) content on pages {redacted} near outcome/endpoint text; definitions there are unavailable."
         )
-    claims = {
-        (m.group(1).lower(), m.group(2).lower(), page)
-        for page, t in text_by_page.items()
-        for m in COUNT_CLAIM.finditer(t)
-    }
-    words = {"two": 2, "three": 3, "four": 4, "five": 5}
-    for count, noun, page in sorted(claims, key=lambda c: c[2]):
-        stated = words.get(count) or int(count)
-        if len(extraction.outcomes) < stated:
-            notes.append(
-                f"Page {page} states {count} {noun}, but {len(extraction.outcomes)} outcome definition(s) were "
-                "extractable; the remainder may be redacted or in an unread section."
-            )
     extracted = " ".join(d.value for d in extraction.data_sources).casefold()
     missing = [s for s in catalogue_sources if s and canonical(s) not in canonical(extracted)]
     if missing:

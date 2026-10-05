@@ -1,4 +1,4 @@
-"""Deterministic post-extraction audits: redaction/count claims, catalogue sources, unquoted terms, section labels."""
+"""Deterministic post-extraction audits: redaction, catalogue sources, unquoted terms, section labels."""
 
 from test_core import sample_analysis
 
@@ -6,19 +6,12 @@ from ema_rwe.domain import Evidence, Extraction, Fact
 from ema_rwe.pdf import Page, audit_extraction, extract_pages, finalize_extraction, prune_unverifiable
 
 
-def test_audit_flags_redaction_and_stated_outcome_count():
+def test_audit_flags_redaction_near_outcome_text():
     pages = [
         Page(1, "Two types of outcomes will be defined: hospitalized AMI and CCI. Endpoint table redacted.")
     ]
     notes = audit_extraction(Extraction(outcomes=[]), pages)
     assert any("Redacted (CCI)" in n and "[1]" in n for n in notes)
-    assert any("states two outcomes" in n and "0 outcome definition(s)" in n for n in notes)
-    enough = Extraction(
-        outcomes=[
-            Fact(value=f"o{i}", evidence=[Evidence(page=1, quote="hospitalized AMI")]) for i in range(2)
-        ]
-    )
-    assert not any("states two" in n for n in audit_extraction(enough, pages))
 
 
 def test_audit_reports_catalogue_sources_missing_from_extraction():
