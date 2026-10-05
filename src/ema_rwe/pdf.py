@@ -132,7 +132,13 @@ def apply_bookmarks(pages: list[Page], toc: list) -> None:
             page.chapter_path = " / ".join(ancestors[lvl] for lvl in sorted(ancestors)) or current
 
 
-def extract_pages(data: bytes) -> list[Page]:
+# Version of the section/role/reading rules; part of the analysis fingerprint, so a change re-extracts.
+PARSER_VERSION = "structural-v4"
+
+
+def extract_pages(data: bytes, use_outline: bool = True) -> list[Page]:
+    """Page texts with the bookmark outline applied; use_outline=False ignores the PDF's own outline
+    (structure evaluation measures text-only detection against the bookmarks)."""
     if not data.lstrip().startswith(b"%PDF-"):
         raise RWEError("PDF_PARSE_FAILED", "Response is not a PDF.")
     try:
@@ -140,7 +146,7 @@ def extract_pages(data: bytes) -> list[Page]:
             if doc.needs_pass or len(doc) > 1500:
                 raise RWEError("PDF_PARSE_FAILED", "Encrypted PDF or page limit exceeded.")
             pages = [Page(i + 1, page.get_text(sort=True)) for i, page in enumerate(doc)]
-            apply_bookmarks(pages, doc.get_toc())
+            apply_bookmarks(pages, doc.get_toc() if use_outline else [])
     except RWEError:
         raise
     except Exception as exc:
