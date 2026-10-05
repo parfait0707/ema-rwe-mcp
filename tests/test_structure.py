@@ -536,3 +536,18 @@ def test_amendment_annex_and_outcome_definition_appendix_are_read():
     chunks = sections(extract_pages(data))
     # The deepest bookmark ('Staging') names no code list, but its appendix defines the outcomes
     assert chunk_with(chunks, "Ann Arbor") in reading_order(chunks)
+
+
+def test_annexes_listed_under_a_list_of_annexes_bookmark_are_structure():
+    data = pdf(
+        METHODS,
+        "Version history of the protocol: the 6-month washout was removed from the sensitivity analysis.",
+        toc=[
+            [1, "9 Research methods", 1],
+            [1, "LIST OF ANNEXES", 2],
+            [2, "Annex 7 AMENDMENTS TO THE PROTOCOL", 2],
+        ],
+    )
+    pages = extract_pages(data)
+    assert pages[1].chapter == "Annex 7 AMENDMENTS TO THE PROTOCOL"
+    assert chunk_with(sections(pages), "washout") in reading_order(sections(pages))

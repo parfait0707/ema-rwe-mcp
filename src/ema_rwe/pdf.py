@@ -114,13 +114,8 @@ def is_heading(line: str) -> bool:
 
 
 ROLES = {
-    "contents": (
-        "table of contents",
-        "list of tables",
-        "list of figures",
-        "list of appendices",
-        "list of annexes",
-    ),
+    # A list of annexes is the annexes themselves (structure); lists of tables and figures are navigation.
+    "contents": ("table of contents", "list of tables", "list of figures"),
     "references": ("references", "bibliography", "literature cited"),
     "administrative": ("responsible parties", "study team", "milestones", "governance", "signatures"),
     # 'rationale' alone also titles method subsections ('Context and rationale for definition of time 0').
@@ -354,7 +349,7 @@ def text_outline(pages: list[Page]) -> list[list]:
 
 
 # Version of the section/role/reading rules; part of the analysis fingerprint, so a change re-extracts.
-PARSER_VERSION = "structural-v18"
+PARSER_VERSION = "structural-v19"
 
 
 def mark_contents_titles(pages: list[Page], rows: list[list]) -> None:
