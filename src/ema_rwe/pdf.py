@@ -69,7 +69,8 @@ def section_number(heading: str | None) -> tuple[int, ...]:
         return ()
     first, *rest = match.group(1).split(".")
     value = int(first) if first.isdigit() else roman_value(first)
-    return (value, *map(int, rest)) if value else ()
+    # Protocols have tens of chapters at most: '79.15 Closed reduction ...' is a procedure code, not a section.
+    return (value, *map(int, rest)) if value and value <= 30 else ()
 
 
 def is_heading(line: str) -> bool:
@@ -122,7 +123,14 @@ ROLES = {
     ),
     "references": ("references", "bibliography", "literature cited"),
     "administrative": ("responsible parties", "study team", "milestones", "governance", "signatures"),
-    "background": ("background", "rationale", "introduction"),
+    # 'rationale' alone also titles method subsections ('Context and rationale for definition of time 0').
+    "background": (
+        "background",
+        "introduction",
+        "rationale and background",
+        "study rationale",
+        "scientific rationale",
+    ),
     "abstract": ("abstract", "synopsis", "summary"),
     "appendix": ("appendix", "appendices", "annex", "annexes", "supplement"),
     # Protocol changes: read, but superseded conditions must not be extracted as current ones.
@@ -185,6 +193,8 @@ EVIDENCE_REJECT_ROLES = {"references", "contents", "background", "checklist"}
 
 
 def heading_role(heading: str | None) -> str:
+    if heading and re.sub(r"^[\dIVX.]+\s+", "", canonical(heading)).startswith("rationale"):
+        return "background"  # 'Rationale', '5 Rationale for the study'
     for role, terms in ROLES.items():
         if heading and any(contains(heading, term) for term in terms):
             return role
@@ -344,7 +354,21 @@ def text_outline(pages: list[Page]) -> list[list]:
 
 
 # Version of the section/role/reading rules; part of the analysis fingerprint, so a change re-extracts.
-PARSER_VERSION = "structural-v15"
+PARSER_VERSION = "structural-v17"
+
+
+def mark_contents_titles(pages: list[Page], rows: list[list]) -> None:
+    """A verified contents page tells where sections start, not which chapter later text belongs to: its
+    entries can drift from the body (a contents page numbering methods 8.x for a body's 9.x), so chapters
+    and roles keep coming from the text headings."""
+    if not rows:
+        return
+    by_page = {p.page: p for p in pages}
+    for _, title, page in rows:
+        if page in by_page:
+            by_page[page].outline_titles.add(canonical(title))
+    for page in pages:
+        page.outline_source = "toc"
 
 
 def extract_pages(data: bytes, use_outline: bool = True) -> list[Page]:
@@ -359,7 +383,7 @@ def extract_pages(data: bytes, use_outline: bool = True) -> list[Page]:
             pages = [Page(i + 1, page.get_text(sort=True)) for i, page in enumerate(doc)]
             apply_bookmarks(pages, doc.get_toc() if use_outline else [])
             if not any(p.chapter for p in pages):
-                apply_bookmarks(pages, text_outline(pages), source="toc")
+                mark_contents_titles(pages, text_outline(pages))
             if not any(p.chapter for p in pages):
                 apply_line_styles(pages, doc)
     except RWEError:
@@ -383,11 +407,23 @@ def text_layer(data: bytes) -> str | None:
     return "partial" if blank * 2 >= len(pages) else "full"
 
 
+CITATION = re.compile(r"\bet al\b|\bdoi\b|\b(?:19|20)\d{2}\b", re.IGNORECASE)
+
+
+def citation_like(text: str) -> bool:
+    """Reference lists carry years, 'et al' and DOIs densely; code tables and protocol text do not."""
+    return len(CITATION.findall(text)) * 1000 >= 2 * len(text)
+
+
 def starts_section(line: str, page: Page, last_chapter: int | None = None) -> bool:
     """A detected heading, a line naming an outline entry (bookmark or verified contents) of its page, or,
     without any outline, a layout chapter: the next chapter number in a larger or bold font."""
-    if is_heading(line) or bool(line and canonical(line) in page.outline_titles):
+    if line and canonical(line) in page.outline_titles:
         return True
+    if is_heading(line):
+        number = section_number(line)
+        # A numbered line far beyond the current chapter is a table row or code ('25.3 mg', '17.2 ...').
+        return not (len(number) > 1 and last_chapter is not None and number[0] > last_chapter + 3)
     return page.outline_source is None and layout_chapter(line, page, last_chapter)
 
 
@@ -537,6 +573,7 @@ def sections(pages: list[Page]) -> list[dict]:
             flush(buffer, p.page, current_heading)
     parent = None
     previous_number = ()
+    body_started = False  # a method-side or abstract section has been seen
     for i, chunk in enumerate(result):
         heading = chunk["section"]
         number = section_number(heading)
@@ -576,7 +613,9 @@ def sections(pages: list[Page]) -> list[dict]:
             # A numbered section outside the parent's chapter ('3.1' after '1. Background'): the chapter
             # heading in between was missed, so the old parent must not impose its role.
             parent = None
-        if heading and (len(number) == 1 or (not number and major_unnumbered) or parent is None):
+        if heading and (
+            len(number) == 1 or (not number and (major_unnumbered or role != "unknown")) or parent is None
+        ):
             parent = {"heading": heading, "role": role, "number": number}
         inherited = parent["role"] if parent else "unknown"
         if chunk.get("checklist"):
@@ -605,8 +644,18 @@ def sections(pages: list[Page]) -> list[dict]:
             structure_warnings=warnings,
             role_basis=basis,  # heading, bookmark, parent, page_type or none: how sure the role is
         )
+        if role == "references" and len(chunk["text"]) >= 300 and not citation_like(chunk["text"]):
+            # A references heading carried over code tables or a next chapter it did not detect.
+            role, basis = "unknown", "content"
+            chunk["role"], chunk["role_basis"] = role, basis
+        body_started = body_started or role in METHOD_ROLES or role == "abstract"
         chunk["relevant"] = role not in NON_METHOD_ROLES and (
-            role != "unknown" or chunk["relevant"] or bool(expand(chunk["text"][:1900])["concepts"])
+            role != "unknown"
+            or chunk["relevant"]
+            or bool(expand(chunk["text"][:1900])["concepts"])
+            # Inside the protocol body, an unnamed subsection ('5.5.1 Primary endpoint' under '5 Procedures')
+            # is read unless its chapter is background, administration or references.
+            or (body_started and chunk["context_role"] not in NON_METHOD_ROLES)
         )
     headed = [c for c in result if c["section"] and not c.get("toc") and not c.get("checklist")]
     if headed and sum(c["role"] == "unknown" for c in headed) > 0.6 * len(headed):

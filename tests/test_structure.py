@@ -166,10 +166,11 @@ def toc_pdf(printed_offset_ok: bool = True) -> bytes:
     return pdf("Study protocol title page with sponsor and version information.", contents, *body)
 
 
-def test_verified_contents_page_becomes_the_outline():
+def test_verified_contents_page_marks_where_sections_start():
     pages = extract_pages(toc_pdf())
     assert [p.outline_source for p in pages[2:]] == ["toc"] * 4
-    assert pages[3].chapter == "2. Work Packages" and pages[5].chapter_top == "4. Bibliographic Sources"
+    # Section starts only: chapters and roles keep coming from the text, since contents pages can drift
+    assert all(p.chapter is None for p in pages)
     # A title-case chapter line named by the contents starts a section although is_heading rejects it
     assert not is_heading("2. Work Packages")
     assert chunk_with(sections(pages), "work packages of")["section"] == "2. Work Packages"
@@ -465,3 +466,55 @@ def test_sections_are_read_when_the_role_words_do_not_know_the_language():
     )
     exclusion = chunk_with(chunks, "cáncer previo")
     assert exclusion["role"] == "unknown" and exclusion in reading_order(chunks)
+
+
+def test_code_rows_are_not_section_numbers_and_code_tables_after_references_are_read():
+    chunks = sections(
+        extract_pages(
+            pdf(
+                METHODS + "\n10 References\n1. Smith J, et al. Pharmacoepidemiol Drug Saf. 2019;28:1-9.\n"
+                "2. Jones A, et al. BMJ. 2018;360:k1. doi:10.1136/bmj.k1",
+                "11 Tables\nTable 3 READ codes for acute liver injury\nJ600.00 Acute and subacute liver necrosis\n"
+                "79.15 Closed reduction of fracture with internal fixation, femur\nJ601.00 Subacute liver necrosis\n"
+                + "\n".join(
+                    f"J6{n:02}.00 Liver disorder code {n} for the outcome definition" for n in range(2, 9)
+                ),
+            )
+        )
+    )
+    assert not any(c["section"] and c["section"].startswith("79.15") for c in chunks)
+    table = chunk_with(chunks, "J600.00")
+    assert table["role"] != "references" and table in reading_order(chunks)
+    assert chunk_with(chunks, "Smith J")["role"] == "references"
+
+
+def test_unnamed_subsections_inside_the_body_are_read():
+    chunks = sections(
+        extract_pages(
+            pdf(
+                METHODS,
+                "5. STUDY PROCEDURES\n5.5.1 Primary endpoint\nTime to first exacerbation requiring hospital care.",
+            )
+        )
+    )
+    endpoint = chunk_with(chunks, "first exacerbation")
+    assert endpoint["role"] == "unknown" and endpoint in reading_order(chunks)
+
+
+def test_method_subsection_with_rationale_in_its_title_is_not_background():
+    assert heading_role("7.3.1 Context and rationale for definition of time 0") == "unknown"
+    assert heading_role("5. Rationale and background") == heading_role("RATIONALE") == "background"
+
+
+def test_unnumbered_heading_with_a_known_role_ends_the_background_context():
+    chunks = sections(
+        extract_pages(
+            pdf(
+                "BACKGROUND\nIdiopathic pulmonary fibrosis is often diagnosed late in primary care.\n"
+                "STUDY DESIGN\nA historical cohort study in UK primary care records.\n"
+                "Clinical characterisation at time of diagnosis\nPrescriptions and spirometry in the two years before.",
+            )
+        )
+    )
+    section = chunk_with(chunks, "spirometry")
+    assert section["role"] != "background" and section in reading_order(chunks)
