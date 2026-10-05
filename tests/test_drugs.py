@@ -6,7 +6,7 @@ from pydantic import ValidationError
 
 from ema_rwe.domain import CodeCandidate, RWEError
 from ema_rwe.drugs import SOURCE_URL, drug_expansion, refresh_dictionary
-from ema_rwe.medicines import catalogue_atc, expand_medicine
+from ema_rwe.medicines import catalogue_atc, expand_medicine, same_medicine
 from ema_rwe.pdf import Page, search_sections, sections
 from ema_rwe.service import Service
 from ema_rwe.storage import import_csv
@@ -304,3 +304,15 @@ def test_one_word_product_name_with_a_bracketed_history_still_counts_for_text_ma
     names = known_medicine_names({})
     assert find_medicines("Safety of Spikevax in pregnancy", names) == ["elasomeran"]
     assert find_medicines("Safety of COVID-19 vaccine in pregnancy", names) == []
+
+
+def test_catalogue_code_joins_only_the_whole_ingredient_set(drug_file):
+    # A catalogue that labels the Janumet code with one of its ingredients is not the same medicine
+    assert same_medicine("metformin", ["sitagliptin", "metformin"]) is False
+    assert same_medicine("sitagliptin and metformin", ["metformin"]) is False
+    found = expand_medicine("Janumet", {"A10BD07": "metformin"})
+    assert found is None or "metformin" not in found["queries"]
+    # Salt words and ingredient order still do not matter
+    assert same_medicine("Metformin hydrochloride / sitagliptin phosphate", ["sitagliptin", "metformin"])
+    label = "sitagliptin phosphate and metformin hydrochloride"
+    assert label in expand_medicine("Janumet", {"A10BD07": label})["queries"]

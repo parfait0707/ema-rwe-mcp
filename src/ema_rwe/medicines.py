@@ -32,10 +32,17 @@ def catalogue_atc(entries) -> dict[str, str]:
 
 
 def same_medicine(label: str, ingredients: list[str]) -> bool:
-    """Whether a catalogue ATC name and an EMA ingredient list name the same medicine (salts and order aside)."""
+    """Whether a catalogue ATC name and an EMA ingredient list name the same medicine (salts and order aside).
+
+    Every ingredient on each side must correspond to one on the other, so a combination never equals one of
+    its ingredients ('metformin' vs empagliflozin + metformin); a salt or longer name still matches by part."""
     named = ingredient_set(label)
     have = frozenset(map(canonical, ingredients))
-    return named == have or all(any(n in i or i in n for i in have) for n in named)
+
+    def covered(names, others) -> bool:
+        return all(any(n in o or o in n for o in others) for n in names)
+
+    return named == have or (covered(named, have) and covered(have, named))
 
 
 def expand_medicine(query: str, labels: dict[str, str]) -> dict | None:
