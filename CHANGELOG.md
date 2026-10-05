@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- `ema-rwe import-all` and `ema-rwe merge-observations`, the commands that build the bundled database,
+  end with `VACUUM` (the result reports `bytes_before`/`bytes_after`). On a copy of the current bundle:
+  45.8 MB -> 43.1 MB, gzip 17.1 MB -> 12.1 MB. The committed database is compacted at its next rebuild.
+
 ## 0.5.3 (2026-10-03)
 
 - A `get_study` refresh keeps an exported study's source-type tags (an empty set means `others`); only a

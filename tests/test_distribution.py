@@ -183,3 +183,15 @@ def test_bundle_exposures_from_newer_rules_replace_only_that_source(tmp_path):
     # Same rules on both sides: the local entries win again
     mine.observe("1", exposures=[pass_table, {"term": "anastrozole", "source": "catalogue_text"}])
     assert merge_bundle_observations(bundled, user) == 0
+
+
+def test_vacuum_compacts_the_bundle_without_losing_rows(tmp_path):
+    """The bundle build ends with VACUUM: free pages left by updates are dropped, rows are kept."""
+    repo = catalogue(
+        tmp_path / "bundle.sqlite3", "2026-10-01", *[f"Study {i} " + "x" * 2000 for i in range(200)]
+    )
+    with repo.connection() as db:
+        db.execute("DELETE FROM studies WHERE id != '1'")
+    sizes = repo.vacuum()
+    assert sizes["bytes_after"] < sizes["bytes_before"]
+    assert repo.get("1").title.startswith("Study 0")

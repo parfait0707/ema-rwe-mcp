@@ -467,6 +467,12 @@ PDF 取得先ディレクトリ名から X/Y が推測可能だった（P）、�
 - リリース前の点検（release-consistency-audit スキル：機械的な走査と、読み取り専用のサブエージェントによる照合）で、次の2件の不具合を見つけて直した。1つは、CLI の `analyze --detail` の選択肢を MCP と違う compact/full にしていて、既定のままでは必ず `INVALID_INPUT` になっていたこと（summary/full に修正）。もう1つは、種別タグの保持が1回目の再取得にしか効かず、再取得で `metadata_source` が詳細ページの値に変わるため2回目からは F8.7 に置き換わっていたこと（`metadata_source` も引き継ぐように修正。テストは2回の再取得で確認）。あわせて、サービス層の `search_studies` の既定も `darwin_only=False` にし、docs/source-types.md の種別タグの説明を直した。機械的な走査では、README_DEV.md に残っていた古い版の例（`v0.5.1`）も見つけ、版に依存しない書き方にした。
 - 全体 323 passed、ruff と `uv build` 合格。
 
+## 2026-10-05 同梱 DB の作成手順に VACUUM を追加
+
+- `import-all` と `merge-observations`（同梱 DB を作る2つのコマンド）の最後に `VACUUM` を実行し、前後のファイルの大きさを返すようにした（`Repository.vacuum`）。起動時の同梱観測の統合（`merge_bundle_observations(strict=False)`）では実行しない。
+- 同梱 DB の複製で実測した：45,785,088 → 43,094,016 バイト（-2.7 MB）、gzip 圧縮後 17.1 → 12.1 MB（-29%）。研究 3,314 件と検索結果（apixaban 60 件）は変わらない。コミット済みの同梱 DB は、次の作り直しのときに詰め直す（DB を追加でコミットすると、その分 Git の履歴が増えるため、今回は書き換えない）。
+- テスト：`test_vacuum_compacts_the_bundle_without_losing_rows`。全体 324 passed、ruff 合格。
+
 ## 未検証事項（継続）
 
 - 外部LLM API呼出しの実認証検証は未実施。キーなしの呼出元LLM方式は合成PDFで保存・再利用まで検証。

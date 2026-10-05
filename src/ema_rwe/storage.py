@@ -99,6 +99,19 @@ class Repository:
         finally:
             db.close()
 
+    def vacuum(self) -> dict:
+        """Rewrite the database file without free pages (the bundle build ends with this). Needs no
+        other connection writing and temporary space about the size of the database."""
+        before = self.path.stat().st_size
+        db = sqlite3.connect(self.path, timeout=30)
+        try:
+            db.execute("VACUUM")
+        except sqlite3.Error as exc:
+            raise RWEError("DATABASE_ERROR", f"VACUUM failed: {exc}") from exc
+        finally:
+            db.close()
+        return {"bytes_before": before, "bytes_after": self.path.stat().st_size}
+
     def get(self, study_id: str) -> Study | None:
         with self.connection() as db:
             row = db.execute("SELECT body FROM studies WHERE id=?", (study_id,)).fetchone()
