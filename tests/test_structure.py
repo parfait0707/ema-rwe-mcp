@@ -422,3 +422,31 @@ def test_consecutive_unnumbered_contents_lines_are_siblings():
     pages += [Page(3, "Background\nAims\nObjectives\nText."), Page(4, "1.1 Recruitment\nNotes\nText.")]
     levels = {title: level for level, title, _ in text_outline(pages)}
     assert levels == {"Background": 1, "Aims": 1, "Objectives": 1, "1.1 Recruitment": 2, "Notes": 3}
+
+
+def test_contents_outline_skips_table_captions_and_places_unprinted_annex_headings():
+    from ema_rwe.pdf import Page, text_outline
+
+    entries = [
+        ("1. Overview", 1),
+        ("2. Methods", 2),
+        ("3. References", 3),
+        ("Annex I: Code lists", 4),
+        ("Table A1.2. Product codes", 5),
+    ]
+    contents = "\n".join(f"{t} {'.' * 12} {n}" for t, n in entries)
+    pages = [
+        Page(1, "Title page"),
+        Page(2, contents),
+        Page(3, "1. Overview\nText."),
+        Page(4, "2. Methods\nText."),
+    ]
+    # The annex pages are rotated tables: no heading line is printed, only the caption of a table
+    pages += [
+        Page(5, "3. References\nSmith J, et al."),
+        Page(6, "B01AA03 B01AF01"),
+        Page(7, "Table A1.2. Product codes\n4446"),
+    ]
+    rows = {title: (level, page) for level, title, page in text_outline(pages)}
+    assert rows["Annex I: Code lists"] == (1, 6)  # placed by the verified offset
+    assert "Table A1.2. Product codes" not in rows  # navigation, not structure

@@ -280,6 +280,7 @@ def apply_bookmarks(pages: list[Page], toc: list, source: str = "bookmarks") -> 
             page.outline_source = source
 
 
+CAPTION = re.compile(r"(?:table|figure|fig\.)\s*[A-Z]?\d", re.IGNORECASE)
 TOC_LINE = re.compile(
     r"^\s*(?P<number>(?:[1-9]\d?|[IVX]{1,4})(?:\.\d{1,2})*\.?)?\s*(?P<title>\S.*?)\s*(?:\.{3,}|…+)\s*(?P<page>\d{1,3})\s*$"
 )
@@ -290,7 +291,9 @@ def text_outline(pages: list[Page]) -> list[list]:
 
     Printed page numbers differ from physical ones by the front matter. An entry counts only where its
     heading is printed as a line of the body; the printed-to-physical offset must agree for at least three
-    entries and two fifths of all entries, and only entries anchored at that offset (±1 page) are kept.
+    entries and two fifths of all entries. Entries anchored at that offset (±1 page) are kept, and so are
+    unanchored appendix or template chapter entries placed by the offset; table and figure captions are
+    navigation and are skipped.
     """
     toc_pages = [p for p in pages[:25] if sum(bool(TOC_LINE.match(l)) for l in p.text.splitlines()) >= 3]
     if not toc_pages:
@@ -313,31 +316,35 @@ def text_outline(pages: list[Page]) -> list[list]:
     offset, support = offsets.most_common(1)[0]
     if support < 3 or support < 0.4 * len(entries):
         return []
-    rows, numbered_level = [], 0
+    rows, numbered_level, last_page = [], 0, 0
     for (number, title, printed, _), found in anchors:
+        if CAPTION.match(title):
+            continue  # a list-of-tables or list-of-figures line: navigation, not structure
+        chapter_like = not number and (
+            re.match(r"(?:appendix|annex|appendices|annexes)\b", title, re.IGNORECASE)
+            or canonical(title) in CHAPTER_TITLES
+        )
         near = [pg for pg in found if abs(pg - (printed + offset)) <= 1]
         if near:
-            if number:
-                level = numbered_level = len(section_number(f"{number.rstrip('.')} title"))
-            elif (
-                re.match(r"(?:appendix|annex|appendices|annexes)\b", title, re.IGNORECASE)
-                or canonical(title) in CHAPTER_TITLES
-            ):
-                level = 1
-            else:  # an unnumbered line under a numbered entry is its sub-item; unnumbered entries are siblings
-                level = numbered_level + 1
-            rows.append(
-                [
-                    max(level, 1),
-                    f"{number} {title}".strip(),
-                    min(near, key=lambda pg: abs(pg - printed - offset)),
-                ]
-            )
+            page = min(near, key=lambda pg: abs(pg - printed - offset))
+        elif chapter_like and last_page <= printed + offset <= len(pages):
+            # An annex of rotated tables prints no heading line; the verified offset still places it.
+            page = printed + offset
+        else:
+            continue
+        if number:
+            level = numbered_level = len(section_number(f"{number.rstrip('.')} title"))
+        elif chapter_like:
+            level = 1
+        else:  # an unnumbered line under a numbered entry is its sub-item; unnumbered entries are siblings
+            level = numbered_level + 1
+        rows.append([max(level, 1), f"{number} {title}".strip(), page])
+        last_page = max(last_page, page)
     return rows
 
 
 # Version of the section/role/reading rules; part of the analysis fingerprint, so a change re-extracts.
-PARSER_VERSION = "structural-v13"
+PARSER_VERSION = "structural-v14"
 
 
 def extract_pages(data: bytes, use_outline: bool = True) -> list[Page]:
