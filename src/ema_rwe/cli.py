@@ -205,14 +205,16 @@ async def run(args):
                 mapping = json.loads(args.column_map.read_text(encoding="utf-8")) if args.column_map else None
                 return service.import_catalogue_csv(args.filename, mapping)
             case "import-all":
-                return service.import_all()
+                # These two commands build the bundled database: end them with a compacted file.
+                return {"imports": service.import_all(), "vacuum": service.repo.vacuum()}
             case "merge-observations":
                 from .storage import merge_bundle_observations
 
                 return {
                     "changed": merge_bundle_observations(
                         Path(args.source), service.settings.db_path, strict=True
-                    )
+                    ),
+                    "vacuum": service.repo.vacuum(),
                 }
             case "backfill-protocols":
                 return await service.backfill_protocols(
