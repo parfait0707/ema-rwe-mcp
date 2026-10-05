@@ -5,6 +5,22 @@
 - `ema-rwe import-all` and `ema-rwe merge-observations`, the commands that build the bundled database,
   end with `VACUUM` (the result reports `bytes_before`/`bytes_after`). On a copy of the current bundle:
   45.8 MB -> 43.1 MB, gzip 17.1 MB -> 12.1 MB. The committed database is compacted at its next rebuild.
+- Fixes from an external review:
+  - A page without a text heading that starts a new bookmark chapter no longer inherits the previous
+    page's heading (a methods chapter after `BACKGROUND` was read as background and its quotes rejected
+    with `EVIDENCE_WRONG_SECTION`). A top-level bookmark chapter with a known role sets the parent
+    context; appendix references are matched against the whole bookmark path, and `annexes` counts as
+    an appendix title.
+  - A quote must have 8 characters once whitespace is collapsed: a blank quote normalized to an empty
+    string and was "found" on every page.
+  - Server-side extraction tasks are keyed by study and fingerprint: a protocol that changes during
+    extraction cancels the old task instead of returning or saving the old PDF's result.
+  - Facts beyond the schema limits when batches are merged, and `missing_information` overflow, are
+    reported with counts in `missing_information` instead of being dropped silently.
+  - A catalogue ATC name matches an EMA medicine only when every ingredient on each side corresponds to
+    one on the other (`metformin` no longer matches empagliflozin + metformin).
+  - The first copy of the bundled data goes through a temporary file and a rename, so an interrupted or
+    concurrent first start cannot leave a truncated database that later starts skip.
 
 ## 0.5.3 (2026-10-03)
 
