@@ -551,3 +551,40 @@ def test_annexes_listed_under_a_list_of_annexes_bookmark_are_structure():
     pages = extract_pages(data)
     assert pages[1].chapter == "Annex 7 AMENDMENTS TO THE PROTOCOL"
     assert chunk_with(sections(pages), "washout") in reading_order(sections(pages))
+
+
+@pytest.mark.parametrize(
+    ("line", "expected"),
+    [
+        ("DATA SOURCE, STUDY DESIGN AND METHODOLOGY", True),  # unnumbered all-caps method heading
+        ("CONFIDENTIAL", False),
+        ("3.3 million, by applying the prevalence of the deficiency", False),  # a value in running text
+        ("Appendix  I. The  following  protocols  will  continue  to be  developed  taking  into", False),
+        ("Annex 5 CASE DEFINITIONS FOR ADVERSE EVENTS OF SPECIAL INTEREST AND SURVEILLANCE INDICATORS", True),
+    ],
+)
+def test_heading_candidates_from_the_review_of_real_protocols(line, expected):
+    assert is_heading(line) is expected
+
+
+def test_goal_is_an_objective_and_a_cited_appendix_is_read_from_any_chapter():
+    assert heading_role("4.3 Goal") == "objectives"
+    data = pdf(
+        "1. BACKGROUND\nThe synopsis of the database study is attached as Appendix I for reference purposes.",
+        METHODS,
+        "Appendix I\nThe sample size of 10,000 person-years gives 80% power for the outcome comparison.",
+        toc=[[1, "1 Background", 1], [1, "9 Research methods", 2], [1, "Appendix I Study synopsis", 3]],
+    )
+    chunks = sections(extract_pages(data))
+    assert chunk_with(chunks, "sample size") in reading_order(chunks)
+
+
+def test_english_detection():
+    from ema_rwe.pdf import Page, english
+
+    assert english(
+        [Page(1, "The study will use the data of the registry and the outcome is defined in the protocol.")]
+    )
+    assert not english(
+        [Page(1, "Se realizará un estudio de casos y controles con datos procedentes de la base.")]
+    )

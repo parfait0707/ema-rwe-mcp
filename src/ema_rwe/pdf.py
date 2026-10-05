@@ -77,7 +77,9 @@ def is_heading(line: str) -> bool:
     if line.rstrip().endswith("?"):
         return False
     if re.match(r"^(?:appendix|annex)\s+[A-Z0-9]+\b", line, re.IGNORECASE):
-        return True
+        # 'Appendix I. The following protocols will continue to be developed' is a sentence citing the
+        # appendix: running text carries lower-case function words, titles hardly any.
+        return sum(w in ENGLISH_WORDS for w in re.findall(r"\b[a-z]+\b", line)) < 3
     if canonical(line) in {
         "study design",
         "research methods",
@@ -100,7 +102,9 @@ def is_heading(line: str) -> bool:
         return False
     if (match := SECTION_NUMBER.match(line)) and section_number(line):
         if len(section_number(line)) > 1:
-            return True  # '9.2 Setting', 'II.4 Abstract': multi-level numbering is not a list item
+            # '9.2 Setting', 'II.4 Abstract': multi-level numbering is not a list item; a lower-case word after
+            # the number ('3.3 million, by applying ...') is a value in running text.
+            return not match.group(2)[0].islower()
         title = match.group(2)
         if match.group(1).isalpha() and canonical(title) not in CHAPTER_TITLES:
             # 'IV Q5106', 'IV ORAL': a route or code in a table row, not a roman chapter number.
@@ -108,7 +112,9 @@ def is_heading(line: str) -> bool:
     elif match := LETTERED.match(line):
         title = match.group(1)
     else:
-        return False
+        # An unnumbered all-caps line naming a method topic ('DATA SOURCE, STUDY DESIGN AND METHODOLOGY').
+        words = re.findall(r"[A-Za-z]{2,}", line)
+        return line.isupper() and 2 <= len(words) <= 12 and heading_role(line) in METHOD_ROLES
     # A single-level number is also how lists are written: only an all-caps or template chapter title counts.
     return title.isupper() or canonical(title) in CHAPTER_TITLES
 
@@ -170,7 +176,16 @@ ROLES = {
         "sensitivity",
         "confounding",
     ),
-    "objectives": ("research question", "research questions", "objectives", "objective", "aims", "aim"),
+    "objectives": (
+        "research question",
+        "research questions",
+        "objectives",
+        "objective",
+        "aims",
+        "aim",
+        "goals",
+        "goal",
+    ),
 }
 
 
@@ -349,7 +364,7 @@ def text_outline(pages: list[Page]) -> list[list]:
 
 
 # Version of the section/role/reading rules; part of the analysis fingerprint, so a change re-extracts.
-PARSER_VERSION = "structural-v19"
+PARSER_VERSION = "structural-v23"
 
 
 def mark_contents_titles(pages: list[Page], rows: list[list]) -> None:
@@ -400,6 +415,36 @@ def text_layer(data: bytes) -> str | None:
         return "none" if exc.code == "PDF_OCR_REQUIRED" else None
     blank = sum(len(p.text.strip()) < 50 for p in pages)
     return "partial" if blank * 2 >= len(pages) else "full"
+
+
+ENGLISH_WORDS = frozenset(
+    [
+        "the",
+        "of",
+        "and",
+        "to",
+        "in",
+        "for",
+        "with",
+        "will",
+        "be",
+        "is",
+        "are",
+        "this",
+        "that",
+        "by",
+        "on",
+        "from",
+        "or",
+        "as",
+    ]
+)
+
+
+def english(pages: list[Page]) -> bool:
+    """Whether the protocol body is in English: these function words are about a fifth of English prose."""
+    words = re.findall(r"[a-z]+", " ".join(p.text for p in pages).casefold())
+    return not words or sum(w in ENGLISH_WORDS for w in words) >= 0.08 * len(words)
 
 
 CITATION = re.compile(r"\bet al\b|\bdoi\b|\b(?:19|20)\d{2}\b", re.IGNORECASE)
@@ -653,7 +698,7 @@ def sections(pages: list[Page]) -> list[dict]:
             or (body_started and chunk["context_role"] not in NON_METHOD_ROLES)
         )
     headed = [c for c in result if c["section"] and not c.get("toc") and not c.get("checklist")]
-    if headed and sum(c["role"] == "unknown" for c in headed) > 0.6 * len(headed):
+    if not english(pages) or (headed and sum(c["role"] == "unknown" for c in headed) > 0.6 * len(headed)):
         # The role and signal words are English: when they recognise few of the document's headings (another
         # language or an unusual template), an unknown section is read rather than dropped for lack of them.
         for c in result:
@@ -681,7 +726,12 @@ def reading_order(chunks: list[dict]) -> list[dict]:
     if not any(c.get("outline_source") == "bookmarks" for c in chunks):
         return relevant
     body = [c for c in relevant if c["role"] != "appendix"]
-    referenced = {m.group(1).casefold() for c in body for m in APPENDIX_REF.finditer(c["text"]) if m.group(1)}
+    # Any protocol text may cite an appendix ('the protocols attached as Appendix I' in a preamble), but not
+    # the appendices, references, checklists or contents pages themselves.
+    citing = [c for c in chunks if c["role"] not in {"appendix", "references", "checklist", "contents"}]
+    referenced = {
+        m.group(1).casefold() for c in citing for m in APPENDIX_REF.finditer(c["text"]) if m.group(1)
+    }
 
     def is_referenced(chunk) -> bool:
         # The whole outline path: a sub-bookmark ('12.3.2 Terms for outcome mapping') belongs to its annex.
