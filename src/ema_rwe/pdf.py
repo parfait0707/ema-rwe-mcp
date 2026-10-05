@@ -198,6 +198,28 @@ class Page:
     outline_titles: set[str] = field(default_factory=set)
     # Where the outline came from: 'bookmarks', 'toc' (a verified text table of contents) or None.
     outline_source: str | None = None
+    # Canonical line text -> (largest font size, bold) from the PDF's text spans, and the document's body
+    # font size: layout support for chapter headings when there is no outline.
+    line_styles: dict[str, tuple[float, bool]] = field(default_factory=dict)
+    body_size: float = 0.0
+
+
+def apply_line_styles(pages: list[Page], doc) -> None:
+    sizes: Counter = Counter()
+    for page, pdf_page in zip(pages, doc):
+        for block in pdf_page.get_text("dict")["blocks"]:
+            for line in block.get("lines", []):
+                spans = [s for s in line["spans"] if s["text"].strip()]
+                if not spans:
+                    continue
+                text = canonical("".join(s["text"] for s in spans))
+                bold = all(s["flags"] & 16 or "bold" in s["font"].casefold() for s in spans)
+                page.line_styles[text] = (max(s["size"] for s in spans), bold)
+                for s in spans:
+                    sizes[round(s["size"], 1)] += len(s["text"])
+    body = sizes.most_common(1)[0][0] if sizes else 0.0
+    for page in pages:
+        page.body_size = body
 
 
 def apply_bookmarks(pages: list[Page], toc: list, source: str = "bookmarks") -> None:
@@ -277,7 +299,7 @@ def text_outline(pages: list[Page]) -> list[list]:
 
 
 # Version of the section/role/reading rules; part of the analysis fingerprint, so a change re-extracts.
-PARSER_VERSION = "structural-v6"
+PARSER_VERSION = "structural-v7"
 
 
 def extract_pages(data: bytes, use_outline: bool = True) -> list[Page]:
@@ -293,6 +315,8 @@ def extract_pages(data: bytes, use_outline: bool = True) -> list[Page]:
             apply_bookmarks(pages, doc.get_toc() if use_outline else [])
             if not any(p.chapter for p in pages):
                 apply_bookmarks(pages, text_outline(pages), source="toc")
+            if not any(p.chapter for p in pages):
+                apply_line_styles(pages, doc)
     except RWEError:
         raise
     except Exception as exc:
@@ -314,9 +338,29 @@ def text_layer(data: bytes) -> str | None:
     return "partial" if blank * 2 >= len(pages) else "full"
 
 
-def starts_section(line: str, page: Page) -> bool:
-    """A detected heading, or a line naming an outline entry (bookmark or verified contents) of its page."""
-    return is_heading(line) or bool(line and canonical(line) in page.outline_titles)
+def starts_section(line: str, page: Page, last_chapter: int | None = None) -> bool:
+    """A detected heading, a line naming an outline entry (bookmark or verified contents) of its page, or,
+    without any outline, a layout chapter: the next chapter number in a larger or bold font."""
+    if is_heading(line) or bool(line and canonical(line) in page.outline_titles):
+        return True
+    return page.outline_source is None and layout_chapter(line, page, last_chapter)
+
+
+def layout_chapter(line: str, page: Page, last_chapter: int | None) -> bool:
+    """'5 Study Procedures' after chapter 4, set larger or bold than the body text. A numbered list item
+    breaks the chapter sequence ('1. Patients ...' inside chapter 7) or is set in the body font."""
+    number = section_number(line)
+    match = SECTION_NUMBER.match(line)
+    if len(number) != 1 or not match or last_chapter is None or number[0] != last_chapter + 1:
+        return False
+    title = match.group(2)
+    style = page.line_styles.get(canonical(line))
+    return (
+        len(title) <= 80
+        and not title.rstrip().endswith((".", ",", ";", ":"))
+        and style is not None
+        and (style[0] >= page.body_size + 1 or style[1])
+    )
 
 
 def sections(pages: list[Page]) -> list[dict]:
@@ -342,6 +386,7 @@ def sections(pages: list[Page]) -> list[dict]:
         buffer.clear()
 
     checklist_heading = None
+    last_chapter = None  # first number of the latest numbered heading, for the layout chapter sequence
     for p in pages:
         appendix_headers = re.findall(r"(?im)^\s*((?:appendix|annex)\s+[^\n]{1,120})$", p.text)
         if appendix_headers:
@@ -383,9 +428,10 @@ def sections(pages: list[Page]) -> list[dict]:
         buffer = []
         for line in lines:
             line = line.strip()
-            if starts_section(line, p):
+            if starts_section(line, p, last_chapter):
                 flush(buffer, p.page, current_heading)
                 current_heading = line
+                last_chapter = section_number(line)[0] if section_number(line) else last_chapter
             if sum(map(len, buffer)) + len(line) > 5500:
                 flush(buffer, p.page, current_heading)
             buffer.append(line)

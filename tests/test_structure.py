@@ -187,3 +187,38 @@ def test_pdf_bookmarks_take_precedence_over_the_contents_page():
     pages = extract_pages(data)
     assert pages[4].chapter == "Body" and pages[4].outline_source == "bookmarks"
     assert extract_pages(data, use_outline=False)[4].outline_source == "toc"
+
+
+def styled_pdf(lines: list[tuple[str, bool]]) -> bytes:
+    """One page; (text, is_chapter_style) lines: chapter style is a larger bold font, body text is 9 pt."""
+    with pymupdf.open() as doc:
+        page = doc.new_page()
+        y = 40
+        for text, chapter in lines:
+            page.insert_text(
+                (40, y), text, fontsize=13 if chapter else 9, fontname="hebo" if chapter else "helv"
+            )
+            y += 20
+        return doc.tobytes()
+
+
+def test_layout_and_chapter_sequence_find_title_case_chapters_without_an_outline():
+    body = "The cohort includes adults with a first dispensing and outcome follow-up of two years."
+    pages = extract_pages(
+        styled_pdf(
+            [
+                ("4. ABSTRACT", True),
+                (body, False),
+                ("5 Study Procedures", True),  # next chapter number, larger bold font
+                (body, False),
+                ("1. Patients aged 18 years or older", True),  # bold list item: breaks the sequence
+                (body, False),
+                ("6 Work Packages", False),  # next number but body font: no layout support
+                (body, False),
+            ]
+        )
+    )
+    headings = {c["section"] for c in sections(pages)}
+    assert "5 Study Procedures" in headings
+    assert "1. Patients aged 18 years or older" not in headings
+    assert "6 Work Packages" not in headings
