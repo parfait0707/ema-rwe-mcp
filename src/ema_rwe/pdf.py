@@ -132,7 +132,6 @@ ROLES = {
         "scientific rationale",
     ),
     "abstract": ("abstract", "synopsis", "summary"),
-    "appendix": ("appendix", "appendices", "annex", "annexes", "supplement"),
     # Protocol changes: read, but superseded conditions must not be extracted as current ones.
     "amendments": (
         "amendments",
@@ -141,6 +140,7 @@ ROLES = {
         "description of changes",
         "protocol changes",
     ),
+    "appendix": ("appendix", "appendices", "annex", "annexes", "supplement"),
     # Study conduct chapters of the PASS template (ethics, safety reporting, dissemination). They may hold
     # study-specific conditions or definitions (consent before enrolment, adverse event definitions).
     "conduct": (
@@ -354,7 +354,7 @@ def text_outline(pages: list[Page]) -> list[list]:
 
 
 # Version of the section/role/reading rules; part of the analysis fingerprint, so a change re-extracts.
-PARSER_VERSION = "structural-v17"
+PARSER_VERSION = "structural-v18"
 
 
 def mark_contents_titles(pages: list[Page], rows: list[list]) -> None:
@@ -696,8 +696,9 @@ def reading_order(chunks: list[dict]) -> list[dict]:
         chapter = chunk.get("chapter") or ""
         if "checklist" in chapter.casefold():
             return False  # ENCePP checklists mimic method headings but are not this study's methods
-        # Code lists and variable definitions are read even without an explicit cross-reference.
-        if CODE_LIST_TITLE.search(chapter):
+        # Code lists and variable definitions are read even without an explicit cross-reference; the title may
+        # be any level of the outline ('Appendix I: Definitions of study outcomes / ... / Staging').
+        if CODE_LIST_TITLE.search(chunk.get("chapter_path") or chapter):
             return True
         return any(m.group(1).casefold() in referenced for m in APPENDIX_REF.finditer(label) if m.group(1))
 

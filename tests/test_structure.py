@@ -518,3 +518,21 @@ def test_unnumbered_heading_with_a_known_role_ends_the_background_context():
     )
     section = chunk_with(chunks, "spirometry")
     assert section["role"] != "background" and section in reading_order(chunks)
+
+
+def test_amendment_annex_and_outcome_definition_appendix_are_read():
+    assert heading_role("Annex 7 AMENDMENTS TO THE PROTOCOL") == "amendments"
+    data = pdf(
+        METHODS,
+        "Staging\nAnn Arbor stage III or IV at diagnosis defines advanced lymphoma for the outcome.",
+        toc=[
+            [1, "9 Research methods", 1],
+            [1, "17. ANNEXES", 2],
+            [2, "Appendix I: Definitions of study outcomes", 2],
+            [3, "Diffuse large B-cell lymphoma", 2],
+            [4, "Staging", 2],
+        ],
+    )
+    chunks = sections(extract_pages(data))
+    # The deepest bookmark ('Staging') names no code list, but its appendix defines the outcomes
+    assert chunk_with(chunks, "Ann Arbor") in reading_order(chunks)
