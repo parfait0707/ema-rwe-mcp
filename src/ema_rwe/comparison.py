@@ -316,7 +316,7 @@ class Comparisons:
         select_rows(result, selected_study_ids)
         result["instruction"] = (
             "Execute every pending tool for ALL rows. If needs_client_extraction, read all next_offset batches "
-            "and cache_protocol_analysis; if needs_heading_translation, cache_heading_translations and analyze again; if needs_client_exploration, inspect relevant text and cache_protocol_answer. "
+            "and cache_protocol_analysis; if extracting, call analyze_protocol again for that study (do not extract client-side); if needs_heading_translation, cache_heading_translations and analyze again before research_protocol for that protocol; if needs_client_exploration, inspect relevant text and cache_protocol_answer. "
             "Then call get_protocol_comparison to update ALL JSON files and the table. Present comparison_markdown with "
             "citations; do not describe incomplete exports as finished. Report every error/missing protocol. "
             "Report source_suitability by definition role; prefer matched sources, distinguish linked/inferred/other/unknown. "

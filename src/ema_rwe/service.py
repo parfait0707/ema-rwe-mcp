@@ -1239,7 +1239,14 @@ class Service:
                     "then call analyze_protocol again. If you cannot translate, pass translations={}: every "
                     "section with an unrecognised heading is then read.",
                 }
-            translations = await translate_headings(self.settings, headings)
+            try:
+                translations = await translate_headings(self.settings, headings)
+            except RWEError as exc:
+                retry = " Call analyze_protocol again." if exc.code == "LLM_EXTRACTION_FAILED" else ""
+                raise RWEError(
+                    exc.code,
+                    f"Heading translation for this non-English protocol failed: {exc.message}{retry}",
+                ) from exc
             record.update(language="other", translations=translations, translator=self.settings.llm_model)
         self.archive.save_headings(protocol_id, record)
         return None
@@ -1272,6 +1279,7 @@ class Service:
         )
         return {
             "status": "translations_cached",
+            "study_id": study_id,
             "protocol_id": protocol_id,
             "translated_headings": len(kept),
             "total_headings": len(headings),

@@ -130,3 +130,7 @@ def test_cli_takes_the_mcp_arguments_and_searches_every_study_by_default():
     assert p.parse_args(["analyze", "1", "--detail", "full"]).detail == "full"
     assert p.parse_args(["cache-analysis", "1", "fp", "a.json", "--batch-offset", "4"]).batch_offset == 4
     assert p.parse_args(["comparison", "cmp_1", "--detail", "full"]).detail == "full"
+    assert p.parse_args(["cache-headings", "pdf_1_ab", "headings.json"]).input.name == "headings.json"
+    assert (
+        p.parse_args(["cache-answer", "pdf_1_ab", "Which outcomes?", "a.json"]).question == "Which outcomes?"
+    )

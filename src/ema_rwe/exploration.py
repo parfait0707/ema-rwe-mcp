@@ -136,6 +136,12 @@ class Explorer:
                     self.settings.llm_backend,
                     self.settings.llm_model,
                     self.settings.llm_base_url,
+                    # Heading translations change section roles; absent for English and untranslated PDFs.
+                    *(
+                        [sorted(translations.items())]
+                        if (translations := stored_translations(self.archive.headings(protocol_id)))
+                        else []
+                    ),
                 ]
             ).encode()
         ).hexdigest()

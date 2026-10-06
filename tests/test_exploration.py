@@ -269,3 +269,19 @@ def test_generic_protocol_vocabulary_translates_japanese_method_terms(query, con
 def test_specific_drug_classes_are_left_to_dictionaries_not_synonym_groups():
     for query in ("DOAC", "抗凝固薬", "オピオイド"):
         assert expand(query)["concepts"] == []
+
+
+async def test_cli_saves_a_question_specific_answer(tmp_path, monkeypatch, pdf_bytes):
+    """The CLI can answer needs_client_exploration as MCP callers do (cache-answer)."""
+    from ema_rwe.archive import ProtocolArchive
+    from ema_rwe.cli import parser, run
+
+    monkeypatch.setenv("EMA_DB_PATH", str(tmp_path / "db.sqlite3"))
+    monkeypatch.setenv("EMA_CACHE_DIR", str(tmp_path / "http"))
+    monkeypatch.setenv("EMA_PROTOCOL_DIR", str(tmp_path / "protocols"))
+    pid = ProtocolArchive(tmp_path / "protocols").save("123", pdf_bytes, {})["protocol_id"]
+    (tmp_path / "answer.json").write_text(answer().model_dump_json(), encoding="utf-8")
+    saved = await run(
+        parser().parse_args(["cache-answer", pid, "Adjustment?", str(tmp_path / "answer.json")])
+    )
+    assert saved["status"] == "answered"
