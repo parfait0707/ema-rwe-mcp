@@ -10,6 +10,15 @@
   caller saves translations with the new tool `cache_heading_translations` (`{}` keeps reading every
   unrecognised section). Translations are stored beside the archived PDF (`.headings`) and also apply to
   the exploration tools; re-saving different translations discards that PDF's analysis and held batches.
+  The CLI saves translations with `ema-rwe cache-headings <protocol_id> <file.json>`.
+  Saved translations are part of the research-answer cache key, so an answer cached before translation
+  is not reused afterwards; callers resolve `needs_heading_translation` before `research_protocol`.
+- Release audit: the CLI gains `ema-rwe cache-answer <protocol_id> <question> <file.json>` (the CLI side of
+  `cache_protocol_answer`). The `analyze_protocol` description and the comparison instruction name
+  `needs_heading_translation` and `extracting`; `cache_heading_translations` returns `study_id`; a failed
+  server-side heading translation says so; `refresh_drug_dictionary` notes that `salt_word_candidates`
+  are for maintainers. Documentation drift found against the code was corrected (README_DEV, docs, spec
+  v1.5/v1.6, `.env.example`, AGENTS.md).
 - `ema-rwe import-all` and `ema-rwe merge-observations`, the commands that build the bundled database,
   end with `VACUUM` (the result reports `bytes_before`/`bytes_after`). On a copy of the current bundle:
   45.8 MB -> 43.1 MB, gzip 17.1 MB -> 12.1 MB. The committed database is compacted at its next rebuild.

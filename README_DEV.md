@@ -28,16 +28,16 @@ $env:EMA_IMPORT_DIR = "<checkout>/data/imports"
 | モジュール | 役割 |
 |---|---|
 | `service.py` | Core service。`Service`クラスが全MCPツール／CLIコマンドの実処理を持つ |
-| `mcp/server.py` | MCPアダプタ。`FastMCP`で17ツールを公開し、Pydanticスキーマの`title`を除去して応答量を削減する |
+| `mcp/server.py` | MCPアダプタ。`FastMCP`で18ツールを公開し、Pydanticスキーマの`title`を除去して応答量を削減する |
 | `cli.py` | CLIエントリポイント（`ema-rwe`コマンド）。Coreと同じServiceを呼ぶ |
 | `storage.py` | SQLite永続化（`Repository`、DBスキーマ6）、FTS5マッチ式生成（`fts_match`）、CSV取込（`import_csv`）。PDF取得で分かった事実（プロトコルの有無・テキスト層・補完した医薬品と出所ごとの抽出規則の版`exposure_rules`）は`protocol_observations`表に分けて保存し（`observe`）、補完した医薬品の名前とATCコードを索引の医薬品の列に入れる。同梱DBの観測の統合（`merge_bundle_observations`、`_merge_observations`）は項目単位で手元を優先し、医薬品だけは出所ごとに、同梱DBの方が新しい規則の版ならその出所の値を置き換える（`_with_newer_exposures`） |
 | `archive.py` | ユーザー要求で保持する不変ID付きPDFと、英語以外のPDFの見出しの英訳（期限切れ削除の対象になるHTTPキャッシュとは別） |
-| `pdf.py` | ページ単位のネイティブPDF抽出。引用検証（`validate_evidence`）、未検証証拠の除去（`prune_unverifiable`） |
-| `llm.py` | OpenAI互換/LiteLLM経由のJSON補完呼出し、バッチ分割（`split_batches`）、複数バッチの統合（`merge_extractions`） |
+| `pdf.py` | ページ単位のネイティブPDF抽出と構造推定（`PARSER_VERSION`）。しおり（`apply_bookmarks`）、検証済みの目次（`text_outline`）、文字の大きさと太字による章見出し（`apply_line_styles`、`layout_chapter`）、節と役割（`sections`、`role_basis`）、読む節（`reading_order`）。言語の判定と見出しの英訳の扱い（`english`、`heading_texts`、`stored_translations`、`clean_translations`）。引用検証（`validate_evidence`）、未検証証拠の除去と監査メモ（`prune_unverifiable`、`finalize_extraction`、`audit_extraction`） |
+| `llm.py` | OpenAI互換/LiteLLM経由のJSON補完呼出し、バッチ分割（`split_batches`）、複数バッチの統合（`merge_extractions`。スキーマの上限を超えた事実は`cap_lists`が件数を`missing_information`に記録する）、見出しの英訳（`translate_headings`） |
 | `exploration.py` | `Explorer`。追加探索（`research_protocol`）の全文一括回答とステップ制限探索ループ |
 | `comparison.py` | 永続的な全候補比較エクスポート。未完了研究を隠さない |
 | `terminology.py` | 利用者の概念辞書（`data/dictionaries/*.json`または`EMA_TERMINOLOGY_PATH`、既定ではなし）の読み込み、語の出所（`term_sources`）、コード表記の展開、FTS用の語群と類縁語群。プロトコル由来の定義とは別概念として保持 |
-| `drugs.py` | 公式EMA医薬品（商品名/INN・common name/ATC）の対応表。オフラインキャッシュ。照合は名前（製品名・成分の組み合わせ）だけで行い、ATCコードでは引かない。`whole_term=True`は検索語を1つの医薬品名として語全体で照合し、合わせ剤は成分の組み合わせ全体が一致する製品にだけ解決する |
+| `drugs.py` | 公式EMA医薬品（商品名/INN・common name/ATC）の対応表。オフラインキャッシュ。照合は名前（製品名・成分の組み合わせ）だけで行い、ATCコードでは引かない。`whole_term=True`は検索語を1つの医薬品名として語全体で照合し、合わせ剤は成分の組み合わせ全体が一致する製品にだけ解決する。塩・水和の語（`SALT_WORDS`）は成分の照合で除き、塩ではないと確かめた語は`NOT_SALT_WORDS`に記録する。どちらにも無い候補は辞書の更新時に`salt_word_candidates`で報告する（追加はコードレビューで決める） |
 | `medicines.py` | カタログのexposures欄の「(ATCコード) 名称」とEMA医薬品辞書から、成分の上位クラス（カテゴリー語）とクラスの所属薬（検索語）を名前で展開する（`expand_medicine`、応答の`medicine_expansion`）。コードの名称はカタログの記載から引き、EMA辞書のコードはクラスの所属薬を名前で集めるときだけ使う。補完の抽出規則もここにある：文章の既知の医薬品名（`find_medicines`。研究の略称・測定される物質を除く）、PASS情報表の医薬品欄の名前・カタログのクラス名・ATCコード（`pass_table_medicines`、`known_class_names`。コードは実在する第2レベルの群だけ、第2レベルは「ATC」の語か名称があるときだけ、隣のコードを越えて名前に付けない）。規則を変えたら`EXPOSURE_RULES`の出所の版を上げる |
 | `vocabulary.py` | 研究デザイン・手法・集団の語だけの小さな展開表。臨床語は持たない（翻訳は呼出元か利用者辞書） |
 | `selection.py` | 検索フィルタの明示的な定義と、切り詰めのない候補集計 |
@@ -81,7 +81,7 @@ PyPI公開やGitHub Releaseへのwheel添付など他の配布経路の比較検
 - **種別タグ（`data_source_types`）**: `Data sources (types)` / `Data source type`列があれば直接取り込みます。ただし2026-09-12/13時点のStudies exportにはこの列がないため、EMA検索画面でData source typeをclaims/EHR/registryに限定してexportしたCSVを`source_type/`へ置き、**ファイル名に埋め込んだ種別だけをタグの根拠**とします。ファイル名は`<日付>_<claims|ehr|registry>_export-data.csv`とし、種別トークンが1つだけ含まれる必要があります。種別exportを取り込む前の研究はすべて`others`として扱われます。`source_type/`のファイルは各研究の`data_source_types`に種別を追加し（複数種別は累積）、その後に全件exportを再取込してもタグは保持されます。
 - **区切り**: 複数値の区切りは`|`・`;`・改行です。値内部のカンマは分割しません。
 - **プロトコル所在（`protocol_listed`）**: `Protocol file(s)`・`Protocol file(s) - URI`・`Protocol URL`のいずれかに値があれば`true`、すべて空なら`false`、列が無ければ未設定です。順位付けにだけ使い、最新版の選択には使いません（最新版はStudy documentsで選びます）。
-- **再構築**: `data/imports/{studies,source_type}/`にexportを置いて`uv run ema-rwe import-all`を実行すると、`studies/`、`source_type/`の順にすべて取り込み、最後に`VACUUM`でDBファイルの空き領域を詰め直します（`merge-observations`も同じ。同梱DBは、この2つのコマンドで作ります）。
+- **再構築**: `data/imports/{studies,source_type}/`にexportを置いて`uv run ema-rwe import-all`を実行すると、`studies/`、`source_type/`の順にすべて取り込み、最後に`VACUUM`でDBファイルの空き領域を詰め直します（`merge-observations`も同じ。同梱DBは、この2つのコマンドで作ります）。出力の`vacuum`に前後のファイルサイズ（`bytes_before`、`bytes_after`）が入ります。
 - **医薬品欄の補完**: `uv run ema-rwe backfill-protocols [--interval 60] [--limit N] [--no-download] [--reextract]`。医薬品欄が空の研究に、題名・説明・目的の既知の医薬品名（通信なし）と、CSVにプロトコルの所在がある研究のプロトコルのPASS情報表（Active substance・Medicinal product）の既知の医薬品名・カタログのクラス名・欄に書かれたATCコード・ページを補います（spec v1.2、v1.3）。研究の略称と同じ名前、検査値として書かれた物質名、直後にreceptor・inhibitorなどが続く名前は補いません。1件ずつ、研究の間を`--interval`秒空け、429や通信障害で止まり（HTTP層の再試行の後）、読み終えた研究（`backfill_done`）は飛ばして再開します。同梱DBを作るときは、作業用のDB（`EMA_DB_PATH`）で実行してから、`EMA_DB_PATH`を外して（チェックアウトの`data/ema.sqlite3`を対象にして）`uv run ema-rwe merge-observations <作業用DB>`で同梱DBに観測を加えます（配る項目だけを移し、索引も作り直します。失敗はエラーとして返します）。抽出の規則を直したときは、作業用DBで`--reextract --no-download`を実行して保存済みのPDFから読み直し、`medicines.EXPOSURE_RULES`の該当する出所の版を上げます（同梱DBの新しい版の結果が、利用者のDBの古い結果を置き換えます）。
 - **upsert**: 研究ID単位のupsertです。今回のCSVにない既存研究は削除しません。元CSVのバイト列、SHA256、ファイル名、取込時刻を保存します。
 - **連絡先の非索引化**: 原本CSVに連絡先が含まれる場合があります。原本は検索対象から分離され、連絡先専用列はDB／FTS／検索結果には入れません。
@@ -90,9 +90,9 @@ PyPI公開やGitHub Releaseへのwheel添付など他の配布経路の比較検
 
 ## 抽出と検証の仕組み
 
-**読む範囲の決め方（`pdf.py`）**: PDFにしおり（ブックマーク）があれば、それを一次の目次として使います。各ページに「そのページを含む最も深いしおり」と「その最上位の章」を付け、本文の見出し検出で役割が決まらない章にはしおりの題名から役割を与えます（`apply_bookmarks`）。抽出で読む順序は`reading_order`が決め、しおりがある場合は本文の章を先に、付録は本文が参照しているもの（「Annex 3」「Appendix V」）とコードリスト・変数定義の題名を持つものだけを読みます（履歴書・ENCePPチェックリスト等は読みません）。しおりのないPDFでは、印字ページのずれを確かめた目次で節の始まりを決め、目次も無ければ本文より大きいか太字で章番号が続く行を章見出しとし、関連セクションをすべて読みます（spec v1.5）。節の役割は、読むか、引用を受理するか、抽出の指示の三つに別々に使います。質問別探索（`search_sections`）はしおりの章名に一致した語を最優先で採点します。実測では242頁のプロトコル（19786）の読取量が45.6万字から10.4万字に減り、他のPDFは付録参照の有無に応じてほぼ不変です。
+**読む範囲の決め方（`pdf.py`）**: PDFにしおり（ブックマーク）があれば、それを一次の目次として使います。各ページに「そのページを含む最も深いしおり」と「その最上位の章」を付け、本文の見出し検出で役割が決まらない章にはしおりの題名から役割を与えます（`apply_bookmarks`）。抽出で読む節は`reading_order`が決め、しおりがある場合はページ順に、本文の章と、付録のうち本文が参照しているもの（「Annex 3」「Appendix V」）とコードリスト・変数定義の題名を持つものだけを読みます（履歴書・ENCePPチェックリスト等は読みません）。しおりのないPDFでは、印字ページのずれを確かめた目次で節の始まりを決め、目次も無ければ本文より大きいか太字で章番号が続く行を章見出しとし、関連セクションをすべて読みます（spec v1.5）。節の役割は、読むか、引用を受理するか、抽出の指示の三つに別々に使います。質問別探索（`search_sections`）はしおりの章名に一致した語を最優先で採点します。実測では242頁のプロトコル（19786）の読取量が、しおりを使わない場合の44.8万字に対して11.1万字です（parser `structural-v24`、2026-10-06）。
 
-**英語以外のプロトコル（spec v1.6）**: 役割の語は英語なので、本文が英語でない文書（英語の機能語が全語の8%未満）は、見出しとしおりの題名（`pdf.heading_texts`）の英訳から役割を判定します。`analyze_protocol`はPDFごとに一度だけ言語を判定し（`service._check_heading_language`）、内部LLMがあれば`llm.translate_headings`で英訳し、無ければ`status=needs_heading_translation`と見出しの一覧を返します。呼出元は`cache_heading_translations`で英訳を保存します（`{}`なら英訳なしで読む）。判定結果と英訳は保存したPDFの隣の`<protocol_id>.headings`にparserの版とともに置き（`archive.headings`）、`extract_pages(translations=...)`が各`Page.heading_translations`に渡すので、`sections`を呼ぶ全経路（抽出・引用検証・探索ツール）が同じ役割を使います。英訳は役割の分かる節を外すためだけに使い、本文の手がかり語（英語）が英語でない本文を読めないので、役割の分からない節は読みます。英訳はfingerprintに入れません（比較表が翻訳前にfingerprintを記録するため）。英訳を別の内容で保存し直すと、そのPDFの保存済み解析と途中のバッチを破棄します。
+**英語以外のプロトコル（spec v1.6）**: 役割の語は英語なので、本文が英語でない文書（英語の機能語が全語の8%未満）は、見出しとしおりの題名（`pdf.heading_texts`）の英訳から役割を判定します。`analyze_protocol`はPDFごとに一度だけ（parserの版が変わったら再び）言語を判定し（`service._check_heading_language`）、内部LLMがあれば`llm.translate_headings`で英訳し、無ければ`status=needs_heading_translation`と見出しの一覧を返します。呼出元は`cache_heading_translations`で英訳を保存します（`{}`なら英訳なしで読む）。判定結果と英訳は保存したPDFの隣の`<protocol_id>.headings`にparserの版とともに置き（`archive.headings`）、`extract_pages(translations=...)`が各`Page.heading_translations`に渡すので、`sections`を呼ぶ全経路（抽出・引用検証・探索ツール）が同じ役割を使います。英訳は節の役割の判定（読むか、引用を受理するか、抽出の指示）だけに使い、本文の読解には使いません。本文の手がかり語（英語）は英語でない本文を読めないので、英訳でも役割の分からない節は読みます。英訳はfingerprintに入れません（比較表が翻訳前にfingerprintを記録するため）。英訳を別の内容で保存し直すと、そのPDFの保存済み解析と途中のバッチを破棄します。質問別回答のキャッシュの鍵には英訳を含めるので、英訳の前に保存した回答は英訳の後に再利用しません。
 
 **抽出スキーマ v0.3（`domain.py`）**: `cohort`ブロックを追加しました。`inclusion_criteria[]`・`exclusion_criteria[]`（各基準を1事実として根拠付き）、`index_date`、`baseline_period`（連続加入・ルックバック）、`follow_up`（開始・終了・打ち切り）、`design_schema`（設計図の物理ページ`figure_pages`と、本文にある対応する時間窓の記述`time_windows[]`）です。図そのものは画像のため読みません。fingerprintに`schema: 0.3`が入るため、既存の保存済み抽出は次回`analyze_protocol`で再抽出されます。比較表には「コホート定義」「設計図（ページ・時間窓）」の行が加わります。
 
@@ -104,7 +104,7 @@ PyPI公開やGitHub Releaseへのwheel添付など他の配布経路の比較検
 
 `research_protocol`（内部LLM設定時）は、まず`exploration.py`の`answer_from_full_text`（全関連セクションを`LLM_BATCH_CHARS`バッチへ分割し、並列で1回ずつ問い合わせて統合・pruneする「全文一括回答」）を試みます。これが回答を得られなかった場合のみ、`search`/`outline`/`read`/`finish`アクションを1手ずつ選ばせるステップ制限探索ループにフォールバックします（`LLM_MAX_STEPS`既定8・上限20。到達すると`exploration_limit_reached`を返し、未完了の回答は保存しません）。全文一括回答は2026-09-24に、旧来のステップ制限ループだけの構成（12,000字の読み取りでステップ予算を使い切っていた）を置き換える形で追加されました。
 
-引用検証の規則: 各事実には短い原文引用・PDFの物理ページ番号・セクションを付けます。引用の存在、ページ、指定セクションはコードで検証します（`pdf.py`の`validate_evidence`、`EVIDENCE_INVALID`/`EVIDENCE_WRONG_SECTION`）。研究方法・データソース欄の引用が背景・参考文献・ENCePPチェックリスト・管理章にしか存在しない場合は`EVIDENCE_WRONG_SECTION`で保存を拒否します（補足事項・質問別回答はその章自体への質問もあるため許容）。データソース名は引用中に存在する名前に限定します。引用が存在することは、要約や使用区分の意味が正しいことの保証ではありません。
+引用検証の規則: 各事実には短い原文引用・PDFの物理ページ番号・セクションを付けます。引用の存在、ページ、指定セクションはコードで検証します（`pdf.py`の`validate_evidence`、`EVIDENCE_INVALID`/`EVIDENCE_WRONG_SECTION`）。研究方法・データソース欄の引用が背景・参考文献・目次・ENCePPチェックリストにしか存在しない場合は`EVIDENCE_WRONG_SECTION`で保存を拒否します（補足事項・質問別回答はその章自体への質問もあるため許容）。データソース名は引用中に存在する名前に限定します。引用が存在することは、要約や使用区分の意味が正しいことの保証ではありません。
 
 ## CSVは直接取得せず、PDFは保存できる理由
 
@@ -219,23 +219,23 @@ stdioで18個のToolを公開します（`src/ema_rwe/mcp/server.py`）。
 | `search_studies` | `query`, `limit=5`（1〜20。返す件数は`EMA_MAX_COMPARISON_STUDIES`でも切られ、`results_are_preview`が付く）, `darwin_only=false`, `status`, `analyzed_only=false`, `synonyms`, `codes`, `filters`, `role=any`, `detail=compact`, `match_scope=concept`, `analogous_terms`。通信なし。各行に`match_basis`・`matched_terms`・`matched_term_sources`。0件なら`analogous_fallback`（類縁概念・relation・件数、絞り込みで消えただけなら`concept_filtered_out`）。`match_scope=analogous`は類縁概念だけで検索し、依頼概念に一致する研究を除く。複数語は同一列内での近傍一致（NEAR距離はmax(3, 語数−1)。検索語そのものは元の文字列の機能語も数えて距離を決める）。5語以上の自由文は単語へ分解する（`compare_protocols`の検索語は分解しない）。`role`（outcome／condition／exposure）で役割の列に限定する（題名は常に含む。outcomeは目的とPDF由来の定義、exposureはPDF由来のデータソースも含む）。`detail=full`で説明文・由来・完全な展開を返す。`filters.data_source_types`はclaims／ehr／registry／othersの種別タグで絞る |
 | `get_study` | `study_id`, `refresh=false`。研究種別とData source typeを各タブで確認 |
 | `get_protocol` | `study_id`, `version="latest"`, `download=true`, `refresh=false`。取得したPDFのテキスト層（`text_layer`: full／partial／none）を判定して研究に記録する |
-| `analyze_protocol` | `study_id`, `force_refresh=false`, `offset=0`, `max_chars=30000`, `detail=summary`。英語以外のプロトコルで見出しの英訳が無く内部LLMも無いときは、抽出の前に`status=needs_heading_translation`と`headings`を返す |
+| `analyze_protocol` | `study_id`, `force_refresh=false`, `offset=0`, `max_chars=30000`（6000〜150000）, `detail=summary`。英語以外のプロトコルで見出しの英訳が無く内部LLMも無いときは、抽出の前に`status=needs_heading_translation`と`headings`を返す |
 | `cache_heading_translations` | `protocol_id`, `translations`（`{見出し: 英訳}`、翻訳できなければ`{}`）。英語以外のプロトコルの見出しの英訳を保存する。一覧に無い見出し・改行を含む訳・300字超の訳は捨てて`ignored_entries`で数を返す。英語のプロトコルは`INVALID_INPUT` |
 | `cache_protocol_analysis` | `study_id`, `fingerprint`, `analysis`, `coverage_complete=false`, `batch_offset`。バッチごとに`batch_offset=<offset>`で途中保存し、最後のバッチで`coverage_complete=true`を渡すと全バッチを統合して保存する |
 | `compare_protocols` | `question`, `queries`, `filters`, `source_preference`, `darwin_only=false`, `synonyms`, `codes`, `role`, `study_ids`, `match_scope=concept`, `analogous_terms`, `category_terms`, `blocks`, `check_protocols=0`（0〜20。`needs_narrowing`で候補一覧が返る状態で、`study_ids`なし・`match_scope=concept`のときだけ確認する）。概念ブロック（ブロック内OR・ブロック間AND）を全列で検索し、役割は順位付けに使う。候補は切り詰めずに、公開プロトコルなし・テキスト層なし（`protocol_text_layer=none`）を最後に、固有語一致→役割の列→CSVのプロトコル所在（`protocol_listed`）→研究タイプ→統合順位で並べ、`rank_features`を返す。各検索語は1つの語句・医薬品名として語全体で照合する。医薬品の検索語は`medicines.py`で成分の上位クラス（カテゴリー語）やクラスの所属薬（検索語）へ展開し、加えた語を`medicine_expansion`（1問あたり100語まで、超過分は`omitted`）で返す。`check_protocols=N`は上位N件のStudy documentsを確認してプロトコルのない研究を最後に回す（PDFは取得しない）。0件時の`analogous_fallback`と類縁スコープは`search_studies`と同じ（複数ブロックでは`not_available_for_blocks`）。単一ブロックで0件のとき、呼出元が渡した第5レベルATCコードがあれば、同じ第4レベルのクラス（broader）とカタログ上の所属薬（sibling）を類縁概念に加える。比較表の先頭行は「一致の根拠」。一次判定上限以内なら全PDFと下書きJSONを保存。上限超過時は`facets`（国・種別・デザイン・Medicinal condition）と、`EMA_MAX_LISTED_CANDIDATES`以内なら`candidates`一覧を返し、`next_action`で種別と実施国の質問を指示。ユーザーが一覧から選んだ`study_ids`を渡すと、その研究だけを一次判定に進める。`source_preference`はPDF判定後に優先／限定 |
 | `get_protocol_comparison` | `comparison_id`, `selected_study_ids`（ユーザーが選択した場合）, `detail=compact`。全件の保存済み抽出・質問別回答を集め、JSONと比較表を更新 |
 | `catalogue_status` | CSV snapshotの有無・最終取込時刻・期限・`studies`／`source_type`出力先・取込済み種別（`source_type_imports`）、読み込み中の利用者辞書（`dictionaries`。設定不備は`error`）を返す。通信なし |
 | `import_catalogue_csv` | `filename`, `column_map`。`EMA_IMPORT_DIR/studies`または`source_type`直下の公式CSVを検証し、Non-interventional studyだけを登録。`source_type/`のファイルは名前の種別でタグ付け |
-| `refresh_drug_dictionary` | `force=false`。検索応答の`query_expansion.drugs_need_refresh`（`detail=full`の展開では`needs_refresh`）が真のときに公式EMA医薬品辞書を再取得 |
+| `refresh_drug_dictionary` | `force=false`。検索応答の`query_expansion.drugs_need_refresh`（`detail=full`の展開では`needs_refresh`）が真のときに公式EMA医薬品辞書を再取得。`salt_word_candidates`は保守者向けの未確認の語で、呼出元が対応するものではない |
 | `plan_study_search` | `question`, `use_llm=false`。検索は実行しない。研究デザイン語・医薬品・利用者辞書の概念を展開し、辞書に一致しない日本語の質問には`status=needs_client_translation`と`client_expansion`（ICD-10を手がかりに英語名・言い換え・コード候補・類縁概念を生成させる指示）を返す。`use_llm=true`はサーバー側LLMが同じ指針で生成する |
 | `list_local_protocols` | `study_id`。保存済みPDFの各版と不変`protocol_id`一覧。通信なし |
-| `get_protocol_outline` | `protocol_id`, `offset=0`, `limit=100`, `detail=compact`。全文の章一覧（section_id・ページ・章・role。親子・前後関係・構造警告は`detail=full`のとき） |
-| `search_protocol_text` | `protocol_id`, `query`, `limit=10`, `synonyms`, `codes`, `max_chars`。初回除外した章も含むPDF全文検索 |
-| `read_protocol_text` | `protocol_id`, `section_id`または`start_page`/`end_page`（1〜5ページ）, `offset=0`, `max_chars=12000`。`next_offset`で続きを読む |
+| `get_protocol_outline` | `protocol_id`, `offset=0`, `limit=100`（1〜200）, `detail=compact`。全文の章一覧（section_id・ページ・章・role。親子・前後関係・構造警告は`detail=full`のとき） |
+| `search_protocol_text` | `protocol_id`, `query`, `limit=10`（1〜30）, `synonyms`, `codes`, `max_chars`（1000以上）。初回除外した章も含むPDF全文検索 |
+| `read_protocol_text` | `protocol_id`, `section_id`または`start_page`/`end_page`（1〜5ページ）, `offset=0`, `max_chars=12000`（1000〜20000）。`next_offset`で続きを読む |
 | `research_protocol` | `protocol_id`, `question`, `force=false`。保存回答の再利用、全文一括回答、または呼出元駆動のステップ探索 |
 | `cache_protocol_answer` | `protocol_id`, `question`, `answer`。質問別の出典付き回答を検証・保存 |
 
-CLIのサブコマンドはMCPのツールと同じ引数と既定値を取ります（`uv run ema-rwe <サブコマンド> --help`。`search`も既定で全研究を対象にし、`--darwin-only`でDARWIN EUに限ります）。
+CLIのサブコマンドは、名前は異なりますが（`pdf-search`、`ask`、`cache-headings`、`cache-answer`など）、MCPのツールと同じ引数と既定値を取ります。入力範囲はコア（`Service`／`Explorer`）が検査するので、CLIにも同じ範囲が適用されます（`uv run ema-rwe <サブコマンド> --help`。`search`も既定で全研究を対象にし、`--darwin-only`でDARWIN EUに限ります）。
 
 MCPの`instructions`文字列は要点のみに短縮しており、完全な手順とフィールド意味論は[docs/mcp-workflow.md](docs/mcp-workflow.md)が正本です（MCPリソース`ema-rwe://docs/mcp-workflow`としても返します）。検索応答は既定でcompact（説明文・由来を省略）、`catalogue`は状態・取込済み種別・`browser_refresh_recommended`だけを返し、別に`catalogue_action`を返します。
 

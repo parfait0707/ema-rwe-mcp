@@ -42,7 +42,7 @@ PDF検索にはさらに`protocol_id`を指定します。CLIも`--code "ICD-10:
 
 `analogous_terms`（`{term, relation}`）は、依頼概念とは**別の**臨床概念です。`relation`は`broader`（上位概念）、`sibling`（同じ上位概念に属する別疾患）、`associated`（合併症・関連病態）のいずれかです。通常の検索には含めず、依頼概念の研究が0件のときの`analogous_fallback`と、`match_scope=analogous`での明示的な検索にだけ使います。`related_terms`には同義語・表記揺れ・下位型・検索ヒントだけを置きます（例：1型糖尿病の`diabetes mellitus`は`related_terms`ではなく`analogous_terms`の`broader`）。
 
-検索結果の各行は`match_basis`（`concept`／`analogous`）、`matched_terms`（実際に一致した展開語）、`matched_term_sources`（語の出所：`query`＝検索クエリ文字列そのもの（クライアントが渡した英語名を含む）、`caller`＝クライアント生成、`llm`＝サーバー側LLM（`use_llm=true`）の提案、`vocabulary`＝デザイン語彙、`dictionary:<ファイル名>`、`ema_medicines`＝EMA医薬品辞書、`catalogue_atc`＝カタログの「(ATCコード) 名称」から加えた医薬品名・クラス名）を持ちます。類縁概念で見つかった研究の定義は、類縁概念の定義として提示してください。辞書にない疾患は、呼出元が類縁概念を`analogous_terms`引数で渡せます。
+検索結果の各行は`match_basis`（`concept`／`analogous`）、`matched_terms`（実際に一致した展開語）、`matched_term_sources`（語の出所：`query`＝検索クエリ文字列そのもの（クライアントが渡した英語名を含む）、`caller`＝クライアント生成、`llm`＝サーバー側LLM（`use_llm=true`）の提案、`vocabulary`＝デザイン語彙、`dictionary:<ファイル名>`、`ema_medicines`＝EMA医薬品辞書、`catalogue_atc`＝カタログの「(ATCコード) 名称」から加えた医薬品名・クラス名、`category`＝`category_terms`の包括語）を持ちます。類縁概念で見つかった研究の定義は、類縁概念の定義として提示してください。辞書にない疾患は、呼出元が類縁概念を`analogous_terms`引数で渡せます。
 
 疾患・医薬品以外の語は、`vocabulary.py`の同義語グループが英語へ展開します。対象は薬剤疫学プロトコールに頻出する研究デザイン・手法・集団の語です（例：交絡→confounding、インデックス日→index date、症例対照→case control / nested case control、小児→paediatric / pediatric / children、データリンケージ→record linkage）。疾患名や臨床語はここに置きません。以前あった広義の臨床語（diabetes、bleeding、cancer）は、「1型糖尿病」の中の「糖尿病」に反応して糖尿病全般の研究を拾うため削除しました。臨床語の翻訳はクライアントか利用者の辞書が担います。
 

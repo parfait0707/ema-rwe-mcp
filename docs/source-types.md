@@ -25,7 +25,7 @@
 
 ## 抽出・追加探索
 
-既存の`analyze_protocol`、`cache_protocol_analysis`、`research_protocol`、`cache_protocol_answer`を拡張した。新しい専用ツールは不要。共通抽出のschemaは`0.2`。共通抽出と質問別回答に`source_assessments`を持つ。
+既存の`analyze_protocol`、`cache_protocol_analysis`、`research_protocol`、`cache_protocol_answer`を拡張した。新しい専用ツールは不要。共通抽出のschemaは`0.3`。共通抽出と質問別回答に`source_assessments`を持つ。
 
 ```json
 {
@@ -94,6 +94,6 @@
 
 ## キャッシュ更新と保全
 
-DB schemaは3。既存DBに`analysis_history`を追加し、解析の無効化・置換時に旧JSONを退避する。古いschema／PDF／抽出設定の解析は最新として再利用しない。新スキーマで再抽出するため、初回は同じPDFの再読解が発生する。旧PDFと質問別回答も保持する。
+DB schemaは6。`analysis_history`表に、解析の無効化・置換時に旧JSONを退避する。古いschema／PDF／抽出設定の解析は最新として再利用しない。新スキーマで再抽出するため、初回は同じPDFの再読解が発生する。旧PDFと質問別回答も保持する。
 
-Studies CSVにtype列がない場合は、取得済みの公式分類とその由来・確認日時を保持し、PDF解析も消さない。Data Sources CSVの継続登録、名称結合、ソースタイプごとのStudies CSV取得は不要。2026-09-12のData Sources結合調査レポートは調査履歴として残し、元CSVフォルダはユーザーの依頼で削除した。
+Studies CSVにtype列がない場合は、取得済みの公式分類とその由来・確認日時を保持し、PDF解析も消さない。Data Sources CSVの継続登録と名称結合は不要（カタログの種別タグは、Data source typeで絞ったStudies exportから付ける）。2026-09-12のData Sources結合調査レポートは調査履歴として残し、元CSVフォルダはユーザーの依頼で削除した。

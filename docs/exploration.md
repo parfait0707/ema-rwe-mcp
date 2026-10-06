@@ -14,14 +14,14 @@ PDFをページ付きの章チャンクへ分け、各チャンクに以下を�
 
 - `section_id`: 同じPDFとparser版で再現可能なチャンクID。ひとつの章が複数ページ・チャンクに分かれる場合がある。
 - `section`: 見出し、`parent_section`: 親章、`previous_section` / `next_section`: 前後の見出し。
-- `chapter` / `chapter_top` / `chapter_path`: しおり（または検証済みの目次）の章。`outline_source` はその出所（`bookmarks`、`toc`）。
+- `chapter` / `chapter_top` / `chapter_path`: しおりの章（目次からは章を付けない）。`outline_source` は構造の出所（`bookmarks`、`toc`）。
 - `role` / `context_role`: methods、objectives、data_sources、population、definitions、analysis、abstract、appendix、amendments、conduct、administrative、background、references、contents、checklist、unknown。
-- `role_basis`: 役割の根拠（`heading` 見出し、`bookmark` しおり・目次の章、`parent` 親章からの継承、`page_type` 目次やチェックリストのページ、`none`）。
+- `role_basis`: 役割の根拠（`heading` 見出し、`bookmark` しおりの章、`parent` 親章からの継承、`page_type` 目次やチェックリストのページ、`content` 引用の印が少ないので参考文献から unknown に戻した節、`none`）。
 - `structure_warnings`: 章番号の逆行、チェックリストと名乗るが質問票が続かない行など、構造の確認が必要な箇所。
 
 構造の手がかりは、PDF のしおり、本文の行と印字ページの対応を3項目以上で確かめた目次、文字の大きさや太字と章番号の並び、の順に使う。目次は節の始まりの位置にだけ使い、章と役割は本文の見出しから決める（目次と本文の番号が食い違うことがあるため）。見出しは、算用数字とローマ数字の番号（`9.2`、`II.4`）を共通の解析器で読み、1段の番号の行は大文字の題名か EMA の PASS プロトコル様式（EMA/623947/2012）の章名と題名全体が一致するときに見出しとする（番号付きの箇条書きと区別するため）。しおりや目次の題名の行は節の始まりとし、その行より上の本文は前の章に属させる。表一覧・図一覧・目次のしおりは、本文の表を指すナビゲーションなので構造に使わない。章番号が親章と食い違う節（`3.1` の親が `1.` のまま）は、章見出しの取りこぼしとみなして親の役割を継承しない。固定の「8章なら必ずmethods」という条件にはしない。
 
-役割は三つの判断に別々に使う。読む対象から外すのは、目次、背景、管理章（責任者、マイルストーンなど）、参考文献、ENCePPチェックリストである。倫理・有害事象の報告・結果の公表（conduct）と改訂（amendments）の章は読む。同意の取得や有害事象の定義・収集期間など、研究固有の条件を含むことがあるためで、抽出の指示は改訂の旧条件を現行条件として扱わないよう求める。unknown の章は、本文に方法の手がかりがあるか、本文が始まった後で親章が背景・管理・参考文献でなければ読む。参考文献の役割でも、引用の印（年、et al、doi）が少ない節は参考文献とみなさない。背景・参考文献にanalysisと書かれていても、それだけで当該研究の解析計画とは扱わない。
+役割は三つの判断に別々に使う。読む対象から外すのは、目次、背景、管理章（責任者、マイルストーンなど）、参考文献、ENCePPチェックリストである。倫理・有害事象の報告・結果の公表（conduct）と改訂（amendments）の章は読む。同意の取得や有害事象の定義・収集期間など、研究固有の条件を含むことがあるためで、抽出の指示は改訂の旧条件を現行条件として扱わないよう求める。unknown の章は、本文に方法の手がかりがあるか、本文が始まった後で親章が背景・管理・参考文献でなければ読む。本文が英語でない文書（英語の機能語が全語の8%未満）と、役割の語が見出しの6割超を認識できない文書では、unknown の章をすべて読む（手がかりの語が英語のため）。英語でない文書の見出しの英訳（spec v1.6）は役割の分かる章を決めるだけで、この規則は変えない。参考文献の役割でも、引用の印（年、et al、doi）が少ない節は参考文献とみなさない。背景・参考文献にanalysisと書かれていても、それだけで当該研究の解析計画とは扱わない。
 
 ENCePPチェックリストは、チェックリストを名乗る見出しか ENCePP の題名の行のあと2ページ以内に、質問と回答欄（Yes/No/N/A）があるときだけ質問票とみなす。範囲はその行から次の付録、しおりや目次の項目、最上位の章見出しまでで、同じページの前後の本文はそれぞれの節に残す。目次や付録一覧に題名が出ているだけの行は、警告を付けて本文として残す。「欠測値の処理は記載されているか？」という設問を欠測値処理方法として抽出しない。追加探索ではこれらの章も閲覧可能だが、チェックリストの設問そのものを方法の根拠にはできない。
 
@@ -86,6 +86,8 @@ CLIも共通Coreを使用する:
 .venv/Scripts/ema-rwe pdf-search "pdf_..." "欠測値処理" --synonym "complete case"
 .venv/Scripts/ema-rwe pdf-read "pdf_..." --start-page 28 --end-page 31
 .venv/Scripts/ema-rwe ask "pdf_..." "欠測値処理はどう計画されていますか？"
+.venv/Scripts/ema-rwe cache-answer "pdf_..." "欠測値処理はどう計画されていますか？" answer.json
+.venv/Scripts/ema-rwe cache-headings "pdf_..." headings.json
 ```
 
 ## LiteLLM経由の内部探索
@@ -96,7 +98,7 @@ uv sync --extra dev --extra llm
 
 `LLM_BACKEND=litellm` と `LLM_MODEL=<provider>/<model-id>` を設定する。内部の `research_protocol` は、まず質問に関連する章をまとめて読み、一括で回答を求める（全文ルート。`LLM_CONCURRENCY`並列）。それで回答も判定も得られなかったときだけ、JSONで search / outline / read / finish を選び、観測結果を見て次の行動を決める段階的な探索に移る。外部ページ・シェル・任意パスにはアクセスせず、指定IDのローカルPDFだけを探索する。通常の共通抽出も同じLiteLLM接続を使うが、共通抽出自体は関連章のバッチ処理。
 
-`LLM_MAX_STEPS` は既定8、上限20。各API呼出しのタイムアウトは、`LLM_BACKEND=litellm`で600秒、`compatible`で180秒。出力上限は`LLM_MAX_TOKENS`（0ならLiteLLMのモデル表、引けなければ16,000トークン）。APIリトライは0回。上限に到達した場合は `exploration_limit_reached` と探索履歴を返し、未完了の回答は保存しない。回答の引用・ページ・セクションを検証してから保存し、同じPDF ID・質問・モデル／backend／parser版では再利用する。
+`LLM_MAX_STEPS` は既定8、上限20。各API呼出しのタイムアウトは、`LLM_BACKEND=litellm`で600秒、`compatible`で180秒。出力上限は`LLM_MAX_TOKENS`（0ならLiteLLMのモデル表、引けなければ16,000トークン）。APIリトライは0回。上限に到達した場合は `exploration_limit_reached` と探索履歴を返し、未完了の回答は保存しない。回答の引用・ページ・セクションを検証してから保存し、同じPDF ID・質問・モデル／backend／base URL・探索の版（`EXPLORER_VERSION`）・臨床展開の版（利用者辞書とEMA医薬品辞書の版を含む）、および保存された見出しの英訳では再利用する。
 
 MCP設定の `env` に入れる共通設定例（モデルIDは利用可能なものに置き換える）:
 

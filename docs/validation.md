@@ -539,6 +539,15 @@ PDF 取得先ディレクトリ名から X/Y が推測可能だった（P）、�
 - テスト：`tests/test_heading_translation.py` 8 件（翻訳による役割、unknown の節を読み続けること、翻訳の検査、呼び出し側の経路、翻訳しない経路、英語の文書の拒否、内部 LLM の経路、比較表の fingerprint が翻訳で変わらないこと）。役割の判定で翻訳を使わない変更と、unknown の規則を戻す変更で、それぞれ該当するテストが失敗することを確かめた。全体 391 passed、ruff 合格。
 - 未検証：内部 LLM による実際の英訳（テストは応答を模擬）と、実際の MCP クライアントでの往復。
 
+## 2026-10-06 v0.5.4 のリリース前の整合性監査
+
+- 読み取り専用のサブエージェント 3 体が、README 2 件、docs と設定の見本、プログラムが出力する文言（MCP の説明、応答の指示、プロンプト、CLI）をコードと照合した。
+- コードの修正：CLI に `cache-headings` と `cache-answer` を追加した（どちらも以前は CLI から保存できず、`analyze` と `ask` の指示に応えられなかった）。英訳を質問別回答のキャッシュの鍵に入れた（英訳の前の回答が英訳の後に古い役割のまま再利用されていた）。`analyze_protocol` の説明に `needs_heading_translation` を、比較の指示に `extracting` の扱いと、`needs_heading_translation` を `research_protocol` より先に解決することを加えた。`translations_cached` に `study_id` を加えた。サーバー側の英訳の失敗をそれと分かる文言にした。`salt_word_candidates` に保守者向けの注記を付けた。`reading_order` の説明をページ順に直した。
+- 文書の修正：ツール数（17 → 18）、引用を拒否する役割（管理章ではなく目次）、`pdf.py` と `llm.py` と `drugs.py` の役割、入力範囲、19786 の読取量（再計測で 44.8 万字 → 11.1 万字）、`role_basis` の `content`、目次から章を付けないこと、DB スキーマ 6、抽出スキーマ 0.3、`category` の出所、`.env.example` の相対パスの注意、リリース手順の確認項目など。
+- 残したもの：同梱 DB（`data/ema.sqlite3`）には空きページが 352 ある。次の再構築（`import-all`）で詰まる（AGENTS.md の記述を「再構築したファイル」に直した）。
+- テスト：`test_cli_saves_heading_translations`、`test_cli_saves_a_question_specific_answer`、`test_failed_server_translation_keeps_the_provider_message`、英訳の前後で回答の鍵が変わることと英語のプロトコルの鍵が変わらないことの確認を追加。全体 394 passed、ruff 合格、`uv build` で wheel に DB、医薬品辞書、手順書が入ることを確認。
+- 修正の差分は、修正に関わっていない別のサブエージェントが照合した（1 回目の指摘：CLI の入力範囲の記述、英訳失敗時に元のエラーの対処が消えること、鍵の順序依存など 9 件を修正）。
+
 ## 未検証事項（継続）
 
 - 外部LLM API呼出しの実認証検証は未実施。キーなしの呼出元LLM方式は合成PDFで保存・再利用まで検証。
