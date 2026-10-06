@@ -279,6 +279,19 @@ def create_server(service: Service | None = None):
         )
 
     @server.tool()
+    async def cache_heading_translations(
+        protocol_id: str,
+        translations: Annotated[
+            dict[str, str],
+            Field(
+                description="{heading exactly as returned: English translation}; {} if you cannot translate"
+            ),
+        ],
+    ) -> dict:
+        """Save English translations of a non-English protocol's headings (analyze_protocol status=needs_heading_translation)."""
+        return await call("cache_heading_translations", protocol_id, translations)
+
+    @server.tool()
     async def plan_study_search(
         question: str,
         use_llm: Annotated[

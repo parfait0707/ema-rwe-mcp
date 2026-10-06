@@ -59,6 +59,7 @@ async def test_stdio_discovery_validation_and_local_search(settings, csv_file, p
             "read_protocol_text",
             "research_protocol",
             "cache_protocol_answer",
+            "cache_heading_translations",
             "compare_protocols",
             "get_protocol_comparison",
             "catalogue_status",

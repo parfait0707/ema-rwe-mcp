@@ -25,7 +25,14 @@ from .drugs import refresh_dictionary
 from .ema import BASE, is_non_interventional, parse_documents, parse_study, select_protocol
 from .exploration import Explorer
 from .http import EMAClient
-from .llm import EXTRACTION_PROMPT, complete_json, configured, extract_with_provider, merge_extractions
+from .llm import (
+    EXTRACTION_PROMPT,
+    complete_json,
+    configured,
+    extract_with_provider,
+    merge_extractions,
+    translate_headings,
+)
 from .medicines import (
     EXPOSURE_RULES,
     GENERIC,
@@ -39,10 +46,14 @@ from .medicines import (
 from .pdf import (
     PARSER_VERSION,
     audit_extraction,
+    clean_translations,
+    english,
     extract_pages,
     finalize_extraction,
+    heading_texts,
     reading_order,
     sections,
+    stored_translations,
     text_layer,
     validate_evidence,
 )
@@ -1153,9 +1164,13 @@ class Service:
             )
             self.repo.save_analysis(self.repo.get(study_id), old)
             return analysis_view(dict(old, cached=True), detail)
+        if stored_translations(self.archive.headings(source["protocol_id"])) is None:
+            request = await self._check_heading_language(source, pdf)
+            if request:
+                return request
         if configured(self.settings):
             return analysis_view(await self._provider_extraction(study_id, pdf, source), detail)
-        pages = await asyncio.to_thread(extract_pages, pdf)
+        pages = await self._pages(pdf, source["protocol_id"])
         chunks = reading_order(sections(pages))
         if not chunks:
             raise RWEError("SECTION_PARSE_FAILED", "No relevant protocol sections found.")
@@ -1196,6 +1211,73 @@ class Service:
                 ],
             )
         return result
+
+    def _translations(self, protocol_id: str) -> dict[str, str]:
+        return stored_translations(self.archive.headings(protocol_id)) or {}
+
+    async def _pages(self, pdf: bytes, protocol_id: str):
+        return await asyncio.to_thread(extract_pages, pdf, True, self._translations(protocol_id))
+
+    async def _check_heading_language(self, source: dict, pdf: bytes) -> dict | None:
+        """Record whether the protocol is in English. Section roles are read from English heading words, so a
+        non-English protocol's headings are translated first: by the configured LLM, else by the caller."""
+        protocol_id = source["protocol_id"]
+        pages = await asyncio.to_thread(extract_pages, pdf)
+        record = {"parser": PARSER_VERSION, "language": "english", "translations": {}}
+        if not english(pages):
+            headings = heading_texts(sections(pages))
+            if not configured(self.settings):
+                return {
+                    "status": "needs_heading_translation",
+                    "study_id": source["study_id"],
+                    "protocol_id": protocol_id,
+                    "source": source,
+                    "headings": headings,
+                    "instruction": "This protocol is not in English, and section roles are read from English "
+                    "heading words. Translate every heading into English (keep the numbering; translate only), "
+                    "call cache_heading_translations with protocol_id and translations {heading: English}, "
+                    "then call analyze_protocol again. If you cannot translate, pass translations={}: every "
+                    "section with an unrecognised heading is then read.",
+                }
+            translations = await translate_headings(self.settings, headings)
+            record.update(language="other", translations=translations, translator=self.settings.llm_model)
+        self.archive.save_headings(protocol_id, record)
+        return None
+
+    async def cache_heading_translations(self, protocol_id: str, translations: dict[str, str]):
+        """Save a caller's English translations of a non-English protocol's headings (see analyze_protocol)."""
+        pdf, _ = self.archive.load(protocol_id)
+        pages = await asyncio.to_thread(extract_pages, pdf)
+        if english(pages):
+            raise RWEError("INVALID_INPUT", "This protocol is in English; its headings need no translation.")
+        headings = heading_texts(sections(pages))
+        kept = clean_translations(headings, translations)
+        study_id = protocol_id.split("_")[1]
+        saved = self.repo.analysis(study_id)
+        if kept != self._translations(protocol_id):
+            # Translations decide the sections read. They stay out of the fingerprint, which comparisons recorded
+            # before any translation existed, so a change discards this PDF's analysis and held batches instead.
+            if saved and saved["source"].get("protocol_id") == protocol_id:
+                self.repo.invalidate_analysis(self.repo.get(study_id))
+            for key in [k for k in self._partials if k[0] == study_id]:
+                self._partials.pop(key)
+        self.archive.save_headings(
+            protocol_id,
+            {
+                "parser": PARSER_VERSION,
+                "language": "other",
+                "translations": kept,
+                "translator": "client-assisted",
+            },
+        )
+        return {
+            "status": "translations_cached",
+            "protocol_id": protocol_id,
+            "translated_headings": len(kept),
+            "total_headings": len(headings),
+            "ignored_entries": len(translations) - len(kept),
+            "instruction": "Call analyze_protocol again for this study.",
+        }
 
     async def plan_study_search(self, question: str, use_llm: bool = False):
         expansion = expand(question)
@@ -1377,7 +1459,7 @@ class Service:
         pdf, source = await self._context(study_id)
         if source["fingerprint"] != fingerprint:
             raise RWEError("PROTOCOL_CHANGED", "Protocol/extractor changed; analyze current protocol again.")
-        pages = await asyncio.to_thread(extract_pages, pdf)
+        pages = await self._pages(pdf, source["protocol_id"])
         validate_evidence(analysis, pages)
         key = (study_id, fingerprint)
         if not coverage_complete:
@@ -1426,7 +1508,7 @@ class Service:
         }
 
     async def _extract_and_save(self, study_id: str, pdf: bytes, source: dict, progress: dict) -> dict:
-        pages = await asyncio.to_thread(extract_pages, pdf)
+        pages = await self._pages(pdf, source["protocol_id"])
         chunks = reading_order(sections(pages))
         if not chunks:
             raise RWEError("SECTION_PARSE_FAILED", "No relevant protocol sections found.")

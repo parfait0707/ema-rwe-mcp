@@ -2,7 +2,7 @@
 
 ## Purpose and scope
 
-Build an evidence-backed MCP for finding and analysing EMA RWD protocols. Read `docs/spec/v0.1.md` through `docs/spec/v1.4.md` and `docs/clinical-search.md` when changing the relevant behaviour. Communicate with this repository's user in Japanese.
+Build an evidence-backed MCP for finding and analysing EMA RWD protocols. Read `docs/spec/v0.1.md` through `docs/spec/v1.6.md` and `docs/clinical-search.md` when changing the relevant behaviour. Communicate with this repository's user in Japanese.
 
 - Include only explicitly labelled Non-interventional studies. Keep the DARWIN EU flag independent of study type.
 - Always return catalogue Data source types and protocol-derived data source names/status. Do not call planned sources actually used.

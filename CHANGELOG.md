@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Non-English protocols (spec v1.6): section roles are read from English translations of their headings
+  instead of reading every unrecognised section. `analyze_protocol` checks the language once per PDF; the
+  configured LLM translates the headings, otherwise it returns `status=needs_heading_translation` and the
+  caller saves translations with the new tool `cache_heading_translations` (`{}` keeps reading every
+  unrecognised section). Translations are stored beside the archived PDF (`.headings`) and also apply to
+  the exploration tools; re-saving different translations discards that PDF's analysis and held batches.
 - `ema-rwe import-all` and `ema-rwe merge-observations`, the commands that build the bundled database,
   end with `VACUUM` (the result reports `bytes_before`/`bytes_after`). On a copy of the current bundle:
   45.8 MB -> 43.1 MB, gzip 17.1 MB -> 12.1 MB. The committed database is compacted at its next rebuild.
