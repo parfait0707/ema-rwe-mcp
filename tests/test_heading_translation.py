@@ -51,6 +51,28 @@ def test_translated_headings_give_roles_and_background_is_no_longer_read():
     assert introduction["section"] == "1. INTRODUCCIÓN"
 
 
+def test_unknown_sections_of_a_translated_protocol_stay_read():
+    # The English signal words cannot read Spanish text, so a section whose translated heading names no role
+    # ('Study premises', holding the objectives) is read even before any method section
+    with pymupdf.open() as doc:
+        doc.new_page().insert_text(
+            (40, 40),
+            "1. PREMISAS DEL ESTUDIO\nEl fin principal del estudio es medir la frecuencia de los síntomas tras el alta.\n"
+            + SPANISH.replace("1. INTRODUCCIÓN", "1.1 INTRODUCCIÓN"),
+            fontsize=8,
+        )
+        data = doc.tobytes()
+    translations = {
+        **{k: v for k, v in TRANSLATIONS.items() if k != "1. INTRODUCCIÓN"},
+        "1. PREMISAS DEL ESTUDIO": "1. STUDY PREMISES",
+        "1.1 INTRODUCCIÓN": "1.1 INTRODUCTION",
+    }
+    chunks = sections(extract_pages(data, translations=translations))
+    premises = chunk_with(chunks, "fin principal")
+    assert premises["role"] == "unknown" and premises in reading_order(chunks)
+    assert chunk_with(chunks, "numerosos ingresos") not in reading_order(chunks)
+
+
 def test_heading_texts_lists_each_heading_once_in_document_order():
     headings = heading_texts(sections(extract_pages(spanish_pdf())))
     assert headings[:3] == ["1. INTRODUCCIÓN", "2. OBJETIVOS", "3. MÉTODOS"]

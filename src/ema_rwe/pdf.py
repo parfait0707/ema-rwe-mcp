@@ -735,12 +735,11 @@ def sections(pages: list[Page]) -> list[dict]:
             or (body_started and chunk["context_role"] not in NON_METHOD_ROLES)
         )
     headed = [c for c in result if c["section"] and not c.get("toc") and not c.get("checklist")]
-    if (not english(pages) and not translations) or (
-        headed and sum(c["role"] == "unknown" for c in headed) > 0.6 * len(headed)
-    ):
+    if not english(pages) or (headed and sum(c["role"] == "unknown" for c in headed) > 0.6 * len(headed)):
         # The role and signal words are English: when they recognise few of the document's headings (another
-        # language without heading translations, or an unusual template), an unknown section is read rather
-        # than dropped for lack of them.
+        # language or an unusual template), an unknown section is read rather than dropped for lack of them.
+        # Heading translations give a non-English protocol its known roles, but the signal words still cannot
+        # read its text, so its unknown sections stay read.
         for c in result:
             if c["role"] == "unknown":
                 c["relevant"] = True
