@@ -137,6 +137,11 @@ filters. Never pick a subset yourself.
   `next_offset` batch) or `cache_protocol_answer` as their status asks.
 - `analyze_protocol` may return `status=extracting` (server-side provider extraction running):
   call it again for the same study until it returns the analysis; do not extract client-side.
+- `analyze_protocol` may return `status=needs_heading_translation` for a protocol that is not in
+  English (section roles are read from English heading words). Translate every entry of `headings`
+  into English, keeping the numbering and translating only, then call
+  `cache_heading_translations(protocol_id, translations={heading: English})` and `analyze_protocol`
+  again. If you cannot translate, pass `translations={}`: every unrecognised section is then read.
 - With `needs_client_extraction`, cache each batch via `cache_protocol_analysis(batch_offset=offset)`
   so progress survives context compaction; skip offsets listed in `cached_batch_offsets`; finish with
   `coverage_complete=true`. If your client can run a cheaper subagent (Claude Code: `Agent` with

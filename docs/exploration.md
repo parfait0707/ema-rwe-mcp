@@ -42,7 +42,9 @@ ENCePPチェックリストは、チェックリストを名乗る見出しか E
 
 `EMA_PROTOCOL_DIR` の既定値はDBと同じ親フォルダ内の `protocols`。`get_protocol` の `protocol` と解析結果の `source` に `protocol_id` / `local_filename` を返す。検索結果にも `local_protocols` 一覧を付け、解析済みなら `protocol_id` を付ける。同じPDF内容は同じIDになり、同じURLでファイルが差し替わると別IDになる。旧版も保持する。保存済みIDでの探索は最新版の確認とは別であり、最新版を確認したい場合は `get_protocol(refresh=true)` を使う。
 
-PDFは追加要望に従ってユーザーが削除するまで保持する。既存のHTTPキャッシュとは別なので、`cleanup-cache` では削除されない。削除する場合は対象IDの `.pdf` と `.json` を削除する。これ以降そのIDの探索は明示的なmissingエラーを返す。全文テキストは都度メモリへ抽出し、永久保存・全文DB化しない。
+英語以外のプロトコルでは、言語の判定結果と見出しの英訳を同じ場所の `.headings` に保存する（spec v1.6）。
+
+PDFは追加要望に従ってユーザーが削除するまで保持する。既存のHTTPキャッシュとは別なので、`cleanup-cache` では削除されない。削除する場合は対象IDの `.pdf`、`.json`、`.headings` を削除する。これ以降そのIDの探索は明示的なmissingエラーを返す。全文テキストは都度メモリへ抽出し、永久保存・全文DB化しない。
 
 ## 呼出元LLMによる追加探索（APIキー不要）
 
@@ -55,6 +57,7 @@ PDFは追加要望に従ってユーザーが削除するまで保持する。�
 | `read_protocol_text(protocol_id, section_id=..., offset=0)` | チャンク全文を読む |
 | `research_protocol(protocol_id, question, force=false)` | 保存回答を再利用、または問い合わせ別の探索を開始 |
 | `cache_protocol_answer(protocol_id, question, answer)` | 問い合わせ別の出典付き回答を検証・保存 |
+| `cache_heading_translations(protocol_id, translations)` | 英語以外のプロトコルの見出しの英訳を保存（`analyze_protocol` の `needs_heading_translation` への応答） |
 
 `read_protocol_text` は `section_id` の代わりに `start_page` / `end_page` で物理PDFの1～5ページを指定できる。最大20,000文字／回で、`next_offset` があるときは同じ対象と次のoffsetで続きを読む。
 

@@ -50,6 +50,19 @@ class ProtocolArchive:
             raise RWEError("LOCAL_PDF_CORRUPT", "Archived PDF checksum mismatch.")
         return pdf, record
 
+    def headings(self, protocol_id: str) -> dict | None:
+        """The saved heading-language record of a retained PDF (language, translations, parser), if any."""
+        try:
+            return json.loads(self._path(protocol_id, ".headings").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+
+    def save_headings(self, protocol_id: str, record: dict) -> dict:
+        self.load(protocol_id)  # only for a retained, intact PDF
+        record = {**record, "saved_at": now()}
+        atomic_write(self._path(protocol_id, ".headings"), json.dumps(record, ensure_ascii=False))
+        return record
+
     def list(self, study_id: str) -> list[dict]:
         if not re.fullmatch(r"\d{1,20}", study_id):
             raise RWEError("INVALID_INPUT", "Numeric study_id required.")

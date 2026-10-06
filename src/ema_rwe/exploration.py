@@ -12,6 +12,7 @@ from .pdf import (
     reading_order,
     search_sections,
     sections,
+    stored_translations,
     validate_evidence,
 )
 from .terminology import clinical_expansion, proposed_codes
@@ -61,7 +62,7 @@ class Explorer:
 
     def context(self, protocol_id):
         data, source = self.archive.load(protocol_id)
-        pages = extract_pages(data)
+        pages = extract_pages(data, translations=stored_translations(self.archive.headings(protocol_id)))
         return pages, sections(pages), source
 
     def outline(self, protocol_id, offset=0, limit=100, detail="compact"):

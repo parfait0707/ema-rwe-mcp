@@ -231,6 +231,9 @@ class Page:
     # font size: layout support for chapter headings when there is no outline.
     line_styles: dict[str, tuple[float, bool]] = field(default_factory=dict)
     body_size: float = 0.0
+    # Document-level, shared by every page: English translations of the headings of a non-English protocol,
+    # keyed by the heading as sections() reports it. The role words are English, so roles are read from these.
+    heading_translations: dict[str, str] = field(default_factory=dict)
 
 
 def apply_line_styles(pages: list[Page], doc) -> None:
@@ -381,9 +384,12 @@ def mark_contents_titles(pages: list[Page], rows: list[list]) -> None:
         page.outline_source = "toc"
 
 
-def extract_pages(data: bytes, use_outline: bool = True) -> list[Page]:
+def extract_pages(
+    data: bytes, use_outline: bool = True, translations: dict[str, str] | None = None
+) -> list[Page]:
     """Page texts with an outline applied: the PDF's bookmarks, else a verified text table of contents.
-    use_outline=False ignores the bookmarks (structure evaluation measures text-only detection against them)."""
+    use_outline=False ignores the bookmarks (structure evaluation measures text-only detection against them).
+    translations: English heading translations of a non-English protocol (see heading_texts)."""
     if not data.lstrip().startswith(b"%PDF-"):
         raise RWEError("PDF_PARSE_FAILED", "Response is not a PDF.")
     try:
@@ -404,6 +410,9 @@ def extract_pages(data: bytes, use_outline: bool = True) -> list[Page]:
         raise RWEError("PDF_OCR_REQUIRED", "No usable text layer; scanned PDF requires OCR (outside MVP).")
     if sum(len(p.text) for p in pages) > 5_000_000:
         raise RWEError("PDF_PARSE_FAILED", "Extracted text exceeds 5 million character limit.")
+    shared = dict(translations or {})
+    for p in pages:
+        p.heading_translations = shared
     return pages
 
 
@@ -629,19 +638,29 @@ def sections(pages: list[Page]) -> list[dict]:
             flush(buffer, p.page, in_checklist, checklist=True)
         else:
             flush(buffer, p.page, current_heading)
+    translations = pages[0].heading_translations if pages else {}
+
+    def english_heading(title: str | None) -> str | None:
+        return translations.get(title, title) if title else title
+
+    def role_of(title: str | None) -> str:
+        return heading_role(english_heading(title))
+
     parent = None
     previous_number = ()
     body_started = False  # a method-side or abstract section has been seen
     for i, chunk in enumerate(result):
         heading = chunk["section"]
         number = section_number(heading)
-        role = heading_role(heading)
+        role = role_of(heading)
+        if heading in translations and RELEVANT.search(translations[heading]):
+            chunk["relevant"] = not chunk.get("checklist")  # 'Criterios de exclusión' -> 'Exclusion criteria'
         basis = "heading" if role != "unknown" else "none"
         if role == "unknown" and chunk.get("chapter"):
             # Bookmark outline beats a missed text heading: the nearest outline ancestor with a known role
             # ('II.9.2 Setting' under 'II.9 Research Methods') supplies it.
             path = (chunk.get("chapter_path") or chunk["chapter"]).split(" / ")
-            role = next((r for t in reversed(path) if (r := heading_role(t)) != "unknown"), "unknown")
+            role = next((r for t in reversed(path) if (r := role_of(t)) != "unknown"), "unknown")
             basis = "bookmark" if role != "unknown" else basis
         warnings = []
         if (chunk["page"], heading) in unconfirmed:
@@ -650,7 +669,7 @@ def sections(pages: list[Page]) -> list[dict]:
             warnings.append("section_number_regression; verify heading against outline")
         if number:
             previous_number = number
-        major_unnumbered = canonical(heading or "") in {
+        major_unnumbered = canonical(english_heading(heading) or "") in {
             "research methods",
             "methods",
             "methodology",
@@ -661,12 +680,12 @@ def sections(pages: list[Page]) -> list[dict]:
             "background",
             "rationale",
             "introduction",
-        } or bool(re.match(r"^(appendix|annex)\b", heading or "", re.IGNORECASE))
+        } or bool(re.match(r"^(appendix|annex)\b", english_heading(heading) or "", re.IGNORECASE))
         top = chunk.get("chapter_top")
         if top and top != (result[i - 1].get("chapter_top") if i else None):
             # A new top-level outline chapter replaces the parent context, also when its title has no known
             # role: the previous chapter (often 'Background') has ended.
-            parent = {"heading": top, "role": heading_role(top), "number": section_number(top)}
+            parent = {"heading": top, "role": role_of(top), "number": section_number(top)}
         if parent and number and parent["number"] and number[0] != parent["number"][0]:
             # A numbered section outside the parent's chapter ('3.1' after '1. Background'): the chapter
             # heading in between was missed, so the old parent must not impose its role.
@@ -719,10 +738,46 @@ def sections(pages: list[Page]) -> list[dict]:
     if not english(pages) or (headed and sum(c["role"] == "unknown" for c in headed) > 0.6 * len(headed)):
         # The role and signal words are English: when they recognise few of the document's headings (another
         # language or an unusual template), an unknown section is read rather than dropped for lack of them.
+        # Heading translations give a non-English protocol its known roles, but the signal words still cannot
+        # read its text, so its unknown sections stay read.
         for c in result:
             if c["role"] == "unknown":
                 c["relevant"] = True
     return result
+
+
+def heading_texts(chunks: list[dict]) -> list[str]:
+    """The distinct headings and outline titles whose words decide section roles, in document order: what a
+    non-English protocol needs translated (keys of Page.heading_translations)."""
+    titles: dict[str, None] = {}
+    for c in chunks:
+        path = (c.get("chapter_path") or c.get("chapter") or "").split(" / ")
+        for title in (*path, c.get("chapter_top"), c.get("section")):
+            if title and title.strip():
+                titles[title] = None
+    return list(titles)
+
+
+def stored_translations(record: dict | None) -> dict[str, str] | None:
+    """The heading translations saved for a PDF ({} for an English one); None when its heading language has not
+    been checked with this parser, whose headings may differ."""
+    if not record or record.get("parser") != PARSER_VERSION:
+        return None
+    return record.get("translations") or {}
+
+
+def clean_translations(headings: list[str], translations: dict) -> dict[str, str]:
+    """Translations of the given headings only, each one line of at most 300 characters: a translation is
+    model or caller output, used solely to match the English role words."""
+    known = set(headings)
+    return {
+        heading: value.strip()
+        for heading, value in translations.items()
+        if heading in known
+        and isinstance(value, str)
+        and 0 < len(value.strip()) <= 300
+        and "\n" not in value.strip()
+    }
 
 
 APPENDIX_REF = re.compile(r"\b(?:annex|appendix)\s+([IVX]+|[A-Za-z]?\d{1,3}[A-Za-z]?|[A-Z])\b", re.IGNORECASE)
