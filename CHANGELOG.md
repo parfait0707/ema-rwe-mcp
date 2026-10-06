@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.5.4 (2026-10-06)
 
 - Non-English protocols (spec v1.6): section roles are read from English translations of their headings, so
   background, reference, administrative and contents chapters are no longer read; sections whose
