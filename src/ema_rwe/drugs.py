@@ -58,6 +58,9 @@ def parse_medicines(raw):
         raise RWEError("DRUG_DICTIONARY_INVALID", "EMA medicines JSON schema could not be verified.") from exc
 
 
+SALT_NOTE = "Unreviewed trailing words for maintainers to classify in code review; no caller action."
+
+
 async def refresh_dictionary(force=False, transport=None):
     path = dictionary_path()
     if path.exists() and not force and time.time() - path.stat().st_mtime < TTL:
@@ -66,6 +69,7 @@ async def refresh_dictionary(force=False, transport=None):
             "cached": True,
             "records": len(records),
             "salt_word_candidates": salt_word_candidates(records),
+            "salt_word_candidates_note": SALT_NOTE,
             "source": SOURCE_URL,
             "source_metadata": meta,
             "sha256": digest,
@@ -93,6 +97,7 @@ async def refresh_dictionary(force=False, transport=None):
         "cached": False,
         "records": len(records),
         "salt_word_candidates": salt_word_candidates(records),
+        "salt_word_candidates_note": SALT_NOTE,
         "source": SOURCE_URL,
         "source_metadata": meta,
         "sha256": hashlib.sha256(raw).hexdigest(),

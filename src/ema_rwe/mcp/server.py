@@ -260,7 +260,7 @@ def create_server(service: Service | None = None):
         max_chars: Annotated[int, Field(ge=6000, le=150000)] = 30000,
         detail: Literal["summary", "full"] = "summary",
     ) -> dict:
-        """Cached extraction summary (detail=full for the whole extraction); status=extracting means call again later; else paginated sections to extract (follow next_offset)."""
+        """Cached extraction summary (detail=full for the whole extraction); status=extracting means call again later; needs_heading_translation means translate `headings`, call cache_heading_translations, then call again; else paginated sections to extract (follow next_offset)."""
         return await call("analyze_protocol", study_id, force_refresh, offset, max_chars, detail)
 
     @server.tool()

@@ -99,12 +99,16 @@ async def test_client_route_asks_for_translations_before_any_batch(service, webs
     assert asked["status"] == "needs_heading_translation" and "sections" not in asked
     assert "1. INTRODUCCIÓN" in asked["headings"]
     pid = asked["protocol_id"]
+    untranslated_key = service.explorer.key(pid, "Which outcomes?")
 
     saved = await service.cache_heading_translations(pid, {**TRANSLATIONS, "9. INVENTADO": "9. INVENTED"})
     assert saved["translated_headings"] == len(TRANSLATIONS) and saved["ignored_entries"] == 1
 
     batch = await service.analyze_protocol("123")
     assert batch["status"] == "needs_client_extraction"
+    assert saved["study_id"] == "123"
+    # An answer cached before translation read other section roles: it is not reused afterwards
+    assert service.explorer.key(pid, "Which outcomes?") != untranslated_key
     # Comparisons record the fingerprint before any translation exists: translations do not change it
     assert batch["source"]["fingerprint"] == asked["source"]["fingerprint"]
     read = " ".join(c["text"] for c in batch["sections"])
@@ -137,8 +141,13 @@ async def test_declining_translation_reads_every_unrecognised_section(service, w
 
 
 async def test_english_protocol_needs_no_translation(service):
+    pid = (await service.get_protocol("123"))["protocol"]["protocol_id"]
+    key = service.explorer.key(pid, "Which outcomes?")
     batch = await service.analyze_protocol("123")
     assert batch["status"] == "needs_client_extraction"
+    # The language record of an English protocol keeps its research-answer cache key (no re-asking)
+    assert service.archive.headings(pid)["language"] == "english"
+    assert service.explorer.key(pid, "Which outcomes?") == key
     with pytest.raises(RWEError, match="English"):
         await service.cache_heading_translations(batch["source"]["protocol_id"], {"8.1 Study design": "x"})
 
@@ -168,3 +177,42 @@ async def test_configured_provider_translates_headings_before_extracting(service
     assert record["translator"] == "mock-model" and record["translations"] == TRANSLATIONS
     # Saved translations are reused: the cached analysis matches the fingerprint that includes them
     assert (await service.analyze_protocol("123"))["cached"] is True and len(asked) == 1
+
+
+async def test_cli_saves_heading_translations(tmp_path, monkeypatch):
+    """The CLI can answer needs_heading_translation as MCP callers do (cache-headings)."""
+    import json
+
+    from ema_rwe.archive import ProtocolArchive
+    from ema_rwe.cli import parser, run
+
+    monkeypatch.setenv("EMA_DB_PATH", str(tmp_path / "db.sqlite3"))
+    monkeypatch.setenv("EMA_CACHE_DIR", str(tmp_path / "http"))
+    monkeypatch.setenv("EMA_PROTOCOL_DIR", str(tmp_path / "protocols"))
+    pid = ProtocolArchive(tmp_path / "protocols").save("123", spanish_pdf(), {})["protocol_id"]
+    (tmp_path / "headings.json").write_text(json.dumps(TRANSLATIONS), encoding="utf-8")
+    saved = await run(parser().parse_args(["cache-headings", pid, str(tmp_path / "headings.json")]))
+    assert saved["status"] == "translations_cached" and saved["translated_headings"] == len(TRANSLATIONS)
+    (tmp_path / "bad.json").write_text("[]", encoding="utf-8")
+    with pytest.raises(RWEError, match="JSON object"):
+        await run(parser().parse_args(["cache-headings", pid, str(tmp_path / "bad.json")]))
+
+
+async def test_failed_server_translation_keeps_the_provider_message(service, website, monkeypatch):
+    service.settings.llm_model = "mock-model"
+    service.settings.llm_base_url = "https://provider.invalid/v1"
+    website["/system/files/protocol.pdf"] = spanish_pdf()
+
+    async def unavailable(_settings, _messages):
+        raise RWEError("LLM_CONFIG_ERROR", "LLM_BACKEND must be compatible or litellm.")
+
+    monkeypatch.setattr("ema_rwe.llm.complete_json", unavailable)
+    with pytest.raises(RWEError) as failed:
+        await service.analyze_protocol("123")
+    assert failed.value.code == "LLM_CONFIG_ERROR"
+    assert failed.value.message == (
+        "Heading translation for this non-English protocol failed: LLM_BACKEND must be compatible or litellm."
+    )
+    # Nothing is recorded, so the next call checks the language again
+    pid = (await service.get_protocol("123"))["protocol"]["protocol_id"]
+    assert service.archive.headings(pid) is None

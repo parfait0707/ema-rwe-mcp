@@ -7,7 +7,7 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from .config import Settings
-from .domain import AnalogousTerm, CodeCandidate, Extraction, RWEError, SourcePreference
+from .domain import AnalogousTerm, CodeCandidate, Extraction, ProtocolAnswer, RWEError, SourcePreference
 from .ranking import ScreeningBlock
 from .selection import SearchFilters
 from .service import Service
@@ -178,6 +178,21 @@ def parser():
     submit.add_argument("input", type=Path)
     submit.add_argument("--coverage-complete", action="store_true")
     submit.add_argument("--batch-offset", type=int, help="Save one batch read at this offset (resumable).")
+    answer = commands.add_parser(
+        "cache-answer", help="Save a question-specific answer (answer to ask status=needs_client_exploration)"
+    )
+    answer.add_argument("protocol_id")
+    answer.add_argument("question")
+    answer.add_argument("input", type=Path, help="ProtocolAnswer JSON with verbatim quotes and pages")
+    headings = commands.add_parser(
+        "cache-headings",
+        help="Save English translations of a non-English protocol's headings "
+        "(answer to analyze status=needs_heading_translation)",
+    )
+    headings.add_argument("protocol_id")
+    headings.add_argument(
+        "input", type=Path, help='JSON object {"heading": "English"}; {} to read untranslated'
+    )
     commands.add_parser("cleanup-cache")
     return p
 
@@ -307,6 +322,16 @@ async def run(args):
                 return await service.cache_protocol_analysis(
                     args.study_id, args.fingerprint, analysis, args.coverage_complete, args.batch_offset
                 )
+            case "cache-answer":
+                answer = ProtocolAnswer.model_validate_json(args.input.read_text(encoding="utf-8"))
+                return await service.cache_protocol_answer(args.protocol_id, args.question, answer)
+            case "cache-headings":
+                translations = json.loads(args.input.read_text(encoding="utf-8"))
+                if not isinstance(translations, dict):
+                    raise RWEError(
+                        "INVALID_INPUT", "Heading translations must be a JSON object {heading: English}."
+                    )
+                return await service.cache_heading_translations(args.protocol_id, translations)
             case "cleanup-cache":
                 return {"removed": service.client.cleanup()}
     finally:

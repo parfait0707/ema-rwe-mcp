@@ -789,7 +789,7 @@ CODE_LIST_TITLE = re.compile(
 def reading_order(chunks: list[dict]) -> list[dict]:
     """Relevant sections to read for extraction.
 
-    With a bookmark outline: body chapters first, then only the appendices the body refers to
+    With a bookmark outline, in page order: body chapters and only the appendices the body refers to
     ("Annex 3", "Appendix B"), so a 240-page protocol is read at the chapters that define the study
     plus its code lists. Without bookmarks every relevant section is returned as before.
     """
