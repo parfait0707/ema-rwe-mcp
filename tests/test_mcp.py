@@ -247,3 +247,8 @@ async def test_stdio_discovery_validation_and_local_search(settings, csv_file, p
             },
         )
         assert json.loads(invalid_source.content[0].text)["error"]["code"] == "EVIDENCE_INVALID"
+        # The translation tool takes a {heading: English} object; an English protocol needs none
+        translated = await session.call_tool(
+            "cache_heading_translations", {"protocol_id": pid, "translations": {"8.4 Analysis": "8.4 Analysis"}}
+        )
+        assert json.loads(translated.content[0].text)["error"]["code"] == "INVALID_INPUT"
