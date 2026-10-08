@@ -9,7 +9,8 @@ the MCP resource `ema-rwe://docs/mcp-workflow` (bundled in the wheel), so a clie
 ## 1. Plan
 
 - `catalogue_status` once per session. `status=current` and `source_type_imports` containing
-  `claims`, `ehr`, `registry` means the committed catalogue is usable. Only when no CSV was ever
+  `claims`, `ehr`, `registry` means the committed catalogue is usable (freshness is judged per export:
+  `exports`, `snapshot_aligned`, `missing_source_type_exports`). Only when no CSV was ever
   imported, or a stale snapshot yields no candidates, may a visible user-initiated browser export be
   imported with `import_catalogue_csv`.
 - No disease dictionary ships. `plan_study_search(question)` translates design/method words and

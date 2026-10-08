@@ -456,3 +456,28 @@ def test_catalogue_status_reports_total_studies_separately_from_export_counts(se
     status = service.catalogue_status()
     assert status["studies_total"] == service.repo.study_count() == 3
     assert status["latest_import"] is None or "note" in status["latest_import"]
+
+
+def test_catalogue_freshness_is_judged_per_export(settings, csv_file):
+    """A fresh source-type export does not make an old full Studies export current (each kind ages alone)."""
+    service = Service(settings)
+    service.study_import_dir.mkdir(parents=True)
+    service.source_type_import_dir.mkdir(parents=True)
+    shutil.copyfile(csv_file, service.study_import_dir / "20260901_all_export-data.csv")
+    # A filtered export lists a subset of the studies (imports are keyed by content, so it must differ)
+    lines = csv_file.read_text(encoding="utf-8-sig").splitlines()
+    (service.source_type_import_dir / "20261001_registry_export-data.csv").write_text(
+        "\n".join(lines[:2]), encoding="utf-8"
+    )
+    service.import_catalogue_csv("20260901_all_export-data.csv")
+    service.import_catalogue_csv("20261001_registry_export-data.csv")
+    status = service.catalogue_status()
+    assert status["status"] == "current" and status["missing_source_type_exports"] == ["claims", "ehr"]
+    # Exports from different refreshes are not one snapshot: refresh is recommended though both are recent
+    assert status["snapshot_aligned"] is False and status["browser_refresh_recommended"] is True
+    with service.repo.connection() as db:
+        old = (datetime.now(UTC) - timedelta(seconds=settings.catalogue_ttl + 1)).isoformat()
+        db.execute("UPDATE imports SET imported_at=? WHERE filename=?", (old, "20260901_all_export-data.csv"))
+    status = service.catalogue_status()
+    assert status["status"] == "stale" and status["exports"]["studies"]["status"] == "stale"
+    assert status["exports"]["registry"]["status"] == "current"

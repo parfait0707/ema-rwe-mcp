@@ -234,13 +234,39 @@ class Service:
     def catalogue_status(self):
         snapshots = self.repo.imports()
         latest = snapshots[0] if snapshots else None
-        if latest:
-            age = (datetime.now(UTC) - datetime.fromisoformat(latest["imported_at"])).total_seconds()
-            state = "current" if age <= self.settings.catalogue_ttl else "stale"
-        else:
+        now_ = datetime.now(UTC)
+        # The catalogue is one full Studies export plus the Data-source-type-filtered exports that tag it: each
+        # kind ages on its own, so a fresh registry export cannot make an old full export look current.
+        exports: dict[str, dict] = {}
+        for snapshot in snapshots:  # newest first
+            kind = source_type_from_filename(snapshot["filename"] or "") or "studies"
+            if kind not in exports:
+                age_ = (now_ - datetime.fromisoformat(snapshot["imported_at"])).total_seconds()
+                dated = re.match(r"(\d{8})_", snapshot["filename"] or "")
+                exports[kind] = {
+                    "filename": snapshot["filename"],
+                    "imported_at": snapshot["imported_at"],
+                    "export_date": dated[1] if dated else snapshot["imported_at"][:10].replace("-", ""),
+                    "age_seconds": age_,
+                    "status": "current" if age_ <= self.settings.catalogue_ttl else "stale",
+                }
+        if not snapshots:
             age, state = None, "not_imported"
+        else:
+            age = exports["studies"]["age_seconds"] if "studies" in exports else None
+            state = (
+                "current"
+                if "studies" in exports and all(e["status"] == "current" for e in exports.values())
+                else "stale"
+            )
+        # Exports of one refresh share a date (file name prefix, else import day); a typed export from another
+        # month tags the studies of that month only.
+        aligned = len({e["export_date"] for e in exports.values()}) <= 1
         return {
             "status": state,
+            "exports": exports,
+            "missing_source_type_exports": [t for t in ("claims", "ehr", "registry") if t not in exports],
+            "snapshot_aligned": aligned,
             "studies_total": self.repo.study_count(),
             "latest_import": dict(
                 latest, note="count is the row count of this one export, not the catalogue total"
@@ -260,7 +286,7 @@ class Service:
             "max_comparison_studies": self.settings.max_comparison_studies,
             "unmatched_terms": unmatched_summary(self.unmatched_log_path),
             "dictionaries": self._dictionary_status(),
-            "browser_refresh_recommended": state != "current",
+            "browser_refresh_recommended": state != "current" or not aligned,
             "discovery_scope": "Only imported studies and individually retrieved Study IDs are searchable.",
             "browser_instruction": (
                 "When refresh is needed, use a visible user-initiated browser session to open the EMA Search "
@@ -1263,11 +1289,15 @@ class Service:
         saved = self.repo.analysis(study_id)
         if kept != self._translations(protocol_id):
             # Translations decide the sections read. They stay out of the fingerprint, which comparisons recorded
-            # before any translation existed, so a change discards this PDF's analysis and held batches instead.
+            # before any translation existed, so a change discards this PDF's analysis, held batches and any
+            # server-side extraction of it (running or finished but not yet collected): their reading is stale.
+            # No await separates this block from saving the translations, so a running task cannot save between.
             if saved and saved["source"].get("protocol_id") == protocol_id:
                 self.repo.invalidate_analysis(self.repo.get(study_id))
             for key in [k for k in self._partials if k[0] == study_id]:
                 self._partials.pop(key)
+            for key in [k for k in self._extractions if k[0] == study_id]:
+                self._extractions.pop(key)[0].cancel()
         self.archive.save_headings(
             protocol_id,
             {

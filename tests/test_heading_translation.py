@@ -1,5 +1,7 @@
 """Non-English protocols: section roles are read from English translations of their headings."""
 
+import asyncio
+
 import pymupdf
 import pytest
 
@@ -216,3 +218,41 @@ async def test_failed_server_translation_keeps_the_provider_message(service, web
     # Nothing is recorded, so the next call checks the language again
     pid = (await service.get_protocol("123"))["protocol"]["protocol_id"]
     assert service.archive.headings(pid) is None
+
+
+async def test_changed_translations_cancel_a_running_server_extraction(service, website, monkeypatch):
+    """A server-side extraction started under old translations never saves or returns its stale result."""
+    service.settings.llm_model = "mock-model"
+    service.settings.llm_base_url = "https://provider.invalid/v1"
+    service.settings.llm_wait_seconds = 0.05
+    website["/system/files/protocol.pdf"] = spanish_pdf()
+    releases, read = [], []
+
+    async def translate(_settings, _messages):
+        return {"translations": TRANSLATIONS}
+
+    async def slow_extract(_settings, chunks, progress=None):
+        read.append(" ".join(c["text"] for c in chunks))
+        releases.append(asyncio.Event())
+        call = len(releases)
+        await releases[-1].wait()
+        return Extraction(missing_information=[f"extraction {call}"])
+
+    monkeypatch.setattr("ema_rwe.llm.complete_json", translate)
+    monkeypatch.setattr("ema_rwe.service.extract_with_provider", slow_extract)
+    first = await service.analyze_protocol("123")
+    assert first["status"] == "extracting" and "numerosos ingresos" not in read[0]
+
+    corrected = dict(TRANSLATIONS, **{"1. INTRODUCCIÓN": "1. STUDY DESIGN"})
+    await service.cache_heading_translations(first["source"]["protocol_id"], corrected)
+    releases[0].set()  # the old task would finish now if it had not been cancelled
+    second = await service.analyze_protocol("123")
+    assert second["status"] == "extracting" and "numerosos ingresos" in read[1]
+    releases[1].set()
+    for _ in range(50):
+        done = await service.analyze_protocol("123", detail="full")
+        if done["status"] == "analyzed":
+            break
+        await asyncio.sleep(0.02)
+    assert "extraction 2" in done["analysis"]["missing_information"]
+    assert "extraction 1" not in service.repo.analysis("123")["analysis"]["missing_information"]

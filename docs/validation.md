@@ -548,6 +548,15 @@ PDF 取得先ディレクトリ名から X/Y が推測可能だった（P）、�
 - テスト：`test_cli_saves_heading_translations`、`test_cli_saves_a_question_specific_answer`、`test_failed_server_translation_keeps_the_provider_message`、英訳の前後で回答の鍵が変わることと英語のプロトコルの鍵が変わらないことの確認を追加。全体 394 passed、ruff 合格、`uv build` で wheel に DB、医薬品辞書、手順書が入ることを確認。
 - 修正の差分は、修正に関わっていない別のサブエージェントが照合した（1 回目の指摘：CLI の入力範囲の記述、英訳失敗時に元のエラーの対処が消えること、鍵の順序依存など 9 件を修正）。
 
+## 2026-10-08 再レビューの指摘の修正（spec v1.7）
+
+- 指摘の出典：[MCP再レビューと公開・更新方法の調査](research/202610081041_mcp_review_distribution_updates.md)。
+- カタログの鮮度：全研究と種別ごとのエクスポートを別々に判定するようにした。`test_catalogue_freshness_is_judged_per_export`（全研究の CSV が古く registry の CSV だけ新しい状況を再現。修正前の判定では `current` になる）。同梱 DB（4 つとも 2026-10-01）は `current`、`snapshot_aligned=true`。
+- 英訳の変更と実行中の抽出：`test_changed_translations_cancel_a_running_server_extraction`（取り消しを外すと失敗することを確認）。
+- instructions：`test_instructions_state_every_rule_within_their_first_512_characters`。先頭 512 字に規則がすべて入り、全体は 1,418 字。
+- 全体 397 passed（医薬品名の照合の変更を含まない状態）、ruff 合格。
+- 医薬品名の照合（部分一致の廃止）は、実データの展開で悪化が 1 件あるため、別の変更として採否の判断を待つ。
+
 ## 未検証事項（継続）
 
 - 外部LLM API呼出しの実認証検証は未実施。キーなしの呼出元LLM方式は合成PDFで保存・再利用まで検証。

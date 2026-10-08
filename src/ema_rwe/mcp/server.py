@@ -35,20 +35,22 @@ def create_server(service: Service | None = None):
         "EMA RWE protocol search",
         lifespan=lifespan,
         instructions=(
-            "Evidence-backed search of Non-interventional EMA studies over a local catalogue; PDFs are fetched "
-            "only for screened studies. Workflow: 1) plan_study_search; no disease dictionary ships, so on "
-            "needs_client_translation generate English terms, synonyms, codes and analogous_terms yourself, "
-            "exploring synonyms based on ICD-10 as client_expansion instructs; 2) compare_protocols with one block per "
-            "concept (role, ALL query variants, category_terms), darwin_only=false; candidates come ranked; 3) if needs_narrowing, ask the user for a source type "
-            "(claims/ehr/registry/others) AND countries using facets, or let them pick study_ids from candidates, "
-            "then rerun; 4) within max_screening_studies process every pending tool, cache all extractions and "
-            "answers, then get_protocol_comparison. Zero hits return analogous_fallback: offer it and rerun with "
-            "match_scope=analogous, labelling results as the analogous concept. "
-            "Never choose a subset silently, never call planned data "
-            "sources used, cite PDF pages. When analyze_protocol returns needs_client_extraction and your "
-            "client can run a cheaper subagent (e.g. Claude Code Agent with model sonnet), delegate that "
-            "study's batch reading and caching to it and keep only cached results in the main context. "
-            f"Read the full procedure and field semantics first: MCP resource {WORKFLOW_URI}."
+            # The first 512 characters stand alone (some clients show only them): the rules, then the procedure.
+            "Evidence-backed search of Non-interventional EMA studies over a local catalogue. Rules: read MCP "
+            f"resource {WORKFLOW_URI} first. Above max_screening_studies, ask the user for a source type "
+            "(claims/ehr/registry/others) AND countries before any PDF download; never choose a subset of studies "
+            "silently. Process every pending tool for every screened study. Never call planned data sources used. "
+            "Cite physical PDF pages with verbatim quotes and report missing information. "
+            "Workflow: 1) plan_study_search; no disease dictionary ships, so on needs_client_translation generate "
+            "English terms, synonyms, codes and analogous_terms yourself, exploring synonyms based on ICD-10 as "
+            "client_expansion instructs; 2) compare_protocols with one block per concept (role, ALL query variants, "
+            "category_terms), darwin_only=false; candidates come ranked; 3) if needs_narrowing, ask the user using "
+            "facets, or let them pick study_ids from candidates, then rerun; 4) within max_screening_studies cache "
+            "all extractions and answers, then get_protocol_comparison. Zero hits return analogous_fallback: offer "
+            "it and rerun with match_scope=analogous, labelling results as the analogous concept. When "
+            "analyze_protocol returns needs_client_extraction and your client can run a cheaper subagent (e.g. "
+            "Claude Code Agent with model sonnet), delegate that study's batch reading and caching to it and keep "
+            "only cached results in the main context."
         ),
     )
 
