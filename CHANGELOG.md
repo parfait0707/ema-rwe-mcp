@@ -10,6 +10,9 @@
   process sharing the database cannot save or serve an analysis read under old translations. Callers pass
   `reading` to `cache_protocol_analysis` (CLI `--reading`); English protocols may omit it, and analyses
   saved before readings were recorded stay cached for them.
+  Comparisons check the reading too; question answers are explored and cached under one reading
+  (`research_protocol` returns it, `cache_protocol_answer` takes it, CLI `cache-answer --reading`); a first
+  language check never overwrites translations saved meanwhile.
 - Catalogue snapshots (code/data versioning plan, stage 1): `scripts/build_catalogue_snapshot.py <YYYYMMDD>`
   builds a database from exactly the four exports of one refresh (full Studies plus claims, ehr and
   registry; a missing or duplicated kind stops it), keeps the committed database's protocol observations,

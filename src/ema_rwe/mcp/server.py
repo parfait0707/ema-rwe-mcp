@@ -370,9 +370,17 @@ def create_server(service: Service | None = None):
         return await call("research_protocol", protocol_id, question, force)
 
     @server.tool()
-    async def cache_protocol_answer(protocol_id: str, question: str, answer: ProtocolAnswer) -> dict:
+    async def cache_protocol_answer(
+        protocol_id: str,
+        question: str,
+        answer: ProtocolAnswer,
+        reading: Annotated[
+            str | None,
+            Field(description="reading returned by research_protocol; required for a non-English protocol"),
+        ] = None,
+    ) -> dict:
         """Validate and save a caller's question-specific answer with exact quotes/pages/sections."""
-        return await call("cache_protocol_answer", protocol_id, question, answer)
+        return await call("cache_protocol_answer", protocol_id, question, answer, reading)
 
     for tool in server._tool_manager._tools.values():
         tool.parameters = strip_titles(tool.parameters)

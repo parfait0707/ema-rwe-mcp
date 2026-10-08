@@ -165,7 +165,7 @@ filters. Never pick a subset yourself.
 ## 5. Follow-up questions
 
 `search_protocol_text`, `get_protocol_outline`, `read_protocol_text`, `research_protocol` and
-`cache_protocol_answer` work on archived PDFs by immutable `protocol_id` without EMA requests. A
+`cache_protocol_answer` (pass the `reading` that `research_protocol` returned) work on archived PDFs by immutable `protocol_id` without EMA requests. A
 zero-hit search does not prove absence; inspect methods, outcome/exposure definitions and code-list
 appendices.
 

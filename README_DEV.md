@@ -234,7 +234,7 @@ stdioで18個のToolを公開します（`src/ema_rwe/mcp/server.py`）。
 | `search_protocol_text` | `protocol_id`, `query`, `limit=10`（1〜30）, `synonyms`, `codes`, `max_chars`（1000以上）。初回除外した章も含むPDF全文検索 |
 | `read_protocol_text` | `protocol_id`, `section_id`または`start_page`/`end_page`（1〜5ページ）, `offset=0`, `max_chars=12000`（1000〜20000）。`next_offset`で続きを読む |
 | `research_protocol` | `protocol_id`, `question`, `force=false`。保存回答の再利用、全文一括回答、または呼出元駆動のステップ探索 |
-| `cache_protocol_answer` | `protocol_id`, `question`, `answer`。質問別の出典付き回答を検証・保存 |
+| `cache_protocol_answer` | `protocol_id`, `question`, `answer`, `reading`（`research_protocol`が返した値。英語以外のプロトコルでは必須）。質問別の出典付き回答を検証・保存 |
 
 CLIのサブコマンドは、名前は異なりますが（`pdf-search`、`ask`、`cache-headings`、`cache-answer`など）、MCPのツールと同じ引数と既定値を取ります。入力範囲はコア（`Service`／`Explorer`）が検査するので、CLIにも同じ範囲が適用されます（`uv run ema-rwe <サブコマンド> --help`。`search`も既定で全研究を対象にし、`--darwin-only`でDARWIN EUに限ります）。
 

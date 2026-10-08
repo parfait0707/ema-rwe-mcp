@@ -232,7 +232,9 @@ class Repository:
             row = db.execute(
                 "SELECT reading, body FROM protocol_readings WHERE protocol_id=?", (protocol_id,)
             ).fetchone()
-        except sqlite3.OperationalError:
+        except sqlite3.OperationalError as exc:
+            if "no such table" not in str(exc):
+                raise  # a locked database is not 'no record': the caller must not re-check or overwrite
             return None  # no PDF has been read yet in this database
         return (row[0], json.loads(row[1])) if row else None
 
@@ -242,13 +244,24 @@ class Repository:
             found = self._current_reading(db, protocol_id)
         return found[1] if found else None
 
-    def set_reading(self, protocol_id: str, record: dict, reading: str, study: Study | None) -> bool:
+    def set_reading(
+        self,
+        protocol_id: str,
+        record: dict,
+        reading: str,
+        study: Study | None,
+        keep_parser: str | None = None,
+    ) -> bool:
         """Save a PDF's reading record; when its reading (translation hash) changes, also retire the study's
-        analysis of that PDF, in the same transaction. Returns whether the reading changed."""
+        analysis of that PDF, in the same transaction. Returns whether the reading changed. With keep_parser,
+        a record already saved for that parser version is kept (a first language check never overwrites
+        translations another process saved meanwhile)."""
         with self.connection() as db:
             db.execute(self.READINGS)
             db.execute("BEGIN IMMEDIATE")
             current = self._current_reading(db, protocol_id)
+            if keep_parser and current and current[1].get("parser") == keep_parser:
+                return False
             changed = (current[0] if current else "") != reading
             db.execute(
                 "INSERT OR REPLACE INTO protocol_readings VALUES (?,?,?)",

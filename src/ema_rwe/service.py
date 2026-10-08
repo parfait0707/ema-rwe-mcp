@@ -1211,7 +1211,10 @@ class Service:
             source["reading"] = reading_hash(self._translations(source["protocol_id"]))
         if configured(self.settings):
             return analysis_view(await self._provider_extraction(study_id, pdf, source), detail)
-        pages = await self._pages(pdf, source["protocol_id"])
+        # One snapshot of the translations: the batch is read under the reading it reports.
+        translations = self._translations(source["protocol_id"])
+        source["reading"] = reading_hash(translations)
+        pages = await asyncio.to_thread(extract_pages, pdf, True, translations)
         chunks = reading_order(sections(pages))
         if not chunks:
             raise RWEError("SECTION_PARSE_FAILED", "No relevant protocol sections found.")
@@ -1259,6 +1262,20 @@ class Service:
     def _translations(self, protocol_id: str) -> dict[str, str]:
         return self.explorer.translations(protocol_id)
 
+    def _reading_snapshot(self, source: dict, reading: str | None, redo: str) -> dict[str, str]:
+        """The current translations, after checking that a caller's work was read under them: required for a
+        non-English protocol (an English one has none, so its callers may omit reading). Sets source.reading."""
+        translations = self._translations(source["protocol_id"])
+        source["reading"] = reading_hash(translations)
+        record = self.explorer.reading_record(source["protocol_id"])
+        if record and record.get("language") == "other" and reading != source["reading"]:
+            raise RWEError(
+                "READING_CONTEXT_CHANGED",
+                "This work was not read under the protocol's current heading translations (pass the reading "
+                f"returned with it); read the protocol again and {redo}.",
+            )
+        return translations
+
     async def _pages(self, pdf: bytes, protocol_id: str):
         return await asyncio.to_thread(extract_pages, pdf, True, self._translations(protocol_id))
 
@@ -1293,7 +1310,10 @@ class Service:
                 ) from exc
             record.update(language="other", translations=translations, translator=self.settings.llm_model)
         study = self.repo.get(source["study_id"])
-        self.repo.set_reading(protocol_id, record, reading_hash(record["translations"]), study)
+        # keep_parser: translations a caller saved (in another process) during this check are not overwritten.
+        self.repo.set_reading(
+            protocol_id, record, reading_hash(record["translations"]), study, keep_parser=PARSER_VERSION
+        )
         return None
 
     async def cache_heading_translations(self, protocol_id: str, translations: dict[str, str]):
@@ -1491,8 +1511,15 @@ class Service:
     async def research_protocol(self, protocol_id: str, question: str, force: bool = False):
         return await self.explorer.research(protocol_id, question, force)
 
-    async def cache_protocol_answer(self, protocol_id: str, question: str, answer: ProtocolAnswer):
-        return await asyncio.to_thread(self.explorer.save, protocol_id, question, answer)
+    async def cache_protocol_answer(
+        self, protocol_id: str, question: str, answer: ProtocolAnswer, reading: str | None = None
+    ):
+        """Cache a caller's answer under the reading research_protocol returned with the question."""
+        source = {"protocol_id": protocol_id}
+        self._reading_snapshot(source, reading, "answer the question again")
+        return await asyncio.to_thread(
+            self.explorer.save, protocol_id, question, answer, None, source["reading"]
+        )
 
     async def cache_protocol_analysis(
         self,
@@ -1515,14 +1542,8 @@ class Service:
         pdf, source = await self._context(study_id)
         if source["fingerprint"] != fingerprint:
             raise RWEError("PROTOCOL_CHANGED", "Protocol/extractor changed; analyze current protocol again.")
-        record = self.explorer.reading_record(source["protocol_id"])
-        if record and record.get("language") == "other" and reading != source["reading"]:
-            raise RWEError(
-                "READING_CONTEXT_CHANGED",
-                "These sections were not read under the protocol's current heading translations (pass "
-                "source.reading from analyze_protocol); call analyze_protocol again and reread the batches.",
-            )
-        pages = await self._pages(pdf, source["protocol_id"])
+        translations = self._reading_snapshot(source, reading, "reread the batches")
+        pages = await asyncio.to_thread(extract_pages, pdf, True, translations)
         validate_evidence(analysis, pages)
         key = (study_id, fingerprint, source["reading"])
         if not coverage_complete:

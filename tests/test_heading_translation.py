@@ -371,9 +371,84 @@ async def test_a_reading_kept_beside_the_pdf_is_adopted_and_english_analyses_sta
     assert (await service.analyze_protocol("123"))["cached"] is True
     # A non-English record an earlier version wrote beside the PDF is adopted once, never over a saved one
     record = {"parser": PARSER_VERSION, "language": "other", "translations": TRANSLATIONS}
-    service.archive.save_headings(pid, record)
+    legacy = service.archive.directory / f"{pid}.headings"
+    legacy.write_text(json.dumps(record), encoding="utf-8")
     with service.repo.connection() as db:
         db.execute("DELETE FROM protocol_readings")
     assert service.explorer.translations(pid) == TRANSLATIONS
-    service.archive.save_headings(pid, dict(record, translations={}))
+    legacy.write_text(json.dumps(dict(record, translations={})), encoding="utf-8")
     assert service.explorer.translations(pid) == TRANSLATIONS
+
+
+async def test_comparisons_and_cached_reads_never_use_an_analysis_of_another_reading(service, website):
+    from test_source_types import seed
+
+    seed(service.repo, 1)
+    website["/system/files/protocol.pdf"] = spanish_pdf()
+    comparison = await service.compare_protocols("What design?", ["opioid"])
+    pid = (await service.analyze_protocol("123"))["protocol_id"]
+    await service.cache_heading_translations(pid, TRANSLATIONS)
+    batch = await service.analyze_protocol("123")
+    reading = batch["source"]["reading"]
+    await service.cache_protocol_analysis(
+        "123", batch["source"]["fingerprint"], Extraction(), coverage_complete=True, reading=reading
+    )
+    collected = await service.get_protocol_comparison(comparison["comparison_id"], detail="full")
+    assert "analysis" in collected["rows"][0]
+    # An analysis saved before readings were recorded (read without translations) is not served
+    with service.repo.connection() as db:
+        body = json.loads(db.execute("SELECT body FROM analyses").fetchone()[0])
+        del body["source"]["reading"]
+        db.execute("UPDATE analyses SET body=?", (json.dumps(body),))
+    collected = await service.get_protocol_comparison(comparison["comparison_id"], detail="full")
+    assert "analysis" not in collected["rows"][0]
+    assert {"tool": "analyze_protocol", "arguments": {"study_id": "123"}} in collected["pending_tools"]
+    assert (await service.analyze_protocol("123"))["status"] == "needs_client_extraction"
+
+
+async def test_a_reading_changed_while_refreshing_a_cached_analysis_is_not_written_back(
+    service, website, monkeypatch
+):
+    website["/system/files/protocol.pdf"] = spanish_pdf()
+    pid = (await service.analyze_protocol("123"))["protocol_id"]
+    await service.cache_heading_translations(pid, TRANSLATIONS)
+    batch = await service.analyze_protocol("123")
+    await service.cache_protocol_analysis(
+        "123", batch["source"]["fingerprint"], Extraction(), True, reading=batch["source"]["reading"]
+    )
+    context = service._context
+
+    async def other_process_changes_translations(*args, **kwargs):
+        found = await context(*args, **kwargs)  # the cached analysis still matches here
+        record = dict(service.repo.reading(pid), translations={"1. INTRODUCCIÓN": "1. STUDY DESIGN"})
+        service.repo.set_reading(pid, record, "c" * 64, service.repo.get("123"))
+        return found
+
+    monkeypatch.setattr(service, "_context", other_process_changes_translations)
+    refreshed = await service.analyze_protocol("123")
+    assert refreshed["status"] == "needs_client_extraction" and not refreshed.get("cached")
+    assert service.repo.analysis("123") is None  # the retired analysis was not written back
+
+
+async def test_answers_are_cached_under_the_reading_they_were_explored_with(service, website):
+    website["/system/files/protocol.pdf"] = spanish_pdf()
+    pid = (await service.analyze_protocol("123"))["protocol_id"]
+    await service.cache_heading_translations(pid, TRANSLATIONS)
+    asked = await service.research_protocol(pid, "Which exclusion criteria?")
+    assert asked["status"] == "needs_client_exploration" and asked["reading"]
+    from ema_rwe.domain import Fact, ProtocolAnswer
+
+    quote = "Pacientes institucionalizados o dados de alta en los 30 días previos."
+    answer = ProtocolAnswer(answers=[Fact(value="Excluded", evidence=[{"page": 1, "quote": quote}])])
+    with pytest.raises(RWEError) as missing:
+        await service.cache_protocol_answer(pid, "Which exclusion criteria?", answer)
+    assert missing.value.code == "READING_CONTEXT_CHANGED"
+    await service.cache_protocol_answer(pid, "Which exclusion criteria?", answer, reading=asked["reading"])
+    assert (await service.research_protocol(pid, "Which exclusion criteria?"))["cached"] is True
+    # Under corrected translations the answer explored under the old ones is not served
+    await service.cache_heading_translations(
+        pid, dict(TRANSLATIONS, **{"1. INTRODUCCIÓN": "1. STUDY DESIGN"})
+    )
+    assert (await service.research_protocol(pid, "Which exclusion criteria?"))[
+        "status"
+    ] == "needs_client_exploration"

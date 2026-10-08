@@ -185,6 +185,7 @@ def parser():
     answer.add_argument("protocol_id")
     answer.add_argument("question")
     answer.add_argument("input", type=Path, help="ProtocolAnswer JSON with verbatim quotes and pages")
+    answer.add_argument("--reading", help="reading from ask (required for a non-English protocol)")
     headings = commands.add_parser(
         "cache-headings",
         help="Save English translations of a non-English protocol's headings "
@@ -330,7 +331,9 @@ async def run(args):
                 )
             case "cache-answer":
                 answer = ProtocolAnswer.model_validate_json(args.input.read_text(encoding="utf-8"))
-                return await service.cache_protocol_answer(args.protocol_id, args.question, answer)
+                return await service.cache_protocol_answer(
+                    args.protocol_id, args.question, answer, args.reading
+                )
             case "cache-headings":
                 translations = json.loads(args.input.read_text(encoding="utf-8"))
                 if not isinstance(translations, dict):
