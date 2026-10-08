@@ -111,7 +111,7 @@ wheel とリポジトリの `data/ema.sqlite3` は、オフラインでも最初
 
 | 段階 | 内容 | 利用者への影響 |
 |---|---|---|
-| 1 | `manifest.json` の形式とスナップショット作成のスクリプト。最初のスナップショットを `data-YYYYMMDD` として公開する | なし（保守者の側だけ） |
+| 1 | `manifest.json` の形式とスナップショット作成のスクリプト。最初のスナップショットを `data-YYYYMMDD` として公開する（2026-10-08 実装。`src/ema_rwe/snapshot.py`、`scripts/build_catalogue_snapshot.py`） | なし（保守者の側だけ） |
 | 2 | CLI `ema-rwe update-catalogue [--check]` と、`catalogue_status` の `catalogue_snapshot` と `update`。取り込みは利用者の明示的な実行だけ | 手動で更新できる |
 | 3 | 起動時の自動確認と取り込み（`EMA_CATALOGUE_UPDATE`、既定は `apply`）。spec に通信の範囲を書く | 何もしなくても更新される |
 | 4 | 解析と比較表への版の記録。月ごとの DB のコミットをやめ、リリース手順とドキュメントを改める | 結果に版が残る |

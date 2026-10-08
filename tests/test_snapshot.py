@@ -1,0 +1,68 @@
+"""Monthly catalogue snapshots: built from one refresh's four exports, verified before use (plan stage 1)."""
+
+import gzip
+import json
+
+import pytest
+
+from ema_rwe.domain import RWEError
+from ema_rwe.snapshot import build_snapshot, sha256_file, snapshot_exports, verify_snapshot
+from ema_rwe.storage import Repository, refresh_from_bundle
+
+
+@pytest.fixture
+def exports(tmp_path, csv_file):
+    """The four exports of refresh 20261101; each typed export lists a subset (imports are keyed by content)."""
+    root = tmp_path / "imports"
+    (root / "studies").mkdir(parents=True)
+    (root / "source_type").mkdir()
+    lines = csv_file.read_text(encoding="utf-8-sig").splitlines()
+    (root / "studies" / "20261101_all_export-data.csv").write_text("\n".join(lines), encoding="utf-8")
+    for n, kind in enumerate(("claims", "ehr", "registry")):
+        body = "\n".join([lines[0], lines[1 + n % 2]] + ([""] * n))  # differ in content, not in studies
+        (root / "source_type" / f"20261101_{kind}_export-data.csv").write_text(body, encoding="utf-8")
+    return root
+
+
+def test_snapshot_is_built_from_the_four_exports_of_one_refresh(exports, tmp_path):
+    manifest = build_snapshot(exports, "20261101", tmp_path / "out", None)
+    assert [e["kind"] for e in manifest["exports"]] == ["studies", "claims", "ehr", "registry"]
+    assert (
+        manifest["studies_total"] == Repository(tmp_path / "out" / manifest["database"]["name"]).study_count()
+    )
+    assert json.loads((tmp_path / "out" / "manifest.json").read_text()) == manifest
+    # The snapshot replaces an older catalogue through the same path as the bundled database
+    unpacked = verify_snapshot(
+        manifest, tmp_path / "out" / manifest["compressed"]["name"], tmp_path / "x.sqlite3"
+    )
+    user = tmp_path / "user.sqlite3"
+    Repository(user)
+    assert refresh_from_bundle(unpacked, user) is True
+    assert Repository(user).study_count() == manifest["studies_total"]
+
+
+def test_a_refresh_missing_a_kind_or_mixing_dates_is_refused(exports):
+    (exports / "source_type" / "20261101_registry_export-data.csv").rename(
+        exports / "source_type" / "20261001_registry_export-data.csv"
+    )
+    with pytest.raises(RWEError, match="registry: 0 files"):
+        snapshot_exports(exports, "20261101")
+
+
+def test_a_tampered_or_foreign_snapshot_is_refused_and_left_unpacked_nowhere(exports, tmp_path):
+    manifest = build_snapshot(exports, "20261101", tmp_path / "out", None)
+    packed = tmp_path / "out" / manifest["compressed"]["name"]
+    target = tmp_path / "unpacked.sqlite3"
+    with pytest.raises(RWEError, match="schema"):
+        verify_snapshot(dict(manifest, schema_version=manifest["schema_version"] + 1), packed, target)
+    bad = tmp_path / "bad.gz"
+    bad.write_bytes(gzip.compress(b"not a database"))
+    with pytest.raises(RWEError, match="checksum"):
+        verify_snapshot(manifest, bad, target)
+    forged = dict(
+        manifest,
+        compressed=dict(manifest["compressed"], sha256=sha256_file(bad)),
+    )
+    with pytest.raises(RWEError, match="checksum"):
+        verify_snapshot(forged, bad, target)
+    assert not target.exists()

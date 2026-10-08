@@ -31,6 +31,7 @@ $env:EMA_IMPORT_DIR = "<checkout>/data/imports"
 | `mcp/server.py` | MCPアダプタ。`FastMCP`で18ツールを公開し、Pydanticスキーマの`title`を除去して応答量を削減する |
 | `cli.py` | CLIエントリポイント（`ema-rwe`コマンド）。Coreと同じServiceを呼ぶ |
 | `storage.py` | SQLite永続化（`Repository`、DBスキーマ6）、FTS5マッチ式生成（`fts_match`）、CSV取込（`import_csv`）。PDF取得で分かった事実（プロトコルの有無・テキスト層・補完した医薬品と出所ごとの抽出規則の版`exposure_rules`）は`protocol_observations`表に分けて保存し（`observe`）、補完した医薬品の名前とATCコードを索引の医薬品の列に入れる。同梱DBの観測の統合（`merge_bundle_observations`、`_merge_observations`）は項目単位で手元を優先し、医薬品だけは出所ごとに、同梱DBの方が新しい規則の版ならその出所の値を置き換える（`_with_newer_exposures`） |
+| `snapshot.py` | 月ごとのカタログのスナップショットの作成（`build_snapshot`。4 種のエクスポートがそろうことを確認）と検証（`verify_snapshot`。manifest の版、スキーマ、圧縮前後の SHA-256、整合性）。作成は`scripts/build_catalogue_snapshot.py`から使う |
 | `archive.py` | ユーザー要求で保持する不変ID付きPDFと、英語以外のPDFの見出しの英訳（期限切れ削除の対象になるHTTPキャッシュとは別） |
 | `pdf.py` | ページ単位のネイティブPDF抽出と構造推定（`PARSER_VERSION`）。しおり（`apply_bookmarks`）、検証済みの目次（`text_outline`）、文字の大きさと太字による章見出し（`apply_line_styles`、`layout_chapter`）、節と役割（`sections`、`role_basis`）、読む節（`reading_order`）。言語の判定と見出しの英訳の扱い（`english`、`heading_texts`、`stored_translations`、`clean_translations`）。引用検証（`validate_evidence`）、未検証証拠の除去と監査メモ（`prune_unverifiable`、`finalize_extraction`、`audit_extraction`） |
 | `llm.py` | OpenAI互換/LiteLLM経由のJSON補完呼出し、バッチ分割（`split_batches`）、複数バッチの統合（`merge_extractions`。スキーマの上限を超えた事実は`cap_lists`が件数を`missing_information`に記録する）、見出しの英訳（`translate_headings`） |
