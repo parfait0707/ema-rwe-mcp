@@ -8,7 +8,7 @@ codes the catalogue and the EMA dictionary actually carry.
 
 import re
 
-from .drugs import drug_expansion, ingredient_set, load_dictionary
+from .drugs import drug_expansion, ingredient_set, load_dictionary, without_salt
 from .vocabulary import canonical
 
 CODED = re.compile(r"^\(([A-Z]\d{2}(?:[A-Z]{1,2}(?:\d{2})?)?)\)\s*(.+)$")
@@ -31,18 +31,35 @@ def catalogue_atc(entries) -> dict[str, str]:
     return labels
 
 
+def name_words(name: str) -> frozenset[str]:
+    """The whole words of a medicine name without trailing salt or hydrate words, in any order."""
+    return frozenset(without_salt(name).split())
+
+
 def same_medicine(label: str, ingredients: list[str]) -> bool:
-    """Whether a catalogue ATC name and an EMA ingredient list name the same medicine (salts and order aside).
+    """Whether a catalogue ATC name and an EMA ingredient list name the same medicine.
 
     Every ingredient on each side must correspond to one on the other, so a combination never equals one of
-    its ingredients ('metformin' vs empagliflozin + metformin); a salt or longer name still matches by part."""
-    named = ingredient_set(label)
-    have = frozenset(map(canonical, ingredients))
+    its ingredients ('metformin' vs empagliflozin + metformin). Two names correspond when the words of one
+    contain the words of the other, salts aside and in any order: qualifiers such as '(rDNA)', 'human' or
+    'type A' may differ ('insulin (human)' vs 'human insulin (rDNA)'). Words are compared whole, never by
+    their letters, so a prodrug or conjugate named with a prefix stays another medicine ('aprepitant' vs
+    'fosaprepitant', 'interferon' vs 'peginterferon'), and numbers given by both names must agree."""
+    named = [name_words(n) for n in ingredient_set(label)]
+    have = [name_words(i) for i in ingredients]
+
+    def numbered(words: frozenset[str]) -> frozenset[str]:
+        return frozenset(w for w in words if any(ch.isdigit() for ch in w))
+
+    def correspond(a: frozenset[str], b: frozenset[str]) -> bool:
+        # Numbers identify a type, valency or strain ('types 16, 18' vs 'types 6, 11, 16, 18'): when both
+        # names give them they must agree; a name without numbers may still be the broader one.
+        return (a <= b or b <= a) and (not numbered(a) or not numbered(b) or numbered(a) == numbered(b))
 
     def covered(names, others) -> bool:
-        return all(any(n in o or o in n for o in others) for n in names)
+        return all(any(correspond(n, o) for o in others) for n in names)
 
-    return named == have or (covered(named, have) and covered(have, named))
+    return covered(named, have) and covered(have, named)
 
 
 def expand_medicine(query: str, labels: dict[str, str]) -> dict | None:

@@ -253,9 +253,23 @@ def without_salt(name: str) -> str:
     return " ".join(words)
 
 
+BRACKETED = re.compile(r"\([^()]*\)|\[[^\[\]]*\]")
+
+
 def ingredient_set(text: str) -> frozenset[str]:
-    """The ingredients named by one medicine name, order-free; a single name gives a one-element set."""
-    return frozenset(c for part in COMBINATION.split(text) if (c := canonical(part)))
+    """The ingredients named by one medicine name, order-free; a single name gives a one-element set.
+
+    Separators inside brackets describe one ingredient ('papillomavirus (human types 16, 18)'), so only
+    those outside any bracket split the name."""
+    masked = text
+    while (unmasked := BRACKETED.sub(lambda m: "_" * len(m.group()), masked)) != masked:
+        masked = unmasked  # innermost brackets first: '(a, (b))'
+    parts, start = [], 0
+    for match in COMBINATION.finditer(masked):
+        parts.append(text[start : match.start()])
+        start = match.end()
+    parts.append(text[start:])
+    return frozenset(c for part in parts if (c := canonical(part)))
 
 
 def drug_expansion(query, whole_term: bool = False):

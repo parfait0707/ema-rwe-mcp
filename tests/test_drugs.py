@@ -318,6 +318,35 @@ def test_catalogue_code_joins_only_the_whole_ingredient_set(drug_file):
     assert label in expand_medicine("Janumet", {"A10BD07": label})["queries"]
 
 
+def test_names_correspond_by_whole_words_never_by_letters(drug_file):
+    # A prodrug or conjugate named with a prefix is another medicine, though its name contains the other's
+    assert same_medicine("aprepitant", ["fosaprepitant dimeglumine"]) is False
+    assert same_medicine("interferon beta-1a", ["peginterferon beta-1a"]) is False
+    assert same_medicine("ethanol", ["methanol"]) is False
+    # Qualifiers, word order and different salts of one moiety still correspond
+    assert same_medicine("insulin (human)", ["human insulin (rDNA)"])
+    assert same_medicine("botulinum toxin", ["botulinum toxin type A"])
+    assert same_medicine("esomeprazole magnesium", ["esomeprazole sodium"])
+    hpv = "papillomavirus (human types 16, 18)"
+    assert same_medicine(hpv, ["human papillomavirus vaccine [types 16, 18]"])
+    # Numbers given by both names identify the type or valency and must agree; a broader name may omit them
+    assert same_medicine(hpv, ["human papillomavirus vaccine [types 6, 11, 16, 18]"]) is False
+    assert same_medicine(
+        "influenza, live attenuated", ["pandemic influenza vaccine (H5N1) (live attenuated)"]
+    )
+
+
+def test_separators_inside_brackets_do_not_split_a_medicine_name():
+    from ema_rwe.drugs import ingredient_set
+
+    assert ingredient_set("papillomavirus (human types 16, 18)") == {"papillomavirus human types 16 18"}
+    assert ingredient_set("Icandra (previously Vildagliptin / metformin Novartis)") == {
+        "icandra previously vildagliptin metformin novartis"
+    }
+    assert ingredient_set("empagliflozin and metformin") == {"empagliflozin", "metformin"}
+    assert ingredient_set("a (x, (y, z)) / b") == {"a x y z", "b"}
+
+
 async def test_refresh_reports_unreviewed_salt_word_candidates(tmp_path, monkeypatch):
     path = tmp_path / "salts.json"
     monkeypatch.setenv("EMA_DRUG_DICTIONARY_PATH", str(path))
