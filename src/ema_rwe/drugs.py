@@ -106,6 +106,9 @@ async def refresh_dictionary(force=False, transport=None):
     }
 
 
+PREVIOUSLY = re.compile(r"^(.*?)\s*\(previously\b.*\)\s*$", re.IGNORECASE)
+
+
 def _index(records):
     if not records:
         return {}, None
@@ -120,6 +123,18 @@ def _index(records):
         + "|".join(re.escape(t) for t in sorted(terms, key=len, reverse=True))
         + r")(?![a-z0-9_])"
     )
+    # Current product names without the official '(previously ...)' note ('Icandra (previously Vildagliptin
+    # / metformin hydrochloride Novartis)' -> 'icandra'), for whole-term lookups only. Only that note is
+    # dropped (other brackets name a strain, form or valency), and a name shared by products of different
+    # ingredient sets is left out rather than resolved to one of them.
+    aliases: dict[str, set[int]] = {}
+    for i, row in enumerate(records):
+        if match := PREVIOUSLY.match(row["product_name"]):
+            aliases.setdefault(canonical(match[1]), set()).add(i)
+    for alias, found in aliases.items():
+        sets = {frozenset(map(canonical, records[i]["ingredients"])) for i in found}
+        if alias and alias not in terms and len(sets) == 1:
+            terms[alias] = sorted(found)
     # Base names of salted ingredients ('dabigatran etexilate' -> 'dabigatran'), for whole-term lookups
     # only: never scanned inside free text, where a short base word could match an unrelated phrase.
     for i, row in enumerate(records):

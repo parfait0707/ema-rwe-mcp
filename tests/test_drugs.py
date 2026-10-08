@@ -375,3 +375,72 @@ async def test_refresh_reports_unreviewed_salt_word_candidates(tmp_path, monkeyp
     assert "Viread" not in [
         m["product_name"] for m in drug_expansion("tenofovir", whole_term=True)["matches"]
     ]
+
+
+@pytest.fixture
+def relation_file(tmp_path, monkeypatch):
+    """A dictionary with a strain vaccine, a prodrug sharing its active form's code, renamed products."""
+    path = tmp_path / "relations.json"
+    monkeypatch.setenv("EMA_DRUG_DICTIONARY_PATH", str(path))
+    payload = {
+        "meta": {"timestamp": "2026-10-08"},
+        "data": [
+            row("Pandemrix", "pandemic influenza vaccine (H5N1) (live attenuated, nasal)", "J07BB03"),
+            row("Fluenz", "influenza vaccine (live attenuated, nasal)", "J07BB03"),
+            row("Emend", "aprepitant", "A04AD12"),
+            row("Ivemend", "fosaprepitant", "A04AD12"),
+            row(
+                "Icandra (previously Vildagliptin / metformin Novartis)", "vildagliptin;metformin", "A10BD08"
+            ),
+            row("Twin (previously Alpha)", "alphamab", "L01XX01"),
+            row("Twin (previously Beta)", "betamab", "L01XX02"),
+        ],
+    }
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    return path
+
+
+def test_a_broader_catalogue_name_is_a_category_term_never_a_synonym(relation_file):
+    from ema_rwe.medicines import medicine_relation
+
+    laiv = "pandemic influenza vaccine (H5N1) (live attenuated, nasal)"
+    assert medicine_relation("influenza, live attenuated", [laiv]) == "broader"
+    assert (
+        medicine_relation(
+            "influenza vaccine (H5N1) (live attenuated)", ["influenza vaccine (live attenuated)"]
+        )
+        == "narrower"
+    )
+    assert medicine_relation("insulin (human)", ["human insulin (rDNA)"]) == "equivalent"
+    labels = {"J07BB03": "influenza, live attenuated", "J07BB01": "influenza, inactivated, whole virus"}
+    found = expand_medicine(laiv, labels)
+    assert "influenza, live attenuated" not in found["queries"]
+    assert "influenza, live attenuated" in found["category_terms"]
+    # The same catalogue name is the specific term for the unstrained product
+    assert "influenza, live attenuated" in expand_medicine("Fluenz", labels)["queries"]
+
+
+def test_a_class_lists_the_members_it_leaves_out(relation_file):
+    found = expand_medicine("A04AD", {"A04AD12": "aprepitant", "A04AD01": "scopolamine"})
+    assert "aprepitant" in found["queries"] and "fosaprepitant" not in found["queries"]
+    assert found["omitted_members"] == [
+        {
+            "name": "fosaprepitant",
+            "atc_code": "A04AD12",
+            "catalogue_name": "aprepitant",
+            "reason": "the catalogue gives this code to another medicine; not added as a member",
+        }
+    ]
+    assert found["omitted_members_total"] == 1
+    # The prodrug is still never a synonym of its active form
+    assert expand_medicine("fosaprepitant", {"A04AD12": "aprepitant"}) is None
+
+
+def test_a_current_product_name_finds_a_renamed_product_unless_it_is_ambiguous(relation_file):
+    matches = drug_expansion("Icandra", whole_term=True)["matches"]
+    assert [m["product_name"] for m in matches] == ["Icandra (previously Vildagliptin / metformin Novartis)"]
+    assert expand_medicine("Icandra", {"A10BD08": "metformin and vildagliptin"})["atc_codes"] == ["A10BD08"]
+    # Two renamed products now share a name but not their ingredients: neither is chosen
+    assert drug_expansion("Twin", whole_term=True)["matches"] == []
+    # The alias is a whole-name key only, never found inside free text
+    assert drug_expansion("Icandra-like combinations")["matches"] == []
