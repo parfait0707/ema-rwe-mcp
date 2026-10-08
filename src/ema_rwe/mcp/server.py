@@ -274,10 +274,22 @@ def create_server(service: Service | None = None):
         analysis: Extraction,
         coverage_complete: bool = False,
         batch_offset: int | None = None,
+        reading: Annotated[
+            str | None,
+            Field(
+                description="source.reading returned by analyze_protocol; required for a non-English protocol"
+            ),
+        ] = None,
     ) -> dict:
         """Save a caller extraction (verbatim quotes verified). Pass batch_offset per batch; finish with coverage_complete=true."""
         return await call(
-            "cache_protocol_analysis", study_id, fingerprint, analysis, coverage_complete, batch_offset
+            "cache_protocol_analysis",
+            study_id,
+            fingerprint,
+            analysis,
+            coverage_complete,
+            batch_offset,
+            reading,
         )
 
     @server.tool()
@@ -358,9 +370,17 @@ def create_server(service: Service | None = None):
         return await call("research_protocol", protocol_id, question, force)
 
     @server.tool()
-    async def cache_protocol_answer(protocol_id: str, question: str, answer: ProtocolAnswer) -> dict:
+    async def cache_protocol_answer(
+        protocol_id: str,
+        question: str,
+        answer: ProtocolAnswer,
+        reading: Annotated[
+            str | None,
+            Field(description="reading returned by research_protocol; required for a non-English protocol"),
+        ] = None,
+    ) -> dict:
         """Validate and save a caller's question-specific answer with exact quotes/pages/sections."""
-        return await call("cache_protocol_answer", protocol_id, question, answer)
+        return await call("cache_protocol_answer", protocol_id, question, answer, reading)
 
     for tool in server._tool_manager._tools.values():
         tool.parameters = strip_titles(tool.parameters)

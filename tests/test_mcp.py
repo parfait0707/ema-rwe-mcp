@@ -77,6 +77,10 @@ async def test_stdio_discovery_validation_and_local_search(settings, csv_file, p
         assert json.loads(catalogue.content[0].text)["max_comparison_studies"] == 5
         comparison_tool = next(t for t in tools.tools if t.name == "compare_protocols")
         assert "source_preference" in comparison_tool.inputSchema["properties"]
+        # Callers return the reading their work was read under (spec v1.8)
+        for name in ("cache_protocol_analysis", "cache_protocol_answer"):
+            tool = next(t for t in tools.tools if t.name == name)
+            assert "reading" in tool.inputSchema["properties"]
         collection_tool = next(t for t in tools.tools if t.name == "get_protocol_comparison")
         assert "selected_study_ids" in collection_tool.inputSchema["properties"]
         imported = await session.call_tool("import_catalogue_csv", {"filename": "export-data.csv"})

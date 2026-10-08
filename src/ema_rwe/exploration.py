@@ -9,6 +9,7 @@ from .llm import SOURCE_ASSESSMENT_PROMPT, complete_json, configured, drop_inval
 from .pdf import (
     extract_pages,
     prune_unverifiable,
+    reading_hash,
     reading_order,
     search_sections,
     sections,
@@ -60,9 +61,24 @@ class Explorer:
                 "CREATE TABLE IF NOT EXISTS protocol_answers (cache_key TEXT PRIMARY KEY, body TEXT NOT NULL)"
             )
 
-    def context(self, protocol_id):
+    def reading_record(self, protocol_id: str) -> dict | None:
+        """The PDF's heading reading record (language, translations), kept in the database. A record an
+        earlier version saved beside the PDF (.headings) is adopted once, never over a saved one."""
+        record = self.repo.reading(protocol_id)
+        if record is None and (legacy := self.archive.headings(protocol_id)) is not None:
+            self.repo.import_reading(protocol_id, legacy, reading_hash(stored_translations(legacy)))
+            record = self.repo.reading(protocol_id)
+        return record
+
+    def translations(self, protocol_id: str) -> dict[str, str]:
+        return stored_translations(self.reading_record(protocol_id)) or {}
+
+    def context(self, protocol_id, translations: dict[str, str] | None = None):
+        """Pages, sections and source of a PDF, read under the given translations (default: current)."""
         data, source = self.archive.load(protocol_id)
-        pages = extract_pages(data, translations=stored_translations(self.archive.headings(protocol_id)))
+        if translations is None:
+            translations = self.translations(protocol_id)
+        pages = extract_pages(data, translations=translations)
         return pages, sections(pages), source
 
     def outline(self, protocol_id, offset=0, limit=100, detail="compact"):
@@ -123,9 +139,13 @@ class Explorer:
             "network_requests": 0,
         }
 
-    def key(self, protocol_id, question):
+    def key(self, protocol_id, question, reading: str | None = None):
+        """The cache key of a question about a PDF. A heading reading other than '' (translations) is part of
+        it: an answer explored under other translations is never served under the current ones."""
         if not question.strip() or len(question) > 2000:
             raise RWEError("INVALID_INPUT", "Question must be 1..2000 characters.")
+        if reading is None:
+            reading = reading_hash(self.translations(protocol_id))
         return hashlib.sha256(
             json.dumps(
                 [
@@ -136,22 +156,19 @@ class Explorer:
                     self.settings.llm_backend,
                     self.settings.llm_model,
                     self.settings.llm_base_url,
-                    # Heading translations change section roles; absent for English and untranslated PDFs.
-                    *(
-                        [sorted(translations.items())]
-                        if (translations := stored_translations(self.archive.headings(protocol_id)))
-                        else []
-                    ),
+                    *([reading] if reading else []),
                 ]
             ).encode()
         ).hexdigest()
 
-    async def answer_from_full_text(self, protocol_id, question) -> tuple[ProtocolAnswer, dict]:
+    async def answer_from_full_text(
+        self, protocol_id, question, translations: dict[str, str] | None = None
+    ) -> tuple[ProtocolAnswer, dict]:
         """Long-context route: one provider call per batch over all relevant sections, merged and pruned.
 
         Replaces the step-bounded search/read loop, which spent its whole budget on 12k-char reads.
         """
-        pages, chunks, _ = self.context(protocol_id)
+        pages, chunks, _ = self.context(protocol_id, translations)
         batches = split_batches(reading_order(chunks), self.settings.llm_batch_chars)
         semaphore = asyncio.Semaphore(max(1, self.settings.llm_concurrency))
 
@@ -208,7 +225,8 @@ class Explorer:
         )
         return answer, {"mode": "provider_full_text", "batches": len(batches), "dropped": dropped}
 
-    def save(self, protocol_id, question, answer: ProtocolAnswer, trace=None):
+    def save(self, protocol_id, question, answer: ProtocolAnswer, trace=None, reading: str | None = None):
+        """Validate and cache an answer under the reading it was explored with (default: current)."""
         pages, _, source = self.context(protocol_id)
         validate_evidence(Extraction(key_notes=answer.answers[:20]), pages)
         # Also validate answers beyond the Extraction key_notes limit.
@@ -228,12 +246,15 @@ class Explorer:
         with self.repo.connection() as db:
             db.execute(
                 "INSERT OR REPLACE INTO protocol_answers VALUES (?,?)",
-                (self.key(protocol_id, question), json.dumps(result, ensure_ascii=False)),
+                (self.key(protocol_id, question, reading), json.dumps(result, ensure_ascii=False)),
             )
         return result
 
     async def research(self, protocol_id, question, force=False):
-        key = self.key(protocol_id, question)
+        # One snapshot of the translations for the whole question: the answer is explored and cached under it.
+        translations = self.translations(protocol_id)
+        reading = reading_hash(translations)
+        key = self.key(protocol_id, question, reading)
         self.archive.load(protocol_id)  # Report a removed/corrupt local PDF instead of silently hiding it.
         if not force:
             with self.repo.connection() as db:
@@ -249,6 +270,7 @@ class Explorer:
             return {
                 "status": "needs_client_exploration",
                 "question": question,
+                "reading": reading,
                 **initial,
                 "answer_schema": ProtocolAnswer.model_json_schema(),
                 "instruction": "results are ranked by relevance to the question with text included up to "
@@ -258,16 +280,16 @@ class Explorer:
                 "Translate clinical concepts to English and search related disease/drug terms and medical codes. "
                 "Pass codes=[{system,code}] for code-only tables. Consider vocabulary/version and source database; "
                 "never equate retrieved codes with the requested outcome until you read the definition and algorithm. "
-                "Then call cache_protocol_answer with exact quotes, physical pages and section labels. "
+                "Then call cache_protocol_answer with exact quotes, physical pages, section labels and reading. "
                 "No match is not proof that the information is absent. "
                 + SOURCE_ASSESSMENT_PROMPT
                 + " Return source_assessments only for definitions relevant to this question. Inspect their actual "
                 "data inputs, even if the question does not explicitly mention source type. Do not substitute "
                 "another outcome's or another cohort's data. Include all relevant types, not just the user's preferred type.",
             }
-        answer, trace_entry = await self.answer_from_full_text(protocol_id, question)
+        answer, trace_entry = await self.answer_from_full_text(protocol_id, question, translations)
         if answer.answers or answer.source_assessments:
-            return self.save(protocol_id, question, answer, [trace_entry])
+            return self.save(protocol_id, question, answer, [trace_entry], reading)
         initial = self.search(protocol_id, question, limit=3)
         messages = [
             {
@@ -305,7 +327,7 @@ class Explorer:
             try:
                 if action == "finish":
                     answer = ProtocolAnswer.model_validate(decision.get("answer"))
-                    return self.save(protocol_id, question, answer, trace)
+                    return self.save(protocol_id, question, answer, trace, reading)
                 if action == "search":
                     result = self.search(
                         protocol_id,

@@ -51,6 +51,7 @@ from .pdf import (
     extract_pages,
     finalize_extraction,
     heading_texts,
+    reading_hash,
     reading_order,
     sections,
     stored_translations,
@@ -1160,6 +1161,9 @@ class Service:
             "selection_reason": result["selection_reason"],
             "extractor": self.settings.llm_model or "client-assisted",
             "schema_version": SCHEMA_VERSION,
+            # The heading reading the sections are selected under ('' without translations). It stays out of
+            # the fingerprint, which comparisons record before any translation; saves are checked against it.
+            "reading": reading_hash(self._translations(result["protocol"]["protocol_id"])),
         }
         previous = self.repo.analysis(study_id)
         if previous and previous["source"]["fingerprint"] != fingerprint:
@@ -1184,19 +1188,33 @@ class Service:
             # Subsequent client-extraction batches must not fall back to the old cached analysis.
             self.repo.invalidate_analysis(self.repo.get(study_id))
             old = None
-        if old and old["source"]["fingerprint"] == source["fingerprint"]:
+        # An analysis saved before readings were recorded was read without translations ('').
+        if (
+            old
+            and old["source"]["fingerprint"] == source["fingerprint"]
+            and old["source"].get("reading", "") == source["reading"]
+        ):
             old["source"].update(
                 retrieved_at=source["retrieved_at"], documents_checked_at=source["documents_checked_at"]
             )
-            self.repo.save_analysis(self.repo.get(study_id), old)
-            return analysis_view(dict(old, cached=True), detail)
-        if stored_translations(self.archive.headings(source["protocol_id"])) is None:
+            try:
+                self.repo.save_analysis(self.repo.get(study_id), old, reading=source["reading"])
+                return analysis_view(dict(old, cached=True), detail)
+            except RWEError as exc:
+                if exc.code != "READING_CONTEXT_CHANGED":
+                    raise
+                source["reading"] = reading_hash(self._translations(source["protocol_id"]))
+        if stored_translations(self.explorer.reading_record(source["protocol_id"])) is None:
             request = await self._check_heading_language(source, pdf)
             if request:
                 return request
+            source["reading"] = reading_hash(self._translations(source["protocol_id"]))
         if configured(self.settings):
             return analysis_view(await self._provider_extraction(study_id, pdf, source), detail)
-        pages = await self._pages(pdf, source["protocol_id"])
+        # One snapshot of the translations: the batch is read under the reading it reports.
+        translations = self._translations(source["protocol_id"])
+        source["reading"] = reading_hash(translations)
+        pages = await asyncio.to_thread(extract_pages, pdf, True, translations)
         chunks = reading_order(sections(pages))
         if not chunks:
             raise RWEError("SECTION_PARSE_FAILED", "No relevant protocol sections found.")
@@ -1211,7 +1229,9 @@ class Service:
             "status": "needs_client_extraction",
             "source": source,
             "cached": False,
-            "cached_batch_offsets": sorted(self._partials.get((study_id, source["fingerprint"]), {})),
+            "cached_batch_offsets": sorted(
+                self._partials.get((study_id, source["fingerprint"], source["reading"]), {})
+            ),
             "sections": selected,
             "offset": offset,
             "next_offset": next_offset if next_offset < len(chunks) else None,
@@ -1223,7 +1243,8 @@ class Service:
             result.update(
                 instruction=EXTRACTION_PROMPT + " Read every batch using next_offset (with a 200k+ context "
                 "window pass max_chars=120000 to cut round trips). After each batch call "
-                "cache_protocol_analysis with fingerprint, that batch's analysis and batch_offset=offset so "
+                "cache_protocol_analysis with fingerprint, reading (source.reading), that batch's analysis and "
+                "batch_offset=offset so "
                 "progress survives context compaction (skip offsets already in cached_batch_offsets); after "
                 "the last batch call it with coverage_complete=true to merge and save. Later batches omit "
                 "this instruction and analysis_schema.",
@@ -1239,7 +1260,21 @@ class Service:
         return result
 
     def _translations(self, protocol_id: str) -> dict[str, str]:
-        return stored_translations(self.archive.headings(protocol_id)) or {}
+        return self.explorer.translations(protocol_id)
+
+    def _reading_snapshot(self, source: dict, reading: str | None, redo: str) -> dict[str, str]:
+        """The current translations, after checking that a caller's work was read under them: required for a
+        non-English protocol (an English one has none, so its callers may omit reading). Sets source.reading."""
+        translations = self._translations(source["protocol_id"])
+        source["reading"] = reading_hash(translations)
+        record = self.explorer.reading_record(source["protocol_id"])
+        if record and record.get("language") == "other" and reading != source["reading"]:
+            raise RWEError(
+                "READING_CONTEXT_CHANGED",
+                "This work was not read under the protocol's current heading translations (pass the reading "
+                f"returned with it); read the protocol again and {redo}.",
+            )
+        return translations
 
     async def _pages(self, pdf: bytes, protocol_id: str):
         return await asyncio.to_thread(extract_pages, pdf, True, self._translations(protocol_id))
@@ -1274,7 +1309,11 @@ class Service:
                     f"Heading translation for this non-English protocol failed: {exc.message}{retry}",
                 ) from exc
             record.update(language="other", translations=translations, translator=self.settings.llm_model)
-        self.archive.save_headings(protocol_id, record)
+        study = self.repo.get(source["study_id"])
+        # keep_parser: translations a caller saved (in another process) during this check are not overwritten.
+        self.repo.set_reading(
+            protocol_id, record, reading_hash(record["translations"]), study, keep_parser=PARSER_VERSION
+        )
         return None
 
     async def cache_heading_translations(self, protocol_id: str, translations: dict[str, str]):
@@ -1286,27 +1325,23 @@ class Service:
         headings = heading_texts(sections(pages))
         kept = clean_translations(headings, translations)
         study_id = protocol_id.split("_")[1]
-        saved = self.repo.analysis(study_id)
-        if kept != self._translations(protocol_id):
-            # Translations decide the sections read. They stay out of the fingerprint, which comparisons recorded
-            # before any translation existed, so a change discards this PDF's analysis, held batches and any
-            # server-side extraction of it (running or finished but not yet collected): their reading is stale.
-            # No await separates this block from saving the translations, so a running task cannot save between.
-            if saved and saved["source"].get("protocol_id") == protocol_id:
-                self.repo.invalidate_analysis(self.repo.get(study_id))
+        record = {
+            "parser": PARSER_VERSION,
+            "language": "other",
+            "translations": kept,
+            "translator": "client-assisted",
+        }
+        # Translations decide the sections read. They stay out of the fingerprint, which comparisons record
+        # before any translation; instead the database retires this PDF's analysis in the same transaction
+        # that saves a changed reading, and every later save is checked against the reading (also across
+        # server processes sharing the database).
+        if self.repo.set_reading(protocol_id, record, reading_hash(kept), self.repo.get(study_id)):
+            # This process's held batches and server-side extractions (running or uncollected) read the
+            # old way: drop them rather than let them fail at save time.
             for key in [k for k in self._partials if k[0] == study_id]:
                 self._partials.pop(key)
             for key in [k for k in self._extractions if k[0] == study_id]:
                 self._extractions.pop(key)[0].cancel()
-        self.archive.save_headings(
-            protocol_id,
-            {
-                "parser": PARSER_VERSION,
-                "language": "other",
-                "translations": kept,
-                "translator": "client-assisted",
-            },
-        )
         return {
             "status": "translations_cached",
             "study_id": study_id,
@@ -1476,8 +1511,15 @@ class Service:
     async def research_protocol(self, protocol_id: str, question: str, force: bool = False):
         return await self.explorer.research(protocol_id, question, force)
 
-    async def cache_protocol_answer(self, protocol_id: str, question: str, answer: ProtocolAnswer):
-        return await asyncio.to_thread(self.explorer.save, protocol_id, question, answer)
+    async def cache_protocol_answer(
+        self, protocol_id: str, question: str, answer: ProtocolAnswer, reading: str | None = None
+    ):
+        """Cache a caller's answer under the reading research_protocol returned with the question."""
+        source = {"protocol_id": protocol_id}
+        self._reading_snapshot(source, reading, "answer the question again")
+        return await asyncio.to_thread(
+            self.explorer.save, protocol_id, question, answer, None, source["reading"]
+        )
 
     async def cache_protocol_analysis(
         self,
@@ -1486,9 +1528,12 @@ class Service:
         analysis: Extraction,
         coverage_complete: bool = False,
         batch_offset: int | None = None,
+        reading: str | None = None,
     ):
         """Save a caller extraction. With batch_offset the batch is held server-side until the final
-        coverage_complete call merges every cached batch, so context compaction cannot lose progress."""
+        coverage_complete call merges every cached batch, so context compaction cannot lose progress.
+        reading is analyze_protocol's source.reading: a non-English protocol's batches must have been read
+        under its current heading translations."""
         if not coverage_complete and batch_offset is None:
             raise RWEError(
                 "INCOMPLETE_EXTRACTION",
@@ -1497,9 +1542,10 @@ class Service:
         pdf, source = await self._context(study_id)
         if source["fingerprint"] != fingerprint:
             raise RWEError("PROTOCOL_CHANGED", "Protocol/extractor changed; analyze current protocol again.")
-        pages = await self._pages(pdf, source["protocol_id"])
+        translations = self._reading_snapshot(source, reading, "reread the batches")
+        pages = await asyncio.to_thread(extract_pages, pdf, True, translations)
         validate_evidence(analysis, pages)
-        key = (study_id, fingerprint)
+        key = (study_id, fingerprint, source["reading"])
         if not coverage_complete:
             self._partials.setdefault(key, {})[batch_offset] = analysis
             return {
@@ -1517,9 +1563,9 @@ class Service:
 
     async def _provider_extraction(self, study_id: str, pdf: bytes, source: dict) -> dict:
         """Run (or keep running) the server-side extraction; return status=extracting when it outlasts the wait."""
-        key = (study_id, source["fingerprint"])
+        key = (study_id, source["fingerprint"], source["reading"])
         for stale in [k for k in self._extractions if k[0] == study_id and k != key]:
-            # The protocol changed under a running extraction: its result would describe the old PDF.
+            # The protocol or its reading changed under a running extraction: its result would be stale.
             self._extractions.pop(stale)[0].cancel()
         entry = self._extractions.get(key)
         if entry is None or (entry[0].done() and entry[0].exception() is not None):
@@ -1546,7 +1592,13 @@ class Service:
         }
 
     async def _extract_and_save(self, study_id: str, pdf: bytes, source: dict, progress: dict) -> dict:
-        pages = await self._pages(pdf, source["protocol_id"])
+        translations = self._translations(source["protocol_id"])
+        if reading_hash(translations) != source["reading"]:
+            raise RWEError(
+                "READING_CONTEXT_CHANGED", "Heading translations changed; call analyze_protocol again."
+            )
+        # The task reads with this snapshot of the translations; its save is checked against the same reading.
+        pages = await asyncio.to_thread(extract_pages, pdf, True, translations)
         chunks = reading_order(sections(pages))
         if not chunks:
             raise RWEError("SECTION_PARSE_FAILED", "No relevant protocol sections found.")
@@ -1567,7 +1619,7 @@ class Service:
             "validation": "Exact quote/page and optional section verified; semantic correctness requires review.",
             "cached": False,
         }
-        self.repo.save_analysis(self.repo.get(study_id), result)
+        self.repo.save_analysis(self.repo.get(study_id), result, reading=source.get("reading", ""))
         return analysis_view(result, detail)
 
 

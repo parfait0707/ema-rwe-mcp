@@ -5,6 +5,7 @@ import re
 import uuid
 
 from .domain import RWEError, atomic_write, now
+from .pdf import reading_hash
 from .source_types import select_rows
 
 ROW_STUDY_KEYS = ("study_id", "title", "eupas_number", "countries", "data_source_types", "status")
@@ -281,6 +282,10 @@ class Comparisons:
                 continue
             row.pop("error", None)
             analysis = self.service.repo.analysis(sid)
+            if analysis and analysis["source"].get("reading", "") != reading_hash(
+                self.service.explorer.translations(pid)
+            ):
+                analysis = None  # read under other heading translations: analyze again (spec v1.8)
             if analysis and analysis["source"]["fingerprint"] != source["fingerprint"]:
                 row.update(
                     status="error",
