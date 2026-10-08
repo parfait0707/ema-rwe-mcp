@@ -565,6 +565,13 @@ PDF 取得先ディレクトリ名から X/Y が推測可能だった（P）、�
 - 潜在的な誤り（コードに関係なく、名前の異なる全組で同じ薬と判定されるもの）：旧規則 128 組、新規則 111 組。旧規則だけの 29 組（鏡像異性体、PEG 化体、プロドラッグ、別の INN）は新規則が分ける。新規則にだけ残るのは、ワクチンの成分の一部と全体（4 種混合と 6 種混合など）と、lutetium (177Lu) chloride とその結合体で、どちらも ATC が別のコードを付けているので結果に表れない。
 - テスト：`test_names_correspond_by_whole_words_never_by_letters`、`test_separators_inside_brackets_do_not_split_a_medicine_name`（文字単位の照合、括弧の外だけの分割、番号の一致を外すとそれぞれ失敗することを確認）。
 
+## 2026-10-08 カタログのスナップショット（版管理の計画の段階 1）
+
+- 2026-10-01 の 4 つのエクスポートから `data-20261001` 用のスナップショットを作った。研究 3,314 件、種別の取り込みは claims 819、ehr 916、registry 559 件、補完の観測 432 件で、CSV の SHA-256 も含めてリポジトリの `data/ema.sqlite3` と一致した。DB は 44.2 MB、gzip で 12.9 MB。
+- リポジトリの DB との比較：diabetes、heart failure、apixaban、registry、interstitial lung disease の 5 語で、返る研究と順序が一致した。
+- `verify_snapshot` で展開と照合ができ、今の `refresh_from_bundle` で利用者の DB（取り込み日時を古くしたコピー）のカタログを置き換えられた。
+- テスト：`tests/test_snapshot.py` 3 件（4 種のエクスポートからの作成と取り込み、種類の欠けと日付の混在の拒否、改ざんとスキーマ違いの拒否）。
+
 ## 未検証事項（継続）
 
 - 外部LLM API呼出しの実認証検証は未実施。キーなしの呼出元LLM方式は合成PDFで保存・再利用まで検証。

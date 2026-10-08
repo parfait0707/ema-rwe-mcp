@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Catalogue snapshots (code/data versioning plan, stage 1): `scripts/build_catalogue_snapshot.py <YYYYMMDD>`
+  builds a database from exactly the four exports of one refresh (full Studies plus claims, ehr and
+  registry; a missing or duplicated kind stops it), keeps the committed database's protocol observations,
+  compacts and checks it, and writes the database, its gzip and `manifest.json` (schema, SHA-256 before and
+  after compression, export files and rows) for a `data-YYYYMMDD` GitHub release. `ema_rwe.snapshot.verify_snapshot`
+  checks a downloaded snapshot against its manifest. Servers do not fetch snapshots yet (stage 2).
 - Medicine names correspond by whole words, never by letters (spec v1.7): an EMA dictionary code joins the
   catalogue's name for it only when the words of one name, salts aside, contain the other's, and numbers
   both names give (types, valency) agree. A prodrug or conjugate named with a prefix stays another medicine
