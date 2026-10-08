@@ -44,8 +44,8 @@
 
 戻り値の `pending_tools` を全件実行する。
 
-- `analyze_protocol`：共通抽出。`extracting` ならサーバー側抽出中なので同じ呼出を繰り返して結果を受け取る。`needs_heading_translation`（英語以外のプロトコル）なら `headings` を英訳して `cache_heading_translations` で保存し、同じ呼出をやり直す（同じプロトコルの `research_protocol` より先に行う）。`needs_client_extraction` なら `next_offset` がなくなるまで全バッチを読み、バッチごとに `cache_protocol_analysis(batch_offset=offset)` で途中保存し、最後に `coverage_complete=true` を渡す。
-- `research_protocol`：質問別の追加探索。`needs_client_exploration` なら `get_protocol_outline`、`search_protocol_text`、`read_protocol_text` で方法・定義・隣接章・コード付録を確認し、`cache_protocol_answer` に保存する。
+- `analyze_protocol`：共通抽出。`extracting` ならサーバー側抽出中なので同じ呼出を繰り返して結果を受け取る。`needs_heading_translation`（英語以外のプロトコル）なら `headings` を英訳して `cache_heading_translations` で保存し、同じ呼出をやり直す（同じプロトコルの `research_protocol` より先に行う）。`needs_client_extraction` なら `next_offset` がなくなるまで全バッチを読み、バッチごとに `cache_protocol_analysis(batch_offset=offset)` で途中保存し、最後に `coverage_complete=true` を渡す（`reading=source.reading` も渡す。英語以外のプロトコルでは必須で、`READING_CONTEXT_CHANGED` なら `analyze_protocol` からやり直す）。
+- `research_protocol`：質問別の追加探索。`needs_client_exploration` なら `get_protocol_outline`、`search_protocol_text`、`read_protocol_text` で方法・定義・隣接章・コード付録を確認し、`cache_protocol_answer` に保存する（`needs_client_exploration` が返す `reading` を渡す。英語以外のプロトコルでは必須）。
 - 最後に `get_protocol_comparison(comparison_id)`：保存済み解析と質問別回答を全件集約してJSON/Markdownを更新する。未処理が残れば繰り返す。
 
 内部LLM設定時も上記のツール順序は同じ。各解析・探索ツールが内部APIを呼んで検証・保存する。比較ツール1回が内部で全件分のLLM処理を連続実行する設計ではない。APIの長い探索がクライアントのツールタイムアウトを超える場合は上限・タイムアウト設定の調整が必要。

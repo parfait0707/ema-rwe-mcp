@@ -66,3 +66,36 @@ def test_a_tampered_or_foreign_snapshot_is_refused_and_left_unpacked_nowhere(exp
     with pytest.raises(RWEError, match="checksum"):
         verify_snapshot(forged, bad, target)
     assert not target.exists()
+    with pytest.raises(RWEError, match="lacks"):
+        verify_snapshot({k: v for k, v in manifest.items() if k != "compressed"}, packed, target)
+
+
+def test_the_manifest_counts_observations_of_the_snapshot_studies_only(exports, tmp_path):
+    """Observations merged for studies outside the snapshot's exports are not counted."""
+    observations = tmp_path / "observations.sqlite3"
+    repo = Repository(observations)
+    repo.observe("123", protocol_found=True, exposures=[{"term": "apixaban", "source": "catalogue_text"}])
+    repo.observe("456", protocol_found=True)  # checked, no medicines found
+    repo.observe("999999", protocol_found=True, exposures=[{"term": "x", "source": "catalogue_text"}])
+    manifest = build_snapshot(exports, "20261101", tmp_path / "out", observations)
+    assert manifest["observed_studies"] == 2 and manifest["backfilled_studies"] == 1
+
+
+def test_the_script_verifies_a_downloaded_snapshot_folder(exports, tmp_path):
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    script = Path(__file__).resolve().parents[1] / "scripts" / "build_catalogue_snapshot.py"
+    manifest = build_snapshot(exports, "20261101", tmp_path / "out", None)
+    ok = subprocess.run(
+        [sys.executable, script, "--verify", tmp_path / "out"], capture_output=True, text=True, check=False
+    )
+    assert ok.returncode == 0 and json.loads(ok.stdout)["verified"] == "20261101"
+    broken = dict(manifest)
+    del broken["studies_total"]
+    (tmp_path / "out" / "manifest.json").write_text(json.dumps(broken))
+    bad = subprocess.run(
+        [sys.executable, script, "--verify", tmp_path / "out"], capture_output=True, text=True, check=False
+    )
+    assert bad.returncode == 1 and "SNAPSHOT_INVALID" in bad.stderr

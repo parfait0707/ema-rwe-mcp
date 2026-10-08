@@ -26,7 +26,7 @@ Build an evidence-backed MCP for finding and analysing EMA RWD protocols. Read `
 
 ## Layout and development
 
-Python 3.12+. Source: `src/ema_rwe/`; core service: `service.py`; MCP adapter: `mcp/server.py`; CLI: `cli.py`; PDF structure, section roles, heading translation and evidence checks: `pdf.py`; LLM calls (extraction, heading translation): `llm.py`; persistence: `storage.py` and `archive.py`; clinical expansion: `terminology.py`, `drugs.py`, `vocabulary.py`, `medicines.py` (medicine expansion and backfill extraction); ranking and screening: `ranking.py`, `selection.py`; comparison export: `comparison.py`; protocol exploration: `exploration.py`.
+Python 3.12+. Source: `src/ema_rwe/`; core service: `service.py`; MCP adapter: `mcp/server.py`; CLI: `cli.py`; PDF structure, section roles, heading translation and evidence checks: `pdf.py`; LLM calls (extraction, heading translation): `llm.py`; persistence: `storage.py` and `archive.py`; clinical expansion: `terminology.py`, `drugs.py`, `vocabulary.py`, `medicines.py` (medicine expansion and backfill extraction); ranking and screening: `ranking.py`, `selection.py`; comparison export: `comparison.py`; protocol exploration: `exploration.py`; monthly catalogue snapshots: `snapshot.py` and `scripts/build_catalogue_snapshot.py` (see `docs/release.md`).
 
 Run every Python tool through `uv` (the PreToolUse hook blocks bare `python`/`pip`):
 

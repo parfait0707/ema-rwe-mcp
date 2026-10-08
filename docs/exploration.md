@@ -56,12 +56,12 @@ PDFは追加要望に従ってユーザーが削除するまで保持する。�
 | `search_protocol_text(protocol_id, query, synonyms=[], limit=10)` | 初回除外した章も含むPDF全文検索。最大30件 |
 | `read_protocol_text(protocol_id, section_id=..., offset=0)` | チャンク全文を読む |
 | `research_protocol(protocol_id, question, force=false)` | 保存回答を再利用、または問い合わせ別の探索を開始 |
-| `cache_protocol_answer(protocol_id, question, answer)` | 問い合わせ別の出典付き回答を検証・保存 |
+| `cache_protocol_answer(protocol_id, question, answer, reading=None)` | 問い合わせ別の出典付き回答を検証・保存（`reading` は `research_protocol` が返した値。英語以外のプロトコルでは必須） |
 | `cache_heading_translations(protocol_id, translations)` | 英語以外のプロトコルの見出しの英訳を保存（`analyze_protocol` の `needs_heading_translation` への応答） |
 
 `read_protocol_text` は `section_id` の代わりに `start_page` / `end_page` で物理PDFの1～5ページを指定できる。最大20,000文字／回で、`next_offset` があるときは同じ対象と次のoffsetで続きを読む。
 
-内部LLM未設定の `research_protocol` は `needs_client_exploration`、初期検索ヒット、回答schemaを返す。呼出元LLMは追加語で検索し、章一覧や前後ページを辿ってから保存する。回答schemaは `answers: [{value, evidence:[{page,section,quote}]}]`、`source_assessments`（データタイプと定義用途の判定。[用途別分類](source-types.md)）、`missing_information`。元の共通抽出schemaを上書きしない。質問別回答は別SQLiteテーブルに保存する。
+内部LLM未設定の `research_protocol` は `needs_client_exploration`、初期検索ヒット、回答schema、読み方 `reading`（英訳のある文書でだけ空でない）を返す。呼出元LLMは追加語で検索し、章一覧や前後ページを辿ってから保存する。回答schemaは `answers: [{value, evidence:[{page,section,quote}]}]`、`source_assessments`（データタイプと定義用途の判定。[用途別分類](source-types.md)）、`missing_information`。元の共通抽出schemaを上書きしない。質問別回答は別SQLiteテーブルに保存する。
 
 例:
 
@@ -72,7 +72,7 @@ research_protocol(protocol_id="pdf_...", question="欠測値処理はどう計�
 search_protocol_text(protocol_id="pdf_...", query="missing data", synonyms=["complete case", "multiple imputation"])
 get_protocol_outline(protocol_id="pdf_...")
 read_protocol_text(protocol_id="pdf_...", start_page=28, end_page=31)
-cache_protocol_answer(protocol_id="pdf_...", question="欠測値処理はどう計画されていますか？", answer={...})
+cache_protocol_answer(protocol_id="pdf_...", question="欠測値処理はどう計画されていますか？", answer={...}, reading="<research_protocolのreading>")
 ```
 
 ヒットなしだけを理由に「記載なし」と断定しない。章・本文を確認しても不明なら `missing_information` に調査範囲と不明点を書く。
@@ -86,7 +86,7 @@ CLIも共通Coreを使用する:
 .venv/Scripts/ema-rwe pdf-search "pdf_..." "欠測値処理" --synonym "complete case"
 .venv/Scripts/ema-rwe pdf-read "pdf_..." --start-page 28 --end-page 31
 .venv/Scripts/ema-rwe ask "pdf_..." "欠測値処理はどう計画されていますか？"
-.venv/Scripts/ema-rwe cache-answer "pdf_..." "欠測値処理はどう計画されていますか？" answer.json
+.venv/Scripts/ema-rwe cache-answer "pdf_..." "欠測値処理はどう計画されていますか？" answer.json --reading "<askのreading>"
 .venv/Scripts/ema-rwe cache-headings "pdf_..." headings.json
 ```
 

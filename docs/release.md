@@ -51,9 +51,9 @@ gh repo edit parfait0707/ema-rwe-mcp --visibility public --accept-visibility-cha
 カタログはアプリの版とは別に、月ごとのスナップショットとして GitHub Releases に公開する（[計画](research/202610081527_code_data_versioning_plan.md)の段階 1）。
 
 1. EMA の検索ページから、全研究と claims、ehr、registry の 4 つを同じ日にエクスポートし、`data/imports/studies/<YYYYMMDD>_all_export-data.csv` と `data/imports/source_type/<YYYYMMDD>_<種別>_export-data.csv` に置く。
-2. `uv run scripts/build_catalogue_snapshot.py <YYYYMMDD>` を実行する。その日付の 4 つだけを空の DB に取り込み、リポジトリの `data/ema.sqlite3` の補完の結果を移し、`VACUUM` と整合性の確認をして、`dist/snapshots/<YYYYMMDD>/` に DB、gzip、`manifest.json` を書き出す。4 つのどれかが無いか重複するときは止まる。
-3. `gh release create data-<YYYYMMDD> --latest=false --title "Catalogue <YYYY-MM-DD>" dist/snapshots/<YYYYMMDD>/ema-catalogue-<YYYYMMDD>.sqlite3.gz dist/snapshots/<YYYYMMDD>/manifest.json`。`--latest=false` で、アプリの最新版の表示を変えない。
-4. 公開したファイルを取り直し、`ema_rwe.snapshot.verify_snapshot` で manifest と照合できることを確かめる。
+2. `uv run scripts/build_catalogue_snapshot.py <YYYYMMDD>` を実行する。その日付の 4 つだけを空の DB に取り込み、リポジトリの `data/ema.sqlite3` の補完の結果を移し、`VACUUM` と整合性の確認をして、`dist/snapshots/<YYYYMMDD>/` に DB、gzip、`manifest.json` を書き出す。4 つのどれかが無いか重複するとき、出力先に同じスナップショットが既にあるとき（作り直すなら先に消す）は止まる。
+3. `gh release create data-<YYYYMMDD> --target main --latest=false --title "Catalogue <YYYY-MM-DD>" --notes "Catalogue snapshot of the EMA exports dated <YYYY-MM-DD>; see manifest.json" dist/snapshots/<YYYYMMDD>/ema-catalogue-<YYYYMMDD>.sqlite3.gz dist/snapshots/<YYYYMMDD>/manifest.json`。`--latest=false` で、アプリの最新版の表示を変えない。保守者の Claude Code の環境では、利用者レベルのフック（リポジトリには無い）が、リリースの作成の前に整合性の監査を済ませ、コミットした状態に印を付けることを求める。
+4. 公開したファイルを取り直して照合する：`gh release download data-<YYYYMMDD> -D <一時フォルダ>` の後、`uv run scripts/build_catalogue_snapshot.py --verify <一時フォルダ>`。
 
 利用者のサーバーがスナップショットを取り込む機能（段階 2 以降）はまだ無い。それまでは、同梱 DB の更新はアプリのリリースで行う。
 

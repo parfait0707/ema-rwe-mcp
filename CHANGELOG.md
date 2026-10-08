@@ -25,8 +25,10 @@
   builds a database from exactly the four exports of one refresh (full Studies plus claims, ehr and
   registry; a missing or duplicated kind stops it), keeps the committed database's protocol observations,
   compacts and checks it, and writes the database, its gzip and `manifest.json` (schema, SHA-256 before and
-  after compression, export files and rows) for a `data-YYYYMMDD` GitHub release. `ema_rwe.snapshot.verify_snapshot`
-  checks a downloaded snapshot against its manifest. Servers do not fetch snapshots yet (stage 2).
+  after compression, export files and rows, observed and backfilled studies) for a `data-YYYYMMDD` GitHub
+  release. `ema_rwe.snapshot.verify_snapshot` (CLI: `build_catalogue_snapshot.py --verify <folder>`) checks a
+  downloaded snapshot against its manifest; a manifest without its checksums is `SNAPSHOT_INVALID`.
+  Servers do not fetch snapshots yet (stage 2).
 - Medicine names correspond by whole words, never by letters (spec v1.7): an EMA dictionary code joins the
   catalogue's name for it only when the words of one name, salts aside, contain the other's, and numbers
   both names give (types, valency) agree. A prodrug or conjugate named with a prefix stays another medicine
@@ -39,7 +41,8 @@
   export and every imported source-type export within the TTL, so a fresh registry export no longer makes
   an old full export look current. `exports` gives each export's file, date and status,
   `missing_source_type_exports` the type exports never imported, and `snapshot_aligned=false` (exports of
-  different dates) recommends a refresh. `age_seconds` is now the full export's age.
+  different dates) is flagged with `snapshot_note`; only an expired export or a missing full Studies export
+  recommends a browser export (AGENTS allows one export). `age_seconds` is now the full export's age.
 - Re-saving different heading translations also cancels the study's server-side extraction, running or
   finished but not collected, so a result read under the old translations is never saved or returned.
 - The MCP instructions state the rules (workflow resource, asking for source type and countries above
