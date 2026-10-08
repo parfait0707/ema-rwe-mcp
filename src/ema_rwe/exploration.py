@@ -9,6 +9,7 @@ from .llm import SOURCE_ASSESSMENT_PROMPT, complete_json, configured, drop_inval
 from .pdf import (
     extract_pages,
     prune_unverifiable,
+    reading_hash,
     reading_order,
     search_sections,
     sections,
@@ -60,9 +61,21 @@ class Explorer:
                 "CREATE TABLE IF NOT EXISTS protocol_answers (cache_key TEXT PRIMARY KEY, body TEXT NOT NULL)"
             )
 
+    def reading_record(self, protocol_id: str) -> dict | None:
+        """The PDF's heading reading record (language, translations), kept in the database. A record an
+        earlier version saved beside the PDF (.headings) is adopted once, never over a saved one."""
+        record = self.repo.reading(protocol_id)
+        if record is None and (legacy := self.archive.headings(protocol_id)) is not None:
+            self.repo.import_reading(protocol_id, legacy, reading_hash(legacy.get("translations")))
+            record = self.repo.reading(protocol_id)
+        return record
+
+    def translations(self, protocol_id: str) -> dict[str, str]:
+        return stored_translations(self.reading_record(protocol_id)) or {}
+
     def context(self, protocol_id):
         data, source = self.archive.load(protocol_id)
-        pages = extract_pages(data, translations=stored_translations(self.archive.headings(protocol_id)))
+        pages = extract_pages(data, translations=self.translations(protocol_id))
         return pages, sections(pages), source
 
     def outline(self, protocol_id, offset=0, limit=100, detail="compact"):
@@ -139,7 +152,7 @@ class Explorer:
                     # Heading translations change section roles; absent for English and untranslated PDFs.
                     *(
                         [sorted(translations.items())]
-                        if (translations := stored_translations(self.archive.headings(protocol_id)))
+                        if (translations := self.translations(protocol_id))
                         else []
                     ),
                 ]

@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Heading readings are consistent across server processes (spec v1.8): the language and heading
+  translations of each PDF move from `<protocol_id>.headings` into the user database (`protocol_readings`;
+  an existing `.headings` is adopted once). A translation change retires the PDF's analysis in the same
+  transaction, and an analysis is saved only while the PDF is still read the way it was extracted
+  (`source.reading`, checked in one write transaction; otherwise `READING_CONTEXT_CHANGED`), so another
+  process sharing the database cannot save or serve an analysis read under old translations. Callers pass
+  `reading` to `cache_protocol_analysis` (CLI `--reading`); English protocols may omit it, and analyses
+  saved before readings were recorded stay cached for them.
 - Catalogue snapshots (code/data versioning plan, stage 1): `scripts/build_catalogue_snapshot.py <YYYYMMDD>`
   builds a database from exactly the four exports of one refresh (full Studies plus claims, ehr and
   registry; a missing or duplicated kind stops it), keeps the committed database's protocol observations,

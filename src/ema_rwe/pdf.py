@@ -1,5 +1,7 @@
 """Native page-aware extraction. Raw PDF text remains in memory only."""
 
+import hashlib
+import json
 import re
 from collections import Counter
 from dataclasses import dataclass, field
@@ -764,6 +766,14 @@ def stored_translations(record: dict | None) -> dict[str, str] | None:
     if not record or record.get("parser") != PARSER_VERSION:
         return None
     return record.get("translations") or {}
+
+
+def reading_hash(translations: dict[str, str] | None) -> str:
+    """The identity of a heading reading: '' without translations (English or untranslated), otherwise the
+    SHA-256 of the translations in key order. An analysis records the reading it was extracted under."""
+    if not translations:
+        return ""
+    return hashlib.sha256(json.dumps(sorted(translations.items()), ensure_ascii=False).encode()).hexdigest()
 
 
 def clean_translations(headings: list[str], translations: dict) -> dict[str, str]:

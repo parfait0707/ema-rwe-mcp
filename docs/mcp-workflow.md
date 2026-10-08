@@ -145,6 +145,8 @@ filters. Never pick a subset yourself.
   `cache_heading_translations(protocol_id, translations={heading: English})` and `analyze_protocol`
   again. If you cannot translate, pass `translations={}`: every unrecognised section is then read.
 - With `needs_client_extraction`, cache each batch via `cache_protocol_analysis(batch_offset=offset)`
+  (also pass `reading=source.reading`; it is required for a non-English protocol, and
+  `READING_CONTEXT_CHANGED` means its translations changed: call `analyze_protocol` and reread)
   so progress survives context compaction; skip offsets listed in `cached_batch_offsets`; finish with
   `coverage_complete=true`. If your client can run a cheaper subagent (Claude Code: `Agent` with
   model sonnet), delegate one study's batch reading and caching to it and keep only results in

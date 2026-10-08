@@ -221,8 +221,70 @@ class Repository:
             row = db.execute("SELECT body FROM analyses WHERE study_id=?", (study_id,)).fetchone()
         return json.loads(row[0]) if row else None
 
-    def save_analysis(self, study: Study, result: dict):
+    # The heading reading of each archived PDF (language, translations): the record and its hash are kept
+    # here, beside the analyses, so a translation change and an analysis save serialise in one database.
+    # The table is created on first write: a no-op DDL would dirty the committed catalogue.
+    READINGS = "CREATE TABLE IF NOT EXISTS protocol_readings (protocol_id TEXT PRIMARY KEY, reading TEXT NOT NULL, body TEXT NOT NULL)"
+
+    @staticmethod
+    def _current_reading(db, protocol_id: str) -> tuple[str, dict] | None:
+        try:
+            row = db.execute(
+                "SELECT reading, body FROM protocol_readings WHERE protocol_id=?", (protocol_id,)
+            ).fetchone()
+        except sqlite3.OperationalError:
+            return None  # no PDF has been read yet in this database
+        return (row[0], json.loads(row[1])) if row else None
+
+    def reading(self, protocol_id: str) -> dict | None:
+        """The saved heading reading record of a PDF, or None."""
         with self.connection() as db:
+            found = self._current_reading(db, protocol_id)
+        return found[1] if found else None
+
+    def set_reading(self, protocol_id: str, record: dict, reading: str, study: Study | None) -> bool:
+        """Save a PDF's reading record; when its reading (translation hash) changes, also retire the study's
+        analysis of that PDF, in the same transaction. Returns whether the reading changed."""
+        with self.connection() as db:
+            db.execute(self.READINGS)
+            db.execute("BEGIN IMMEDIATE")
+            current = self._current_reading(db, protocol_id)
+            changed = (current[0] if current else "") != reading
+            db.execute(
+                "INSERT OR REPLACE INTO protocol_readings VALUES (?,?,?)",
+                (protocol_id, reading, json.dumps(record, ensure_ascii=False)),
+            )
+            if changed and study:
+                row = db.execute("SELECT body FROM analyses WHERE study_id=?", (study.study_id,)).fetchone()
+                if row and json.loads(row[0])["source"].get("protocol_id") == protocol_id:
+                    self._archive_analysis(db, study.study_id)
+                    db.execute("DELETE FROM analyses WHERE study_id=?", (study.study_id,))
+                    self._index(db, study)
+        return changed
+
+    def import_reading(self, protocol_id: str, record: dict, reading: str) -> None:
+        """Adopt a record kept by an earlier version beside the PDF, unless one is already saved."""
+        with self.connection() as db:
+            db.execute(self.READINGS)
+            db.execute(
+                "INSERT OR IGNORE INTO protocol_readings VALUES (?,?,?)",
+                (protocol_id, reading, json.dumps(record, ensure_ascii=False)),
+            )
+
+    def save_analysis(self, study: Study, result: dict, reading: str | None = None):
+        """Save an analysis. With reading (the heading reading it was extracted under), only while the PDF is
+        still read that way: the check and the save share one write transaction, so another process cannot
+        change the translations in between (READING_CONTEXT_CHANGED otherwise)."""
+        with self.connection() as db:
+            if reading is not None:
+                db.execute("BEGIN IMMEDIATE")
+                current = self._current_reading(db, result["source"]["protocol_id"])
+                if (current[0] if current else "") != reading:
+                    raise RWEError(
+                        "READING_CONTEXT_CHANGED",
+                        "The protocol's heading translations changed while it was being read; "
+                        "call analyze_protocol again.",
+                    )
             self._archive_analysis(db, study.study_id, replacement=result)
             db.execute(
                 "INSERT OR REPLACE INTO analyses VALUES (?,?,?)",

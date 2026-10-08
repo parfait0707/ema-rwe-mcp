@@ -42,9 +42,9 @@ ENCePPチェックリストは、チェックリストを名乗る見出しか E
 
 `EMA_PROTOCOL_DIR` の既定値はDBと同じ親フォルダ内の `protocols`。`get_protocol` の `protocol` と解析結果の `source` に `protocol_id` / `local_filename` を返す。検索結果にも `local_protocols` 一覧を付け、解析済みなら `protocol_id` を付ける。同じPDF内容は同じIDになり、同じURLでファイルが差し替わると別IDになる。旧版も保持する。保存済みIDでの探索は最新版の確認とは別であり、最新版を確認したい場合は `get_protocol(refresh=true)` を使う。
 
-英語以外のプロトコルでは、言語の判定結果と見出しの英訳を同じ場所の `.headings` に保存する（spec v1.6）。
+英語以外のプロトコルの言語の判定結果と見出しの英訳は、利用者の DB に保存する（spec v1.8。以前の版は同じ場所の `.headings` に保存していた）。
 
-PDFは追加要望に従ってユーザーが削除するまで保持する。既存のHTTPキャッシュとは別なので、`cleanup-cache` では削除されない。削除する場合は対象IDの `.pdf`、`.json`、`.headings` を削除する。これ以降そのIDの探索は明示的なmissingエラーを返す。全文テキストは都度メモリへ抽出し、永久保存・全文DB化しない。
+PDFは追加要望に従ってユーザーが削除するまで保持する。既存のHTTPキャッシュとは別なので、`cleanup-cache` では削除されない。削除する場合は対象IDの `.pdf` と `.json`（以前の版の `.headings` があればそれも）を削除する。これ以降そのIDの探索は明示的なmissingエラーを返す。全文テキストは都度メモリへ抽出し、永久保存・全文DB化しない。
 
 ## 呼出元LLMによる追加探索（APIキー不要）
 
