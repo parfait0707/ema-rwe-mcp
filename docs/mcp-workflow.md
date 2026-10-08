@@ -56,6 +56,13 @@ the MCP resource `ema-rwe://docs/mcp-workflow` (bundled in the wheel), so a clie
   - `medicine_expansion` lists what was added per query (at most 100 names per question, class names
     first; `omitted` counts the rest). Medicines in neither source get no expansion:
     give their names (and class members) yourself.
+  - A class expansion (`medicine_expansion[].omitted_members`, total in `omitted_members_total`) lists EMA
+    products left out because the catalogue gives their ATC code another name: a member named
+    differently from its ATC substance name (recombinant factor VIII INNs under `coagulation factor VIII`,
+    a vaccine's product name) or an error in the EMA record (a code of an unrelated medicine). When the
+    user asked for the class, add each listed product that truly belongs to it to that block's `queries`
+    and rerun; leave out the ones that do not. A broader catalogue name (no strain or type where the
+    query gives one) is added as a category term, not a synonym.
 - Every column is searched. `role` ranks matches in that role's catalogue columns (Outcomes, Medicinal
   condition, INN/ATC) first instead of filtering, because 19% of records have an empty Outcomes field.
 - Candidates are ranked, never cut: specific matches before category-only ones, role-column matches

@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Medicine names relate as equivalent, broader, narrower or different (spec v1.9): a catalogue name
+  without the strain or type the query gives (`influenza, live attenuated` for an H5N1 vaccine) becomes a
+  category term, not a synonym. Class expansions list the EMA records left out because the catalogue names
+  their code otherwise (`omitted_members`, at most 30, and `omitted_members_total`): 86 across all
+  classes, mostly true members named differently from their ATC substance (recombinant factor VIII
+  INNs, vaccine products), some EMA code errors; the caller adds those that belong to a requested class.
+  A current product name without its `(previously ...)` note (Icandra, GoResp Digihaler, Vantavo) now
+  resolves like the full name; a name shared by different ingredient sets is not used.
 - Heading readings are consistent across server processes (spec v1.8): the language and heading
   translations of each PDF move from `<protocol_id>.headings` into the user database (`protocol_readings`;
   an existing `.headings` is adopted once). A translation change retires the PDF's analysis in the same

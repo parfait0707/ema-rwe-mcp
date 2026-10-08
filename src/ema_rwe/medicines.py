@@ -36,15 +36,18 @@ def name_words(name: str) -> frozenset[str]:
     return frozenset(without_salt(name).split())
 
 
-def same_medicine(label: str, ingredients: list[str]) -> bool:
-    """Whether a catalogue ATC name and an EMA ingredient list name the same medicine.
+def medicine_relation(label: str, ingredients: list[str]) -> str:
+    """How a catalogue ATC name relates to an EMA ingredient list: 'equivalent', 'broader' (the catalogue
+    name is the broader one), 'narrower' or 'different'.
 
     Every ingredient on each side must correspond to one on the other, so a combination never equals one of
     its ingredients ('metformin' vs empagliflozin + metformin). Two names correspond when the words of one
     contain the words of the other, salts aside and in any order: qualifiers such as '(rDNA)', 'human' or
     'type A' may differ ('insulin (human)' vs 'human insulin (rDNA)'). Words are compared whole, never by
     their letters, so a prodrug or conjugate named with a prefix stays another medicine ('aprepitant' vs
-    'fosaprepitant', 'interferon' vs 'peginterferon'), and numbers given by both names must agree."""
+    'fosaprepitant', 'interferon' vs 'peginterferon'). Numbers identify a type, valency or strain: given by
+    both they must agree ('types 16, 18' vs 'types 6, 11, 16, 18'); given by one side only, the other name
+    is the broader one ('influenza, live attenuated' vs '... vaccine (H5N1) (live attenuated)')."""
     named = [name_words(n) for n in ingredient_set(label)]
     have = [name_words(i) for i in ingredients]
 
@@ -52,25 +55,47 @@ def same_medicine(label: str, ingredients: list[str]) -> bool:
         return frozenset(w for w in words if any(ch.isdigit() for ch in w))
 
     def correspond(a: frozenset[str], b: frozenset[str]) -> bool:
-        # Numbers identify a type, valency or strain ('types 16, 18' vs 'types 6, 11, 16, 18'): when both
-        # names give them they must agree; a name without numbers may still be the broader one.
         return (a <= b or b <= a) and (not numbered(a) or not numbered(b) or numbered(a) == numbered(b))
 
     def covered(names, others) -> bool:
         return all(any(correspond(n, o) for o in others) for n in names)
 
-    return covered(named, have) and covered(have, named)
+    if not (covered(named, have) and covered(have, named)):
+        return "different"
+    label_numbers = any(numbered(n) for n in named)
+    record_numbers = any(numbered(h) for h in have)
+    if record_numbers and not label_numbers:
+        return "broader"
+    if label_numbers and not record_numbers:
+        return "narrower"
+    return "equivalent"
+
+
+def same_medicine(label: str, ingredients: list[str]) -> bool:
+    """Whether the catalogue name may carry the EMA record's code: any relation but 'different'."""
+    return medicine_relation(label, ingredients) != "different"
+
+
+MAX_OMITTED = 30
+
+
+def omitted_report(omitted: list[dict]) -> dict:
+    """At most MAX_OMITTED omitted class members, one per name, and their total; nothing when none."""
+    unique = list({o["name"]: o for o in omitted}.values())
+    return {"omitted_members": unique[:MAX_OMITTED], "omitted_members_total": len(unique)} if unique else {}
 
 
 def expand_medicine(query: str, labels: dict[str, str]) -> dict | None:
     """Names to search for a medicine or medicine class, or None when the query is neither.
 
-    A medicine (5th-level code) adds its catalogue name as a specific term and its 4th-level class as a
-    category term. A class adds its own name, then every member name the EMA dictionary or the catalogue
+    A medicine (5th-level code) adds its catalogue name as a specific term (a broader name, see
+    medicine_relation, as a category term) and its 4th-level class as a category term. A class adds its own name, then every member name the EMA dictionary or the catalogue
     codes under it, as specific terms: a member is part of the class, not a synonym of another member.
     Combination labels stay whole, so 'metformin' never resolves to 'metformin and empagliflozin', and a
     combination ('empagliflozin and metformin', any order) resolves only to that whole ingredient set.
     A typed code counts only when some known code starts with it (no non-ATC code of the same shape).
+    EMA records left out of a class because the catalogue names their code otherwise are listed in
+    omitted_members, since the expansion is then not every member.
     """
     text = query.strip()
     records = load_dictionary()[0]
@@ -89,12 +114,14 @@ def expand_medicine(query: str, labels: dict[str, str]) -> dict | None:
         # Never resolve a combination through one of its ingredients.
         matches = [m for m in matches if frozenset(map(canonical, m["ingredients"])) == whole]
     # Join by name: an EMA code the catalogue gives to another medicine is that record's error, not a link.
-    codes |= {
-        c
-        for m in matches
-        for c in m["atc_codes"]
-        if c not in labels or same_medicine(labels[c], m["ingredients"])
-    }
+    # The relation decides how the catalogue name is searched: a broader name is a category term only.
+    relations = {c: "equivalent" for c in codes}
+    for m in matches:
+        for c in m["atc_codes"]:
+            relation = medicine_relation(labels[c], m["ingredients"]) if c in labels else "equivalent"
+            if relation != "different" and relations.get(c) != "equivalent":
+                relations[c] = relation
+    codes |= set(relations)
     if not codes:
         return None
 
@@ -105,10 +132,14 @@ def expand_medicine(query: str, labels: dict[str, str]) -> dict | None:
     own: dict[str, str] = {}
     members: dict[str, str] = {}
     category: dict[str, str] = {}
+    omitted: list[dict] = []
     for code in sorted(codes):
         if len(code) == 7:
-            if label := name(code):
+            relation = relations.get(code, "equivalent")
+            if (label := name(code)) and relation == "equivalent":
                 own.setdefault(label, "catalogue_atc")
+            elif label and relation == "broader":
+                category.setdefault(label, "catalogue_atc")  # not the query's medicine, a broader one
             # Only a class the catalogue itself records (its name or another member), not the drug's own code.
             if any(c.startswith(code[:5]) and c != code for c in labels):
                 category |= {t: "catalogue_atc" for t in (code[:5], name(code[:5])) if t}
@@ -117,9 +148,20 @@ def expand_medicine(query: str, labels: dict[str, str]) -> dict | None:
             own.setdefault(label, "catalogue_atc")
         for row in records:
             under = [c for c in row["atc_codes"] if c.startswith(code)]
-            # Join sources by name: skip an EMA record whose code the catalogue gives to another medicine.
-            if under and all(c not in labels or same_medicine(labels[c], row["ingredients"]) for c in under):
+            # Join sources by name: skip an EMA record whose code the catalogue gives to another medicine, and
+            # say so, since it may still belong to the class (a prodrug sharing its active form's code).
+            conflicts = [c for c in under if c in labels and not same_medicine(labels[c], row["ingredients"])]
+            if under and not conflicts:
                 members.setdefault(" / ".join(row["ingredients"]), "ema_medicines")
+            elif under:
+                omitted.append(
+                    {
+                        "name": " / ".join(row["ingredients"]),
+                        "atc_code": conflicts[0],
+                        "catalogue_name": labels[conflicts[0]],
+                        "reason": "the catalogue gives this code to another medicine; not added as a member",
+                    }
+                )
         for member in sorted(c for c in labels if len(c) == 7 and c.startswith(code)):
             if label := name(member):
                 members.setdefault(label, "catalogue_atc")
@@ -131,6 +173,7 @@ def expand_medicine(query: str, labels: dict[str, str]) -> dict | None:
         "atc_codes": sorted(codes),
         "queries": {t: v for t, v in ordered.items() if t.casefold() != drop},
         "category_terms": {t: v for t, v in category.items() if t.casefold() != drop},
+        **omitted_report(omitted),
     }
 
 
