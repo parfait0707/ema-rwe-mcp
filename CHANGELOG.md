@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Medicine names correspond by whole words, never by letters (spec v1.7): an EMA dictionary code joins the
+  catalogue's name for it only when the words of one name, salts aside, contain the other's, and numbers
+  both names give (types, valency) agree. A prodrug or conjugate named with a prefix stays another medicine
+  (fosaprepitant no longer adds aprepitant; 29 such latent pairs, e.g. omeprazole and esomeprazole, are
+  separated), while qualifiers and word order no longer block a join (human insulin (rDNA), HPV and
+  hexavalent vaccines). Names split into ingredients only at separators outside brackets. Of 5,404
+  catalogue and EMA names, 30 expansions change: 17 better, 12 neutral, 1 worse (the antiemetic class
+  A04 no longer lists fosaprepitant, whose code the catalogue names aprepitant).
 - `catalogue_status` judges freshness per export (spec v1.7): `status=current` needs the full Studies
   export and every imported source-type export within the TTL, so a fresh registry export no longer makes
   an old full export look current. `exports` gives each export's file, date and status,
