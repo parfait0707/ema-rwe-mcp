@@ -2,7 +2,7 @@
 
 エンドユーザー（このMCPを使って研究を調べる人）向けの使い方は[README.md](README.md)を参照してください。本ファイルはこのMCPサーバー自体を開発・改修する人向けの内部仕様です。
 
-公開版は0.5.4（内部履歴では0.1〜1.6の仕様段階を経ている）。`docs/spec/v0.1.md`〜`v1.6.md`が仕様の正本、[docs/mcp-workflow.md](docs/mcp-workflow.md)が呼出元向け手順の正本、開発ルールは[AGENTS.md](AGENTS.md)です。
+公開版は0.5.4（内部履歴では0.1〜1.7の仕様段階を経ている）。`docs/spec/v0.1.md`〜`v1.7.md`が仕様の正本、[docs/mcp-workflow.md](docs/mcp-workflow.md)が呼出元向け手順の正本、開発ルールは[AGENTS.md](AGENTS.md)です。
 
 ## 開発用セットアップ（checkout）
 
@@ -224,7 +224,7 @@ stdioで18個のToolを公開します（`src/ema_rwe/mcp/server.py`）。
 | `cache_protocol_analysis` | `study_id`, `fingerprint`, `analysis`, `coverage_complete=false`, `batch_offset`。バッチごとに`batch_offset=<offset>`で途中保存し、最後のバッチで`coverage_complete=true`を渡すと全バッチを統合して保存する |
 | `compare_protocols` | `question`, `queries`, `filters`, `source_preference`, `darwin_only=false`, `synonyms`, `codes`, `role`, `study_ids`, `match_scope=concept`, `analogous_terms`, `category_terms`, `blocks`, `check_protocols=0`（0〜20。`needs_narrowing`で候補一覧が返る状態で、`study_ids`なし・`match_scope=concept`のときだけ確認する）。概念ブロック（ブロック内OR・ブロック間AND）を全列で検索し、役割は順位付けに使う。候補は切り詰めずに、公開プロトコルなし・テキスト層なし（`protocol_text_layer=none`）を最後に、固有語一致→役割の列→CSVのプロトコル所在（`protocol_listed`）→研究タイプ→統合順位で並べ、`rank_features`を返す。各検索語は1つの語句・医薬品名として語全体で照合する。医薬品の検索語は`medicines.py`で成分の上位クラス（カテゴリー語）やクラスの所属薬（検索語）へ展開し、加えた語を`medicine_expansion`（1問あたり100語まで、超過分は`omitted`）で返す。`check_protocols=N`は上位N件のStudy documentsを確認してプロトコルのない研究を最後に回す（PDFは取得しない）。0件時の`analogous_fallback`と類縁スコープは`search_studies`と同じ（複数ブロックでは`not_available_for_blocks`）。単一ブロックで0件のとき、呼出元が渡した第5レベルATCコードがあれば、同じ第4レベルのクラス（broader）とカタログ上の所属薬（sibling）を類縁概念に加える。比較表の先頭行は「一致の根拠」。一次判定上限以内なら全PDFと下書きJSONを保存。上限超過時は`facets`（国・種別・デザイン・Medicinal condition）と、`EMA_MAX_LISTED_CANDIDATES`以内なら`candidates`一覧を返し、`next_action`で種別と実施国の質問を指示。ユーザーが一覧から選んだ`study_ids`を渡すと、その研究だけを一次判定に進める。`source_preference`はPDF判定後に優先／限定 |
 | `get_protocol_comparison` | `comparison_id`, `selected_study_ids`（ユーザーが選択した場合）, `detail=compact`。全件の保存済み抽出・質問別回答を集め、JSONと比較表を更新 |
-| `catalogue_status` | CSV snapshotの有無・最終取込時刻・期限・`studies`／`source_type`出力先・取込済み種別（`source_type_imports`）、読み込み中の利用者辞書（`dictionaries`。設定不備は`error`）を返す。通信なし |
+| `catalogue_status` | CSV snapshotの有無・最終取込時刻・期限・`studies`／`source_type`出力先・取込済み種別（`source_type_imports`）、全研究と種別ごとのエクスポートの鮮度（`exports`。全研究のエクスポートと取り込んだ全種類が期限内のときだけ`status=current`）、日付がそろっているか（`snapshot_aligned`）、読み込み中の利用者辞書（`dictionaries`。設定不備は`error`）を返す。通信なし |
 | `import_catalogue_csv` | `filename`, `column_map`。`EMA_IMPORT_DIR/studies`または`source_type`直下の公式CSVを検証し、Non-interventional studyだけを登録。`source_type/`のファイルは名前の種別でタグ付け |
 | `refresh_drug_dictionary` | `force=false`。検索応答の`query_expansion.drugs_need_refresh`（`detail=full`の展開では`needs_refresh`）が真のときに公式EMA医薬品辞書を再取得。`salt_word_candidates`は保守者向けの未確認の語で、呼出元が対応するものではない |
 | `plan_study_search` | `question`, `use_llm=false`。検索は実行しない。研究デザイン語・医薬品・利用者辞書の概念を展開し、辞書に一致しない日本語の質問には`status=needs_client_translation`と`client_expansion`（ICD-10を手がかりに英語名・言い換え・コード候補・類縁概念を生成させる指示）を返す。`use_llm=true`はサーバー側LLMが同じ指針で生成する |
@@ -243,7 +243,7 @@ MCPの`instructions`文字列は要点のみに短縮しており、完全な手
 
 | ファイル | 内容 |
 |---|---|
-| [docs/spec/v0.1.md](docs/spec/v0.1.md)〜[v1.6.md](docs/spec/v1.6.md) | 仕様の正本（段階的な追加要件。v0.5：一致語の出所と類縁概念フォールバック、v0.6：クライアント翻訳の既定化、v0.7：長い検索語の扱い、v0.8：全列・階層つきの一次検索と順位付け、v0.9：ATC上位クラスのカテゴリー語（v1.0で置換）、v1.0：カタログ由来の医薬品名展開と`medicine_expansion`、v1.1：プロトコル所在・テキスト層による順位付け、名前を主キーにした医薬品の照合、v1.2：取得で分かった事実の別表保存・医薬品欄の補完・類縁概念の順位付け、v1.3：PASS表のクラス名とATCコード・文章からの補完の誤り防止・抽出規則の版、v1.4：手順書のMCPリソース・ツールの入力範囲の明示、v1.5：構造推定の汎用化（役割の三つの判断、ローマ数字の節番号、目次とレイアウトによる構造の補完、チェックリストの範囲）、v1.6：英語以外のプロトコルの見出しの英訳） |
+| [docs/spec/v0.1.md](docs/spec/v0.1.md)〜[v1.7.md](docs/spec/v1.7.md) | 仕様の正本（段階的な追加要件。v0.5：一致語の出所と類縁概念フォールバック、v0.6：クライアント翻訳の既定化、v0.7：長い検索語の扱い、v0.8：全列・階層つきの一次検索と順位付け、v0.9：ATC上位クラスのカテゴリー語（v1.0で置換）、v1.0：カタログ由来の医薬品名展開と`medicine_expansion`、v1.1：プロトコル所在・テキスト層による順位付け、名前を主キーにした医薬品の照合、v1.2：取得で分かった事実の別表保存・医薬品欄の補完・類縁概念の順位付け、v1.3：PASS表のクラス名とATCコード・文章からの補完の誤り防止・抽出規則の版、v1.4：手順書のMCPリソース・ツールの入力範囲の明示、v1.5：構造推定の汎用化（役割の三つの判断、ローマ数字の節番号、目次とレイアウトによる構造の補完、チェックリストの範囲）、v1.6：英語以外のプロトコルの見出しの英訳、v1.7：カタログの種類ごとの鮮度・英訳の変更による抽出の取り消し・instructionsの規則） |
 | [docs/mcp-workflow.md](docs/mcp-workflow.md) | 呼出元エージェント向けの完全な手順（英語） |
 | [docs/clinical-search.md](docs/clinical-search.md) | 日本語疾患名・薬剤名→英語・医療コードの展開、辞書の網羅性の限界 |
 | [docs/comparisons.md](docs/comparisons.md) | 複数プロトコルの比較・絞込ワークフロー |

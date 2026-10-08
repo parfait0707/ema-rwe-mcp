@@ -253,3 +253,13 @@ async def test_stdio_discovery_validation_and_local_search(settings, csv_file, p
             {"protocol_id": pid, "translations": {"8.4 Analysis": "8.4 Analysis"}},
         )
         assert json.loads(translated.content[0].text)["error"]["code"] == "INVALID_INPUT"
+
+
+def test_instructions_state_every_rule_within_their_first_512_characters():
+    """Some clients show only the start of the server instructions: the rules must stand alone there."""
+    from ema_rwe.mcp.server import WORKFLOW_URI, create_server
+
+    head = create_server().instructions[:512]
+    for rule in (WORKFLOW_URI, "max_screening_studies", "AND countries", "subset", "pending tool", "planned"):
+        assert rule in head
+    assert "verbatim quotes" in head

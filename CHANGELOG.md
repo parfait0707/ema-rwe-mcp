@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- `catalogue_status` judges freshness per export (spec v1.7): `status=current` needs the full Studies
+  export and every imported source-type export within the TTL, so a fresh registry export no longer makes
+  an old full export look current. `exports` gives each export's file, date and status,
+  `missing_source_type_exports` the type exports never imported, and `snapshot_aligned=false` (exports of
+  different dates) recommends a refresh. `age_seconds` is now the full export's age.
+- Re-saving different heading translations also cancels the study's server-side extraction, running or
+  finished but not collected, so a result read under the old translations is never saved or returned.
+- The MCP instructions state the rules (workflow resource, asking for source type and countries above
+  the screening limit, no silent subset, every pending tool, planned sources are not used, verbatim quotes
+  with physical pages) within their first 512 characters, before the procedure.
+
 ## 0.5.4 (2026-10-06)
 
 - Non-English protocols (spec v1.6): section roles are read from English translations of their headings, so
