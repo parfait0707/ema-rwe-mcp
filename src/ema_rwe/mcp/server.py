@@ -277,7 +277,7 @@ def create_server(service: Service | None = None):
         reading: Annotated[
             str | None,
             Field(
-                description="source.reading returned by analyze_protocol; required for a non-English protocol"
+                description="source.reading returned by analyze_protocol, even when empty; required for a non-English protocol"
             ),
         ] = None,
     ) -> dict:
@@ -376,7 +376,9 @@ def create_server(service: Service | None = None):
         answer: ProtocolAnswer,
         reading: Annotated[
             str | None,
-            Field(description="reading returned by research_protocol; required for a non-English protocol"),
+            Field(
+                description="reading returned by research_protocol, even when empty; required for a non-English protocol"
+            ),
         ] = None,
     ) -> dict:
         """Validate and save a caller's question-specific answer with exact quotes/pages/sections."""

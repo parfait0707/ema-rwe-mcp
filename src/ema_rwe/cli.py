@@ -178,14 +178,16 @@ def parser():
     submit.add_argument("input", type=Path)
     submit.add_argument("--coverage-complete", action="store_true")
     submit.add_argument("--batch-offset", type=int, help="Save one batch read at this offset (resumable).")
-    submit.add_argument("--reading", help="source.reading from analyze (required for a non-English protocol)")
+    submit.add_argument(
+        "--reading", help="source.reading from analyze, even '' (required for a non-English protocol)"
+    )
     answer = commands.add_parser(
         "cache-answer", help="Save a question-specific answer (answer to ask status=needs_client_exploration)"
     )
     answer.add_argument("protocol_id")
     answer.add_argument("question")
     answer.add_argument("input", type=Path, help="ProtocolAnswer JSON with verbatim quotes and pages")
-    answer.add_argument("--reading", help="reading from ask (required for a non-English protocol)")
+    answer.add_argument("--reading", help="reading from ask, even '' (required for a non-English protocol)")
     headings = commands.add_parser(
         "cache-headings",
         help="Save English translations of a non-English protocol's headings "

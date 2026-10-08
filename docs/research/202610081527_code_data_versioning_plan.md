@@ -2,7 +2,7 @@
 
 - 日付：2026-10-08（日本時間）
 - 対象：v0.5.4 の次の版
-- 位置づけ：[MCP再レビューと公開・更新方法の調査](202610081041_mcp_review_distribution_updates.md)の提案「コードとデータを別々に版管理する」を、公開は GitHub のままという前提で実装計画にしたもの。実装はまだしていない。
+- 位置づけ：[MCP再レビューと公開・更新方法の調査](202610081041_mcp_review_distribution_updates.md)の提案「コードとデータを別々に版管理する」を、公開は GitHub のままという前提で実装計画にしたもの。段階 1 は実装した（2026-10-08）。
 
 ## 目的
 
@@ -24,7 +24,7 @@ DB を月ごとのスナップショットとしてコードと別に配り、�
 - wheel は `data/ema.sqlite3` を同梱する。チェックアウトの外で初めて起動すると、利用者のデータフォルダへ複製する（`config.default_data_dir`）。
 - 起動のたびに `storage.refresh_from_bundle(同梱DB, 利用者のDB)` が動く。同梱 DB の取り込み日時の方が新しければ、カタログの表だけを 1 回の書き込みトランザクションで置き換え、解析と回答の表には触れない。利用者が取り込んだ CSV の方が新しければ置き換えない。スキーマの版が違えば置き換えない。
 - この関数は任意の DB ファイルを受け取れる。ダウンロードしたスナップショットをそのまま渡せるので、差し替えの部分は作り直さなくてよい。
-- DB は 44 MB で、gzip で 17 MB になる。毎月コミットすると、Git の履歴が月に十数 MB ずつ増える。
+- DB は 44 MB で、gzip で 13 MB になる（2026-10-01 のスナップショットで 12.9 MB）。毎月コミットすると、Git の履歴が月に十数 MB ずつ増える。
 
 ## 選択肢と比較
 
@@ -57,8 +57,8 @@ DB を月ごとのスナップショットとしてコードと別に配り、�
 1. EMA の検索ページから、全研究と claims、ehr、registry の 4 つの CSV を同じ日にエクスポートする（今と同じ）。
 2. 新しいスクリプト `scripts/build_catalogue_snapshot.py` が次を行う。
    - 4 つの CSV がそろっていて、ファイル名の日付が同じことを確かめる。
-   - 空の DB に `import-all` で取り込み、前回のスナップショットから補完の結果（`merge-observations`）を移す。
-   - `VACUUM`、`PRAGMA integrity_check`、件数（全研究と種別ごと）の確認、代表的な検索語での検索を行う。
+   - 空の DB に `import-all` で取り込み、リポジトリの `data/ema.sqlite3`（既定。`--observations-from` で変えられる）から補完の結果（`merge-observations`）を移す。
+   - `VACUUM`、`PRAGMA integrity_check`、スキーマの版、研究の件数と検索索引の件数の一致を確かめる（種別ごとの件数は manifest に記録する。代表的な検索語での比較は、最初のスナップショットで手作業で行った）。
    - gzip で圧縮し、SHA-256 を計算し、`manifest.json` を作る。
 3. `gh release create data-YYYYMMDD --latest=false` で、圧縮した DB と `manifest.json` を添付して公開する。
 
@@ -66,12 +66,15 @@ DB を月ごとのスナップショットとしてコードと別に配り、�
 
 | 項目 | 内容 |
 |---|---|
+| `manifest_version` | manifest の形式の版（今は 1） |
 | `snapshot_id` | `20261101` のような日付 |
+| `created_at`、`built_with` | 作成日時と、作成したアプリの版 |
 | `schema_version` | DB のスキーマの版（今は 6） |
 | `min_app_version` | このスナップショットを読めるアプリの最小の版 |
 | `sha256`、`size` | 圧縮前と圧縮後の両方 |
 | `exports` | 4 つの CSV のファイル名、行数、SHA-256 |
 | `studies_total` | Non-interventional study の件数 |
+| `observed_studies`、`backfilled_studies` | プロトコルの観測がある研究と、そのうち医薬品を補った研究の件数 |
 
 ### 利用者の側（サーバー）
 

@@ -89,7 +89,8 @@ def expand_medicine(query: str, labels: dict[str, str]) -> dict | None:
     """Names to search for a medicine or medicine class, or None when the query is neither.
 
     A medicine (5th-level code) adds its catalogue name as a specific term (a broader name, see
-    medicine_relation, as a category term) and its 4th-level class as a category term. A class adds its own name, then every member name the EMA dictionary or the catalogue
+    medicine_relation, as a category term; a narrower one, naming a strain or type the record lacks, not at
+    all) and its 4th-level class as a category term. A class adds its own name, then every member name the EMA dictionary or the catalogue
     codes under it, as specific terms: a member is part of the class, not a synonym of another member.
     Combination labels stay whole, so 'metformin' never resolves to 'metformin and empagliflozin', and a
     combination ('empagliflozin and metformin', any order) resolves only to that whole ingredient set.

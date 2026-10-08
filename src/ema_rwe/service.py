@@ -287,10 +287,21 @@ class Service:
             "max_comparison_studies": self.settings.max_comparison_studies,
             "unmatched_terms": unmatched_summary(self.unmatched_log_path),
             "dictionaries": self._dictionary_status(),
-            "browser_refresh_recommended": state != "current" or not aligned,
+            # Only an expired export or a missing full export calls for a browser export: AGENTS allows one
+            # export, and exports of different dates are flagged (snapshot_note) rather than re-requested.
+            "browser_refresh_recommended": state != "current",
+            **(
+                {}
+                if aligned
+                else {
+                    "snapshot_note": "Exports have different dates: studies registered between those dates "
+                    "are missing, or lack source-type tags, until the older export is refreshed."
+                }
+            ),
             "discovery_scope": "Only imported studies and individually retrieved Study IDs are searchable.",
             "browser_instruction": (
-                "When refresh is needed, use a visible user-initiated browser session to open the EMA Search "
+                "When refresh is needed (exports[*].status shows which are stale), use a visible "
+                "user-initiated browser session to open the EMA Search "
                 "page, select Studies/Non-interventional as appropriate, click Export Results once, save the "
                 "CSV in study_import_directory, then call import_catalogue_csv. Wait on the same batch page; do not "
                 "crawl result pages, start background synchronization, or create duplicate exports. "
@@ -1578,7 +1589,8 @@ class Service:
             self._extractions.pop(key, None)
             if task.cancelled():
                 raise RWEError(
-                    "PROTOCOL_CHANGED", "Protocol changed during extraction; call analyze_protocol again."
+                    "PROTOCOL_CHANGED",
+                    "Protocol or its heading translations changed during extraction; call analyze_protocol again.",
                 )
             return task.result()
         return {

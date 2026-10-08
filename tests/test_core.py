@@ -473,8 +473,9 @@ def test_catalogue_freshness_is_judged_per_export(settings, csv_file):
     service.import_catalogue_csv("20261001_registry_export-data.csv")
     status = service.catalogue_status()
     assert status["status"] == "current" and status["missing_source_type_exports"] == ["claims", "ehr"]
-    # Exports from different refreshes are not one snapshot: refresh is recommended though both are recent
-    assert status["snapshot_aligned"] is False and status["browser_refresh_recommended"] is True
+    # Exports of different refreshes are flagged, but only an expired export calls for a browser export
+    assert status["snapshot_aligned"] is False and status["browser_refresh_recommended"] is False
+    assert "snapshot_note" in status
     with service.repo.connection() as db:
         old = (datetime.now(UTC) - timedelta(seconds=settings.catalogue_ttl + 1)).isoformat()
         db.execute("UPDATE imports SET imported_at=? WHERE filename=?", (old, "20260901_all_export-data.csv"))

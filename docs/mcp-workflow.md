@@ -10,7 +10,7 @@ the MCP resource `ema-rwe://docs/mcp-workflow` (bundled in the wheel), so a clie
 
 - `catalogue_status` once per session. `status=current` and `source_type_imports` containing
   `claims`, `ehr`, `registry` means the committed catalogue is usable (freshness is judged per export:
-  `exports`, `snapshot_aligned`, `missing_source_type_exports`). Only when no CSV was ever
+  `exports`, `snapshot_aligned` with `snapshot_note`, `missing_source_type_exports`). Only when no CSV was ever
   imported, or a stale snapshot yields no candidates, may a visible user-initiated browser export be
   imported with `import_catalogue_csv`.
 - No disease dictionary ships. `plan_study_search(question)` translates design/method words and
@@ -49,20 +49,20 @@ the MCP resource `ema-rwe://docs/mcp-workflow` (bundled in the wheel), so a clie
   and the EMA medicines dictionary) and searches names, plus the 4th-level class code the catalogue records; ATC is a join key, not an answer. An EMA
   record's ATC code is never a catalogue search term (the catalogue may give that code to another
   medicine); it remains a hint for `search_protocol_text` inside a protocol PDF.
-  - A medicine adds its catalogue name as a query and its 4th-level class (code and catalogue name) as
-    category terms. A class match is not the medicine itself: confirm the exposure in the PDF.
+  - A medicine adds its catalogue name as a query when it names the same medicine (a broader catalogue
+    name, without the strain or type the query gives, as a category term; a narrower one not at all)
+    and its 4th-level class (code and catalogue name) as category terms. A class match is not the medicine itself: confirm the exposure in the PDF.
   - A requested class (pass its name and its 3rd/4th-level ATC code, e.g. `N03A`, as queries) adds the
     names of every member coded under it as queries, labelled `catalogue_atc` or `ema_medicines`.
   - `medicine_expansion` lists what was added per query (at most 100 names per question, class names
     first; `omitted` counts the rest). Medicines in neither source get no expansion:
     give their names (and class members) yourself.
   - A class expansion (`medicine_expansion[].omitted_members`, total in `omitted_members_total`) lists EMA
-    products left out because the catalogue gives their ATC code another name: a member named
+    records (their INN/common names) left out because the catalogue gives their ATC code another name: a member named
     differently from its ATC substance name (recombinant factor VIII INNs under `coagulation factor VIII`,
     a vaccine's product name) or an error in the EMA record (a code of an unrelated medicine). When the
-    user asked for the class, add each listed product that truly belongs to it to that block's `queries`
-    and rerun; leave out the ones that do not. A broader catalogue name (no strain or type where the
-    query gives one) is added as a category term, not a synonym.
+    user asked for the class, add each listed name that truly belongs to it to that block's `queries`
+    and rerun; leave out the ones that do not.
 - Every column is searched. `role` ranks matches in that role's catalogue columns (Outcomes, Medicinal
   condition, INN/ATC) first instead of filtering, because 19% of records have an empty Outcomes field.
 - Candidates are ranked, never cut: specific matches before category-only ones, role-column matches
@@ -142,7 +142,8 @@ filters. Never pick a subset yourself.
 
 - The response's top-level `pending_tools` lists `{tool, arguments}` calls of `analyze_protocol` and
   `research_protocol`. Run all of them, each followed by `cache_protocol_analysis` (every
-  `next_offset` batch) or `cache_protocol_answer` as their status asks.
+  `next_offset` batch) or `cache_protocol_answer` (pass the `reading` `research_protocol` returned) as
+  their status asks.
 - `analyze_protocol` may return `status=extracting` (server-side provider extraction running):
   call it again for the same study until it returns the analysis; do not extract client-side.
 - `analyze_protocol` may return `status=needs_heading_translation` for a protocol that is not in
@@ -152,8 +153,9 @@ filters. Never pick a subset yourself.
   `cache_heading_translations(protocol_id, translations={heading: English})` and `analyze_protocol`
   again. If you cannot translate, pass `translations={}`: every unrecognised section is then read.
 - With `needs_client_extraction`, cache each batch via `cache_protocol_analysis(batch_offset=offset)`
-  (also pass `reading=source.reading`; it is required for a non-English protocol, and
-  `READING_CONTEXT_CHANGED` means its translations changed: call `analyze_protocol` and reread)
+  (also pass `reading=source.reading`, even when it is empty; only a non-English protocol requires it,
+  and `READING_CONTEXT_CHANGED` means it was omitted there or the translations changed: call
+  `analyze_protocol` and reread)
   so progress survives context compaction; skip offsets listed in `cached_batch_offsets`; finish with
   `coverage_complete=true`. If your client can run a cheaper subagent (Claude Code: `Agent` with
   model sonnet), delegate one study's batch reading and caching to it and keep only results in

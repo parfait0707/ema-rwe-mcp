@@ -589,6 +589,14 @@ PDF 取得先ディレクトリ名から X/Y が推測可能だった（P）、�
 - 検索での確認：`pandemic influenza vaccine (H5N1) (live attenuated, nasal)` を `role=exposure` で `compare_protocols` すると、main では季節性の弱毒生ワクチンの研究（31683、28019 など）が具体語 `influenza, live attenuated` の一致として上位に並んだ。変更後は、この語がカテゴリー語になり、上位はクラス（J07BB）のカテゴリー語の一致になった。どちらも通信 0 件。
 - テスト：`test_a_broader_catalogue_name_is_a_category_term_never_a_synonym`、`test_a_class_lists_the_members_it_leaves_out`、`test_a_current_product_name_finds_a_renamed_product_unless_it_is_ambiguous`（振り分けと別名の衝突の防止を外すと失敗することを確認）。全体 411 passed、ruff 合格。
 
+## 2026-10-08 data-20261001 公開前の整合性監査
+
+- 範囲：v0.5.4 以降の変更（PR #65〜#69）。読み取り専用のサブエージェント 3 体が、README と AGENTS.md、docs と仕様と設定の見本、プログラムが出力する文言をコードと照合した。スナップショットの作成と、出力の `--verify` による照合を、書かれたとおりに実行して確かめた（GitHub への公開と取り直しは、公開のときに記録する）。
+- 直したコード：英訳の変更で抽出を取り消したときの文言、`reading` の説明（空文字でも渡す）、`expand_medicine` の説明（狭い名前は加えない）、manifest の観測の数え方（そのスナップショットの研究に限り、医薬品を補った研究の数 `backfilled_studies` を加えた）、manifest の欠けを `SNAPSHOT_INVALID` にする、スクリプトの説明の改行と `--verify`（公開したファイルの照合）。
+- ユーザーの判断で変えた挙動：エクスポートの日付のずれ（`snapshot_aligned=false`）は `snapshot_note` で知らせるだけにし、再取得は期限切れのときだけ勧める（spec v1.9 の 5）。AGENTS.md の「公式エクスポートは 1 回」と食い違い、全研究の CSV だけを新しくした利用者に再取得を勧め続けるため。
+- 直した文書：README（英訳の保存先、EMA の辞書のコードの使い方、広い名前と省いた所属薬、再取得の条件）、README_DEV（モジュールの役割、`catalogue_status` と `medicine_expansion` の項目、同梱 DB の差し替えが触れない表、スナップショットのリリース、日付の接頭辞）、AGENTS.md、docs（`reading` の受け渡し、名前の比べ方、リリース手順の `--notes` と照合のコマンド）、spec v1.8 の参照番号、計画書、`.env.example`。
+- テスト：全体 413 passed、ruff 合格。
+
 ## 未検証事項（継続）
 
 - 外部LLM API呼出しの実認証検証は未実施。キーなしの呼出元LLM方式は合成PDFで保存・再利用まで検証。

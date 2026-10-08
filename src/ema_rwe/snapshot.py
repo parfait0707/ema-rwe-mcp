@@ -99,7 +99,11 @@ def build_snapshot(import_dir: Path, snapshot_id: str, out_dir: Path, observatio
     db = sqlite3.connect(f"{database.resolve().as_uri()}?mode=ro", uri=True)
     try:
         studies = db.execute("SELECT COUNT(*) FROM studies").fetchone()[0]
-        observed = db.execute("SELECT COUNT(*) FROM protocol_observations").fetchone()[0]
+        # Observations of this snapshot's studies: every one checked, and those given medicines (backfill)
+        observed, backfilled = db.execute(
+            "SELECT COUNT(*), SUM(COALESCE(json_array_length(body, '$.exposures'), 0) > 0) "
+            "FROM protocol_observations WHERE study_id IN (SELECT id FROM studies)"
+        ).fetchone()
     finally:
         db.close()
     rows = {r["filename"]: r["count"] for r in Repository(database).imports()}
@@ -119,6 +123,7 @@ def build_snapshot(import_dir: Path, snapshot_id: str, out_dir: Path, observatio
         ],
         "studies_total": studies,
         "observed_studies": observed,
+        "backfilled_studies": backfilled or 0,
     }
     (out_dir / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n")
     return manifest
@@ -127,6 +132,10 @@ def build_snapshot(import_dir: Path, snapshot_id: str, out_dir: Path, observatio
 def verify_snapshot(manifest: dict, packed: Path, target: Path) -> Path:
     """Unpack a downloaded snapshot to target after checking it against its manifest: format, schema,
     both checksums and the database itself. Raises SNAPSHOT_INVALID and leaves no target on failure."""
+    if not all(
+        isinstance(manifest.get(k), dict) and "sha256" in manifest[k] for k in ("database", "compressed")
+    ):
+        raise RWEError("SNAPSHOT_INVALID", "Manifest lacks the database and compressed checksums.")
     if manifest.get("manifest_version") != MANIFEST_VERSION:
         raise RWEError("SNAPSHOT_INVALID", f"Unknown manifest version {manifest.get('manifest_version')}.")
     if manifest.get("schema_version") != SCHEMA_VERSION:
