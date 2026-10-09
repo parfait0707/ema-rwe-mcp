@@ -2,7 +2,7 @@
 
 エンドユーザー（このMCPを使って研究を調べる人）向けの使い方は[README.md](README.md)を参照してください。本ファイルはこのMCPサーバー自体を開発・改修する人向けの内部仕様です。
 
-公開版は0.5.4（内部履歴では0.1〜1.10の仕様段階を経ている）。`docs/spec/v0.1.md`〜`v1.10.md`が仕様の正本、[docs/mcp-workflow.md](docs/mcp-workflow.md)が呼出元向け手順の正本、開発ルールは[AGENTS.md](AGENTS.md)です。
+公開版は0.5.5（内部履歴では0.1〜1.10の仕様段階を経ている）。`docs/spec/v0.1.md`〜`v1.10.md`が仕様の正本、[docs/mcp-workflow.md](docs/mcp-workflow.md)が呼出元向け手順の正本、開発ルールは[AGENTS.md](AGENTS.md)です。
 
 ## 開発用セットアップ（checkout）
 
@@ -30,7 +30,7 @@ $env:EMA_IMPORT_DIR = "<checkout>/data/imports"
 | `service.py` | Core service。`Service`クラスが全MCPツール／CLIコマンドの実処理を持つ |
 | `mcp/server.py` | MCPアダプタ。`FastMCP`で18ツールを公開し、Pydanticスキーマの`title`を除去して応答量を削減する |
 | `cli.py` | CLIエントリポイント（`ema-rwe`コマンド）。Coreと同じServiceを呼ぶ |
-| `storage.py` | SQLite永続化（`Repository`、DBスキーマ6）、見出しの読み方（`protocol_readings`。`reading`、`set_reading`、`import_reading`、読み方を照合する`save_analysis(reading=...)`）、FTS5マッチ式生成（`fts_match`）、CSV取込（`import_csv`。取り込みの記録`imports`の鍵は、種別のエクスポートでは`<SHA-256>:<種別>`、全研究では`<SHA-256>`で、同じ内容の別種別も記録が残る。spec v1.10）。PDF取得で分かった事実（プロトコルの有無・テキスト層・補完した医薬品と出所ごとの抽出規則の版`exposure_rules`）は`protocol_observations`表に分けて保存し（`observe`）、補完した医薬品の名前とATCコードを索引の医薬品の列に入れる。同梱DBの観測の統合（`merge_bundle_observations`、`_merge_observations`）は項目単位で手元を優先し、医薬品だけは出所ごとに、同梱DBの方が新しい規則の版ならその出所の値を置き換える（`_with_newer_exposures`） |
+| `storage.py` | SQLite永続化（`Repository`、DBスキーマ6）、見出しの読み方（`protocol_readings`。`reading`、`set_reading`、`import_reading`、読み方を照合する`save_analysis(reading=...)`）、FTS5マッチ式生成（`fts_match`）、CSV取込（`import_csv`。取り込みの記録`imports`の鍵は、種別のエクスポートでは`<SHA-256>:<種別>`、全研究では`<SHA-256>`で、同じ内容の別種別も記録が残る。旧形式（種別のエクスポートでもハッシュだけ）の記録は残るが、各種別の最新の記録を読むので害はない。spec v1.10）。PDF取得で分かった事実（プロトコルの有無・テキスト層・補完した医薬品と出所ごとの抽出規則の版`exposure_rules`）は`protocol_observations`表に分けて保存し（`observe`）、補完した医薬品の名前とATCコードを索引の医薬品の列に入れる。同梱DBの観測の統合（`merge_bundle_observations`、`_merge_observations`）は項目単位で手元を優先し、医薬品だけは出所ごとに、同梱DBの方が新しい規則の版ならその出所の値を置き換える（`_with_newer_exposures`） |
 | `snapshot.py` | 月ごとのカタログのスナップショットの作成（`build_snapshot`。4 種のエクスポートがそろうことを確認）と検証（`verify_snapshot`。manifest の版、スキーマ、圧縮前後の SHA-256、整合性）。作成は`scripts/build_catalogue_snapshot.py`から使う |
 | `archive.py` | ユーザー要求で保持する不変ID付きPDF（期限切れ削除の対象になるHTTPキャッシュとは別）。以前の版が置いた見出しの英訳（`.headings`）の読み出し |
 | `pdf.py` | ページ単位のネイティブPDF抽出と構造推定（`PARSER_VERSION`）。しおり（`apply_bookmarks`）、検証済みの目次（`text_outline`）、文字の大きさと太字による章見出し（`apply_line_styles`、`layout_chapter`）、節と役割（`sections`、`role_basis`）、読む節（`reading_order`）。言語の判定と見出しの英訳の扱い（`english`、`heading_texts`、`stored_translations`、`clean_translations`、`reading_hash`）。引用検証（`validate_evidence`）、未検証証拠の除去と監査メモ（`prune_unverifiable`、`finalize_extraction`、`audit_extraction`） |
@@ -80,7 +80,7 @@ PyPI公開やGitHub Releaseへのwheel添付など他の配布経路の比較検
 
 - **必須列**: `Study ID`、`Official title and acronym`（公式CSVでは`Title`）、`Study type`。別名の対応は`storage.py`の`ALIASES`を参照してください。不一致はエラーになり、黙って0件登録しません。列名が異なる場合はCLIでは`--column-map ./columns.json`、MCPの`import_catalogue_csv`では`column_map`（辞書）を使います（例: `{"study_id":"Study identifier","title":"Title","study_type":"Type"}`）。
 - **Non-interventional判定**: `Non-interventional study` / `Non-interventional`と明示された研究だけ取り込みます。種別不明・介入研究は除外します。URL中の`content_type:darwin_study`は研究レコード種別で、DARWIN EU研究限定とは別です（`darwin_only`は独立したフラグで判定）。
-- **種別タグ（`data_source_types`）**: `Data sources (types)` / `Data source type`列があれば直接取り込みます。ただし2026-09-12/13時点のStudies exportにはこの列がないため、EMA検索画面でData source typeをclaims/EHR/registryに限定してexportしたCSVを`source_type/`へ置き、**ファイル名に埋め込んだ種別だけをタグの根拠**とします。ファイル名は`<日付>_<claims|ehr|registry>_export-data.csv`とし、種別トークンが1つだけ含まれる必要があります。日付は`YYYYMMDD_`の接頭辞で書きます（`catalogue_status`の`snapshot_aligned`と、スナップショットの作成がこの日付を読みます）。全研究のエクスポートも`<YYYYMMDD>_all_export-data.csv`のように同じ日付で始めます。種別exportを取り込む前の研究はすべて`others`として扱われます。`source_type/`のファイルは各研究の`data_source_types`に種別を追加し（複数種別は累積）、その後に全件exportを再取込してもタグは保持されます。
+- **種別タグ（`data_source_types`）**: `Data sources (types)` / `Data source type`列があれば直接取り込みます。ただし2026-09-12/13時点のStudies exportにはこの列がないため、EMA検索画面でData source typeをclaims/EHR/registryに限定してexportしたCSVを`source_type/`へ置き、**ファイル名に埋め込んだ種別だけをタグの根拠**とします。ファイル名は`<日付>_<claims|ehr|registry>_export-data.csv`とし、種別トークンが1つだけ含まれる必要があります。日付は`YYYYMMDD_`の接頭辞で書きます（`catalogue_status`の`snapshot_aligned`と、スナップショットの作成がこの日付を読みます）。全研究のエクスポートも`<YYYYMMDD>_all_export-data.csv`のように同じ日付で始めます。種別exportを取り込む前の研究はすべて`others`として扱われます。`source_type/`のファイルは各研究の`data_source_types`に種別を追加し（複数種別は累積。名前に種別を含むファイルは他のフォルダに置いても、名前の種別で付く）、その後に全件exportを再取込してもタグは保持されます。
 - **区切り**: 複数値の区切りは`|`・`;`・改行です。値内部のカンマは分割しません。
 - **プロトコル所在（`protocol_listed`）**: `Protocol file(s)`・`Protocol file(s) - URI`・`Protocol URL`のいずれかに値があれば`true`、すべて空なら`false`、列が無ければ未設定です。順位付けにだけ使い、最新版の選択には使いません（最新版はStudy documentsで選びます）。
 - **再構築**: `data/imports/{studies,source_type}/`にexportを置いて`uv run ema-rwe import-all`を実行すると、`studies/`、`source_type/`の順にすべて取り込み、最後に`VACUUM`でDBファイルの空き領域を詰め直します（`merge-observations`も同じ。同梱DBは、この2つのコマンドで作ります）。出力の`vacuum`に前後のファイルサイズ（`bytes_before`、`bytes_after`）が入ります。
@@ -177,7 +177,7 @@ PDF保存は「サイト全体のPDFを収集する」処理ではありませ�
 | `EMA_MAX_SCREENING_STUDIES` | `5`（1〜1000） | 一次判定でPDF取得・全件解析へ進める最大研究数 |
 | `EMA_MAX_COMPARISON_STUDIES` | `5`（1〜1000） | 比較表へ掲載する最大研究数 |
 | `EMA_MAX_LISTED_CANDIDATES` | `50`（1〜1000） | `needs_narrowing`時に`candidates`一覧を返す最大件数 |
-| `EMA_USER_AGENT` | `ema-rwe-mcp/0.5.4` | EMAへのHTTPリクエストのUser-Agent |
+| `EMA_USER_AGENT` | `ema-rwe-mcp/0.5.5` | EMAへのHTTPリクエストのUser-Agent |
 | `EMA_RESEARCH_BUDGET_CHARS` | `40000` | 呼出元向けの追加探索応答の文字数予算 |
 | `EMA_SEARCH_BUDGET_CHARS` | `20000` | 呼出元向けのPDF全文検索応答の文字数予算 |
 | `EMA_PROTOCOL_DIR` | DBと同じ親フォルダ内の`protocols` | 保持するPDF/JSONの保存先（見出しの英訳はDBに置く。以前の版の`.headings`は取り込みにだけ使う） |
@@ -226,15 +226,15 @@ stdioで18個のToolを公開します（`src/ema_rwe/mcp/server.py`）。
 | `cache_protocol_analysis` | `study_id`, `fingerprint`, `analysis`, `coverage_complete=false`, `batch_offset`, `reading`（`analyze_protocol`の`source.reading`。英語以外のプロトコルでは必須）。バッチごとに`batch_offset=<offset>`で途中保存し、最後のバッチで`coverage_complete=true`を渡すと全バッチを統合して保存する |
 | `compare_protocols` | `question`, `queries`, `filters`, `source_preference`, `darwin_only=false`, `synonyms`, `codes`, `role`, `study_ids`, `match_scope=concept`, `analogous_terms`, `category_terms`, `blocks`, `check_protocols=0`（0〜20。`needs_narrowing`で候補一覧が返る状態で、`study_ids`なし・`match_scope=concept`のときだけ確認する）。概念ブロック（ブロック内OR・ブロック間AND）を全列で検索し、役割は順位付けに使う。候補は切り詰めずに、公開プロトコルなし・テキスト層なし（`protocol_text_layer=none`）を最後に、固有語一致→役割の列→CSVのプロトコル所在（`protocol_listed`）→研究タイプ→統合順位で並べ、`rank_features`を返す。各検索語は1つの語句・医薬品名として語全体で照合する。医薬品の検索語は`medicines.py`で成分の上位クラス（カテゴリー語）やクラスの所属薬（検索語）へ展開し、加えた語を`medicine_expansion`（1問あたり100語まで、超過分は`omitted`。クラスで名前の食い違いのために入れなかった所属薬は`omitted_members`と`omitted_members_total`）で返す。`check_protocols=N`は上位N件のStudy documentsを確認してプロトコルのない研究を最後に回す（PDFは取得しない）。0件時の`analogous_fallback`と類縁スコープは`search_studies`と同じ（複数ブロックでは`not_available_for_blocks`）。単一ブロックで0件のとき、呼出元が渡した第5レベルATCコードがあれば、同じ第4レベルのクラス（broader）とカタログ上の所属薬（sibling）を類縁概念に加える。比較表の先頭行は「一致の根拠」。一次判定上限以内なら全PDFと下書きJSONを保存。上限超過時は`facets`（国・種別・デザイン・Medicinal condition）と、`EMA_MAX_LISTED_CANDIDATES`以内なら`candidates`一覧を返し、`next_action`で種別と実施国の質問を指示。ユーザーが一覧から選んだ`study_ids`を渡すと、その研究だけを一次判定に進める。`source_preference`はPDF判定後に優先／限定 |
 | `get_protocol_comparison` | `comparison_id`, `selected_study_ids`（ユーザーが選択した場合）, `detail=compact`。全件の保存済み抽出・質問別回答を集め、JSONと比較表を更新 |
-| `catalogue_status` | CSV snapshotの有無・最終取込時刻・期限（`age_seconds`は全研究のエクスポートの経過時間）・取り込んでいない種別（`missing_source_type_exports`）・取り込んだエクスポートのファイル数（`snapshot_count`）・`studies`／`source_type`出力先・取込済み種別（`source_type_imports`）、全研究と種別ごとのエクスポートの鮮度（`exports`。全研究のエクスポートと取り込んだ全種類が期限内のときだけ`status=current`）、日付がそろっているか（`snapshot_aligned`。そろっていなければ`snapshot_note`で知らせるだけで、再取得は勧めない）、読み込み中の利用者辞書（`dictionaries`。設定不備は`error`）を返す。通信なし |
-| `import_catalogue_csv` | `filename`, `column_map`。`EMA_IMPORT_DIR/studies`または`source_type`直下の公式CSVを検証し、Non-interventional studyだけを登録。`source_type/`のファイルは名前の種別でタグ付け |
+| `catalogue_status` | CSV snapshotの有無・最終取込時刻・期限（`age_seconds`は全研究のエクスポートの経過時間）・取り込んでいない種別（`missing_source_type_exports`）・取り込みの記録の数（`snapshot_count`。旧形式の鍵の記録が残ると同じファイルで1件増える）・`studies`／`source_type`出力先・取込済み種別（`source_type_imports`）、全研究と種別ごとのエクスポートの鮮度（`exports`。全研究のエクスポートと取り込んだ全種類が期限内のときだけ`status=current`）、日付がそろっているか（`snapshot_aligned`。そろっていなければ`snapshot_note`で知らせるだけで、再取得は勧めない）、読み込み中の利用者辞書（`dictionaries`。設定不備は`error`）を返す。通信なし |
+| `import_catalogue_csv` | `filename`, `column_map`。`EMA_IMPORT_DIR/studies`または`source_type`直下の公式CSVを検証し、Non-interventional studyだけを登録。名前に種別を含むファイルは、どのフォルダでもその種別でタグ付け（`source_type/`のファイルは種別が必須） |
 | `refresh_drug_dictionary` | `force=false`。検索応答の`query_expansion.drugs_need_refresh`（`detail=full`の展開では`needs_refresh`）が真のときに公式EMA医薬品辞書を再取得。`salt_word_candidates`は保守者向けの未確認の語で、呼出元が対応するものではない |
 | `plan_study_search` | `question`, `use_llm=false`。検索は実行しない。研究デザイン語・医薬品・利用者辞書の概念を展開し、辞書に一致しない日本語の質問には`status=needs_client_translation`と`client_expansion`（ICD-10を手がかりに英語名・言い換え・コード候補・類縁概念を生成させる指示）を返す。`use_llm=true`はサーバー側LLMが同じ指針で生成する |
 | `list_local_protocols` | `study_id`。保存済みPDFの各版と不変`protocol_id`一覧。通信なし |
-| `get_protocol_outline` | `protocol_id`, `offset=0`, `limit=100`（1〜200）, `detail=compact`。全文の章一覧（section_id・ページ・章・role。親子・前後関係・構造警告は`detail=full`のとき） |
-| `search_protocol_text` | `protocol_id`, `query`, `limit=10`（1〜30）, `synonyms`, `codes`, `max_chars`（1000以上）。初回除外した章も含むPDF全文検索 |
-| `read_protocol_text` | `protocol_id`, `section_id`または`start_page`/`end_page`（1〜5ページ）, `offset=0`, `max_chars=12000`（1000〜20000）。`next_offset`で続きを読む |
-| `research_protocol` | `protocol_id`, `question`, `force=false`。保存回答の再利用、全文一括回答、または呼出元駆動のステップ探索 |
+| `get_protocol_outline` | `protocol_id`, `offset=0`, `limit=100`（1〜200）, `detail=compact`。全文の章一覧（section_id・ページ・章・role。親子・前後関係・構造警告は`detail=full`のとき）。応答の`source.reading`はその応答を作った読み方 |
+| `search_protocol_text` | `protocol_id`, `query`, `limit=10`（1〜30）, `synonyms`, `codes`, `max_chars`（1000以上）。初回除外した章も含むPDF全文検索。応答の`source.reading`はその応答を作った読み方 |
+| `read_protocol_text` | `protocol_id`, `section_id`または`start_page`/`end_page`（1〜5ページ）, `offset=0`, `max_chars=12000`（1000〜20000）。`next_offset`で続きを読む。応答の`source.reading`はその応答を作った読み方 |
+| `research_protocol` | `protocol_id`, `question`, `force=false`。保存回答の再利用、全文一括回答、または呼出元駆動のステップ探索。`needs_client_exploration`と`exploration_limit_reached`は`cache_protocol_answer`に渡す`reading`を返す |
 | `cache_protocol_answer` | `protocol_id`, `question`, `answer`, `reading`（`research_protocol`が返した値。英語以外のプロトコルでは必須）。質問別の出典付き回答を検証・保存 |
 
 CLIのサブコマンドは、名前は異なりますが（`pdf-search`、`ask`、`cache-headings`、`cache-answer`など）、MCPのツールと同じ引数と既定値を取ります。入力範囲はコア（`Service`／`Explorer`）が検査するので、CLIにも同じ範囲が適用されます（`uv run ema-rwe <サブコマンド> --help`。`search`も既定で全研究を対象にし、`--darwin-only`でDARWIN EUに限ります）。

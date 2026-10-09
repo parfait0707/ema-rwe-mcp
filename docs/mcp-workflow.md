@@ -64,7 +64,7 @@ the MCP resource `ema-rwe://docs/mcp-workflow` (bundled in the wheel), so a clie
     user asked for the class, add each listed name that truly belongs to it to that block's `queries`
     and rerun; leave out the ones that do not.
 - Every column is searched. `role` ranks matches in that role's catalogue columns (Outcomes, Medicinal
-  condition, INN/ATC) first instead of filtering, because 19% of records have an empty Outcomes field.
+  condition, INN/ATC, plus the title and related columns) first instead of filtering, because 19% of records have an empty Outcomes field.
 - Candidates are ranked, never cut: specific matches before category-only ones, role-column matches
   first, secondary-use data before surveys, then fused BM25 rank. Each candidate carries
   `rank_features`, `matched_terms` and `matched_term_sources` (`category` for umbrella matches).

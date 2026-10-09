@@ -206,6 +206,8 @@ async def test_autonomous_loop_is_bounded_and_does_not_cache_unfinished_answer(s
     monkeypatch.setattr("ema_rwe.exploration.complete_json", respond)
     result = await service.research_protocol(pid, "missingness")
     assert result["status"] == "exploration_limit_reached" and len(result["trace"]) == 2
+    # The caller continuing by hand caches under the reading the exploration started with
+    assert result["reading"] == result["source"]["reading"]
     with service.repo.connection() as db:
         assert db.execute("SELECT COUNT(*) FROM protocol_answers").fetchone()[0] == 0
 

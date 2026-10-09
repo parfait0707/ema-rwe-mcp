@@ -1,6 +1,8 @@
-# 公開リリース手順（v0.1.1）
+# リリース手順
 
-## 公開前チェック（実施済み・要確認）
+冒頭の 3 節（公開前チェック、履歴の書き換え、公開手順）は v0.1.1 の初回公開時の記録で、実施済みである。再実行しない（履歴の書き換えと公開範囲の変更は破壊的）。以降の版は「以降のリリース」と「月ごとのカタログのスナップショット」に従う。
+
+## 公開前チェック（v0.1.1 の記録）
 
 | 項目 | 状態 |
 |---|---|
@@ -11,9 +13,9 @@
 | パッケージ情報 | `pyproject.toml` 0.1.0、readme / license / urls / classifiers |
 | 同梱データ | `data/ema.sqlite3`（42 MB、連絡先列なし）、`data/ema-medicines.json`（wheel同梱はこの2つ）。記入例`data/terminology.example.json`と`data/terminology_decisions.json`はリポジトリのみ |
 | ドキュメント | `README.md`（利用者）、`README_DEV.md`（開発者）、`CHANGELOG.md`、`docs/` |
-| Git 履歴 | 作業ログ（`docs/work_log/`）はツリーから削除し `.gitignore` 済み。**履歴からの除去は下記「履歴の書き換え」を公開前に実行する**（コミットハッシュが変わり、タグは再作成、GitHub の PR ページには旧コミットが残りうる） |
+| Git 履歴 | 作業ログ（`docs/work_log/`）はツリーから削除し `.gitignore` 済み。**履歴からの除去は下記「履歴の書き換え」で公開前に実行した**（コミットハッシュが変わり、タグは再作成、GitHub の PR ページには旧コミットが残りうる） |
 
-## 履歴の書き換え（作業ログの除去。公開前に 1 回、手元で実行）
+## 履歴の書き換え（v0.1.1 の公開前に 1 回実施済み。再実行しない）
 
 ```bash
 git switch main && git pull origin main
@@ -29,7 +31,7 @@ git tag -a v0.1.1 -m "v0.1.1 first public release" && git push origin v0.1.1
 リポジトリの再作成か GitHub サポートへの依頼が必要です。確実に消したい場合は新しいリポジトリへ
 書き換え後の履歴だけを push する方法が最も簡単です。
 
-## 公開手順
+## 公開手順（v0.1.1 の記録）
 
 ```bash
 git switch main && git pull origin main
@@ -39,10 +41,11 @@ gh release create v0.1.1 --title "v0.1.1" --notes-file CHANGELOG.md
 gh repo edit parfait0707/ema-rwe-mcp --visibility public --accept-visibility-change-consequences
 ```
 
-## 以降のリリース（例：v0.2.0）
+## 以降のリリース（vX.Y.Z）
 
-1. `pyproject.toml` の `version`、`uv lock`、`README.md`・`README_DEV.md` の版表記、`.mcp.json.sample`・`.codex/config.toml.sample` の固定タグ、`EMA_USER_AGENT` の既定値、`CHANGELOG.md` の見出しを揃え、PR でマージする。
-2. main で `uv run pytest -q`、`uv run ruff check src tests`、`uv run ruff format --check src tests`、`uv build` が green であることを確認し、`git tag -a vX.Y.Z -m "..." && git push origin vX.Y.Z`。
+1. `pyproject.toml` の `version`、`uv.lock` のこのパッケージの版、`README.md`・`README_DEV.md` の版表記、`.mcp.json.sample`・`.codex/config.toml.sample` の固定タグ、`EMA_USER_AGENT` の既定値（`src/ema_rwe/config.py`、`.env.example`、`README_DEV.md` の 3 か所）、`CHANGELOG.md` の見出しを揃え、PR でマージする。
+   - 同梱のカタログを新しくするとき（任意）：新しいエクスポートを `data/imports/{studies,source_type}/` に置いて `uv run ema-rwe import-all` を実行し（補完の結果は残り、最後に `VACUUM`。README_DEV の「再構築」）、`data/ema.sqlite3` をコミットする。最新の `data-YYYYMMDD` スナップショットと同じエクスポートにそろえる。医薬品辞書は `uv run ema-rwe refresh-drugs --force` で `data/ema-medicines.json` を更新できる。
+2. main で `uv run pytest -q`、`uv run ruff check src tests`、`uv run ruff format --check src tests`、`uv build` が green であることを確認し、`git tag -a vX.Y.Z -m "..." && git push origin vX.Y.Z`。保守者の Claude Code の環境では、利用者レベルのフック（リポジトリには無い）が、タグとリリースの作成の前に整合性の監査を済ませ、コミットした状態に印を付けることを求める（スナップショットの公開も同じ）。
 3. `gh release create vX.Y.Z --title "vX.Y.Z" --notes-file <その版の CHANGELOG 節>`。
 4. 下記「公開後の確認」の 1 を新しいタグで行う。
 
@@ -59,8 +62,8 @@ gh repo edit parfait0707/ema-rwe-mcp --visibility public --accept-visibility-cha
 
 ## 公開後の確認
 
-1. 資格情報のない環境で `uvx --from git+https://github.com/parfait0707/ema-rwe-mcp@v0.1.1 ema-rwe --help` が動く。
-2. `.mcp.json.sample` をコピーした Claude Code から `catalogue_status` が `status: current` を返す。
+1. 資格情報のない環境で `uvx --from git+https://github.com/parfait0707/ema-rwe-mcp@vX.Y.Z ema-rwe --help` が動く。
+2. `.mcp.json.sample` をコピーした Claude Code から `catalogue_status` が応答する。`status` は同梱のエクスポートの取り込みから `EMA_CATALOGUE_TTL_SECONDS`（既定 30 日）以内なら `current`、それ以降は `stale` が正常。
 3. README の Issues リンクが開く。Issue テンプレートは必要に応じて追加する。
 
 ## 公開後に残る作業

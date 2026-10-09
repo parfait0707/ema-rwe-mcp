@@ -327,7 +327,8 @@ class Service:
             or Path(filename).suffix.casefold() != ".csv"
         ):
             raise RWEError(
-                "INVALID_INPUT", "filename must be a CSV basename inside the Studies import directory."
+                "INVALID_INPUT",
+                "filename must be a CSV basename in the import directory (studies/, source_type/).",
             )
         root = self.import_dir.resolve()
         study_folder = self.study_import_dir.resolve()
@@ -337,8 +338,11 @@ class Service:
             raise RWEError("INVALID_INPUT", "CSV path escaped the configured import directory.")
         path = next((candidate for candidate in candidates if candidate.is_file()), None)
         if path is None:
-            raise RWEError("CSV_NOT_FOUND", "CSV was not found in the Studies import directory.")
-        source_type = source_type_from_filename(filename) if path.parent == typed_folder else None
+            raise RWEError(
+                "CSV_NOT_FOUND", "CSV was not found in the import directory (studies/, source_type/)."
+            )
+        # Tag by the file name in any folder, as catalogue_status reads it (and the CLI import-csv tags).
+        source_type = source_type_from_filename(filename)
         if path.parent == typed_folder and not source_type:
             raise RWEError(
                 "INVALID_INPUT",
@@ -461,7 +465,7 @@ class Service:
         return summary
 
     def import_all(self):
-        """Rebuild tags from every export on disk: full Studies export(s) first, then the typed exports."""
+        """Rebuild tags from every export on disk: studies/ first, then source_type/ (tags accumulate in any order)."""
         folders = (self.study_import_dir, self.source_type_import_dir)
         files = [p for folder in folders if folder.is_dir() for p in sorted(folder.glob("*.csv"))]
         if not files:

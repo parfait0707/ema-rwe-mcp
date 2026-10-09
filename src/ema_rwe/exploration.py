@@ -385,6 +385,8 @@ class Explorer:
             "status": "exploration_limit_reached",
             "question": question,
             "source": initial["source"],
+            "reading": reading,
             "trace": trace,
-            "instruction": "No validated answer was saved. Continue with caller tools or increase LLM_MAX_STEPS (maximum 20).",
+            "instruction": "No validated answer was saved. Continue with caller tools (cache_protocol_answer with this "
+            "reading) or increase LLM_MAX_STEPS (maximum 20).",
         }
