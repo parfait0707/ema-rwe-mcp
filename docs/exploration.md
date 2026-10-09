@@ -61,7 +61,7 @@ PDFは追加要望に従ってユーザーが削除するまで保持する。�
 
 `read_protocol_text` は `section_id` の代わりに `start_page` / `end_page` で物理PDFの1～5ページを指定できる。最大20,000文字／回で、`next_offset` があるときは同じ対象と次のoffsetで続きを読む。
 
-内部LLM未設定の `research_protocol` は `needs_client_exploration`、初期検索ヒット、回答schema、読み方 `reading`（英訳のある文書でだけ空でない）を返す。呼出元LLMは追加語で検索し、章一覧や前後ページを辿ってから保存する。回答schemaは `answers: [{value, evidence:[{page,section,quote}]}]`、`source_assessments`（データタイプと定義用途の判定。[用途別分類](source-types.md)）、`missing_information`。元の共通抽出schemaを上書きしない。質問別回答は別SQLiteテーブルに保存する。
+内部LLM未設定の `research_protocol` は `needs_client_exploration`、初期検索ヒット、回答schema、読み方 `reading`（英訳のある文書でだけ空でない）を返す。呼出元LLMは追加語で検索し、章一覧や前後ページを辿ってから保存する。章一覧・検索・読取の応答の `source.reading` がこの `reading` と違えば、途中で英訳が変わったので `research_protocol` からやり直す（spec v1.10）。内部LLMの探索は開始時の英訳で一貫して読む。回答schemaは `answers: [{value, evidence:[{page,section,quote}]}]`、`source_assessments`（データタイプと定義用途の判定。[用途別分類](source-types.md)）、`missing_information`。元の共通抽出schemaを上書きしない。質問別回答は別SQLiteテーブルに保存する。
 
 例:
 

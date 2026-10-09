@@ -143,7 +143,9 @@ filters. Never pick a subset yourself.
 - The response's top-level `pending_tools` lists `{tool, arguments}` calls of `analyze_protocol` and
   `research_protocol`. Run all of them, each followed by `cache_protocol_analysis` (every
   `next_offset` batch) or `cache_protocol_answer` (pass the `reading` `research_protocol` returned) as
-  their status asks.
+  their status asks. While exploring, `search_protocol_text`, `get_protocol_outline` and
+  `read_protocol_text` report `source.reading`; if it differs from that `reading`, the heading translations
+  changed: call `research_protocol` again and explore afresh.
 - `analyze_protocol` may return `status=extracting` (server-side provider extraction running):
   call it again for the same study until it returns the analysis; do not extract client-side.
 - `analyze_protocol` may return `status=needs_heading_translation` for a protocol that is not in
