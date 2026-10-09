@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.5.5 (2026-10-09)
 
 - Question exploration keeps one reading (spec v1.10): `research_protocol` does the full-text pass, the
   first search it hands the caller, the provider loop's search/outline/read, evidence validation and the
