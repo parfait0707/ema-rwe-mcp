@@ -465,7 +465,7 @@ class Service:
         return summary
 
     def import_all(self):
-        """Rebuild tags from every export on disk: full Studies export(s) first, then the typed exports."""
+        """Rebuild tags from every export on disk: studies/ first, then source_type/ (tags accumulate in any order)."""
         folders = (self.study_import_dir, self.source_type_import_dir)
         files = [p for folder in folders if folder.is_dir() for p in sorted(folder.glob("*.csv"))]
         if not files:
