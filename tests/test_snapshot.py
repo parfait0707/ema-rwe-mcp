@@ -12,21 +12,28 @@ from ema_rwe.storage import Repository, refresh_from_bundle
 
 @pytest.fixture
 def exports(tmp_path, csv_file):
-    """The four exports of refresh 20261101; each typed export lists a subset (imports are keyed by content)."""
+    """The four exports of refresh 20261101. Types overlap, so two typed exports (and a typed and the full
+    export) may be byte-identical: claims equals the full export and ehr equals registry here."""
     root = tmp_path / "imports"
     (root / "studies").mkdir(parents=True)
     (root / "source_type").mkdir()
     lines = csv_file.read_text(encoding="utf-8-sig").splitlines()
-    (root / "studies" / "20261101_all_export-data.csv").write_text("\n".join(lines), encoding="utf-8")
-    for n, kind in enumerate(("claims", "ehr", "registry")):
-        body = "\n".join([lines[0], lines[1 + n % 2]] + ([""] * n))  # differ in content, not in studies
-        (root / "source_type" / f"20261101_{kind}_export-data.csv").write_text(body, encoding="utf-8")
+    for folder, kind, body in [
+        ("studies", "all", lines),
+        ("source_type", "claims", lines),
+        ("source_type", "ehr", lines[:2]),
+        ("source_type", "registry", lines[:2]),
+    ]:
+        (root / folder / f"20261101_{kind}_export-data.csv").write_text("\n".join(body), encoding="utf-8")
     return root
 
 
 def test_snapshot_is_built_from_the_four_exports_of_one_refresh(exports, tmp_path):
     manifest = build_snapshot(exports, "20261101", tmp_path / "out", None)
     assert [e["kind"] for e in manifest["exports"]] == ["studies", "claims", "ehr", "registry"]
+    # Byte-identical exports of different kinds each report their own row count
+    rows = {e["kind"]: e["rows"] for e in manifest["exports"]}
+    assert rows["studies"] == rows["claims"] > rows["ehr"] == rows["registry"] > 0
     assert (
         manifest["studies_total"] == Repository(tmp_path / "out" / manifest["database"]["name"]).study_count()
     )

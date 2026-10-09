@@ -452,3 +452,75 @@ async def test_answers_are_cached_under_the_reading_they_were_explored_with(serv
     assert (await service.research_protocol(pid, "Which exclusion criteria?"))[
         "status"
     ] == "needs_client_exploration"
+
+
+async def test_server_exploration_reads_and_saves_under_the_translations_it_started_with(
+    service, website, monkeypatch
+):
+    # Given a protocol read under translations A and a provider whose full-text pass finds nothing
+    from ema_rwe.domain import ProtocolAnswer
+    from ema_rwe.pdf import reading_hash
+
+    website["/system/files/protocol.pdf"] = spanish_pdf()
+    pid = (await service.analyze_protocol("123"))["protocol_id"]
+    await service.cache_heading_translations(pid, TRANSLATIONS)
+    other = dict(TRANSLATIONS, **{"3.2 Criterios de exclusión": "3.2 Background"})
+    start, changed = reading_hash(TRANSLATIONS), reading_hash(other)
+    service.settings.llm_model = "mock-model"
+    service.settings.llm_base_url = "https://provider.invalid/v1"
+
+    async def nothing(_pid, _question, _translations):
+        return ProtocolAnswer(), {"route": "full_text"}
+
+    quote = "Pacientes institucionalizados o dados de alta en los 30 días previos."
+    actions = iter(
+        [
+            {"action": "search", "query": "exclusion"},
+            {"action": "outline"},
+            {"action": "read", "start_page": 1},
+            {
+                "action": "finish",
+                "answer": {"answers": [{"value": "Excluded", "evidence": [{"page": 1, "quote": quote}]}]},
+            },
+        ]
+    )
+    seen = []
+
+    async def explore(_settings, messages):
+        # When another process changes the translations to B after exploration began
+        if len(messages) == 2:
+            await service.cache_heading_translations(pid, other)
+        else:
+            seen.append(json.loads(messages[-1]["content"])["source"]["reading"])
+        return next(actions)
+
+    monkeypatch.setattr(service.explorer, "answer_from_full_text", nothing)
+    monkeypatch.setattr("ema_rwe.exploration.complete_json", explore)
+    saved = await service.research_protocol(pid, "Which exclusion criteria?")
+    # Then every search, outline and read, and the saved answer, use A; nothing read under B is cached as A
+    assert seen == [start, start, start] and saved["source"]["reading"] == start
+    with service.repo.connection() as db:
+        keys = {k for (k,) in db.execute("SELECT cache_key FROM protocol_answers")}
+    question = "Which exclusion criteria?"
+    assert (
+        keys == {service.explorer.key(pid, question, start)} != {service.explorer.key(pid, question, changed)}
+    )
+    await service.cache_heading_translations(pid, TRANSLATIONS)
+    assert (await service.research_protocol(pid, question))["cached"] is True
+
+
+async def test_client_exploration_responses_name_the_reading_they_used(service, website):
+    website["/system/files/protocol.pdf"] = spanish_pdf()
+    pid = (await service.analyze_protocol("123"))["protocol_id"]
+    await service.cache_heading_translations(pid, TRANSLATIONS)
+    asked = await service.research_protocol(pid, "Which exclusion criteria?")
+    # The first search handed to the caller is read under the reading the answer must be cached with
+    assert asked["source"]["reading"] == asked["reading"]
+    await service.cache_heading_translations(pid, dict(TRANSLATIONS, **{"3.1 Diseño": "3.1 Background"}))
+    # A later tool call reports the changed reading, so the caller can tell its exploration is mixed
+    for result in (
+        await service.search_protocol_text(pid, "exclusion"),
+        await service.get_protocol_outline(pid),
+        await service.read_protocol_text(pid, start_page=1),
+    ):
+        assert result["source"]["reading"] != asked["reading"]

@@ -2,10 +2,20 @@
 
 ## Unreleased
 
+- Question exploration keeps one reading (spec v1.10): `research_protocol` does the full-text pass, the
+  first search it hands the caller, the provider loop's search/outline/read, evidence validation and the
+  cache key under the translations it started with, so work read under other translations is never cached
+  as the starting reading. Outline, search and read responses name their `source.reading`; a caller seeing
+  another reading than `research_protocol` returned starts again (no tool rejects it: a change and change
+  back the caller misses is a known limit).
+- Class expansions return every omitted member (54 at most today) instead of 30.
+- Import records are kept per content and kind (`<sha256>:<type>` for a typed export): byte-identical
+  exports of different kinds, which overlapping types allow, no longer overwrite each other's record, so
+  `catalogue_status` and snapshot manifests stay right. Schema unchanged.
 - Medicine names relate as equivalent, broader, narrower or different (spec v1.9): a catalogue name
   without the strain or type the query gives (`influenza, live attenuated` for an H5N1 vaccine) becomes a
   category term, not a synonym. Class expansions list the EMA records left out because the catalogue names
-  their code otherwise (`omitted_members`, at most 30, and `omitted_members_total`): 86 across all
+  their code otherwise (`omitted_members`, every one, and `omitted_members_total`): 86 across all
   classes, mostly true members named differently from their ATC substance (recombinant factor VIII
   INNs, vaccine products), some EMA code errors; the caller adds those that belong to a requested class.
   A current product name without its `(previously ...)` note (Icandra, GoResp Digihaler, Vantavo) now

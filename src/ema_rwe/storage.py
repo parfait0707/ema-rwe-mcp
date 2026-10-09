@@ -60,7 +60,7 @@ class Repository:
                 CREATE TABLE IF NOT EXISTS analysis_history (
                     snapshot_id TEXT PRIMARY KEY, study_id TEXT NOT NULL,
                     fingerprint TEXT NOT NULL, body TEXT NOT NULL);
-                CREATE TABLE IF NOT EXISTS imports (
+                CREATE TABLE IF NOT EXISTS imports (  -- checksum: SHA-256, plus ':<type>' for a typed export
                     checksum TEXT PRIMARY KEY, filename TEXT, imported_at TEXT, count INTEGER);
                 CREATE TABLE IF NOT EXISTS study_catalogue_search (
                     study_id TEXT PRIMARY KEY, search_text TEXT NOT NULL);
@@ -664,8 +664,12 @@ def import_csv(
                 (study.study_id, search_text_by_id[study.study_id]),
             )
             repo._index(db, study)
+        # One import record per content and kind: a typed export may legitimately hold the same studies as
+        # another type's or the full export, and catalogue_status and snapshots read each kind's record. The
+        # raw file above stays deduplicated by content alone. The key column keeps its name (schema 6).
+        record = f"{checksum}:{source_type}" if source_type else checksum
         db.execute(
-            "INSERT OR REPLACE INTO imports VALUES (?,?,?,?)", (checksum, path.name, now(), len(studies))
+            "INSERT OR REPLACE INTO imports VALUES (?,?,?,?)", (record, path.name, now(), len(studies))
         )
     schema_warnings = []
     if not selected.get("data_source_types") and not source_type:

@@ -464,7 +464,7 @@ def test_catalogue_freshness_is_judged_per_export(settings, csv_file):
     service.study_import_dir.mkdir(parents=True)
     service.source_type_import_dir.mkdir(parents=True)
     shutil.copyfile(csv_file, service.study_import_dir / "20260901_all_export-data.csv")
-    # A filtered export lists a subset of the studies (imports are keyed by content, so it must differ)
+    # A filtered export lists a subset of the studies
     lines = csv_file.read_text(encoding="utf-8-sig").splitlines()
     (service.source_type_import_dir / "20261001_registry_export-data.csv").write_text(
         "\n".join(lines[:2]), encoding="utf-8"
@@ -482,3 +482,27 @@ def test_catalogue_freshness_is_judged_per_export(settings, csv_file):
     status = service.catalogue_status()
     assert status["status"] == "stale" and status["exports"]["studies"]["status"] == "stale"
     assert status["exports"]["registry"]["status"] == "current"
+
+
+def test_identical_exports_of_different_kinds_each_keep_their_import_record(settings, csv_file):
+    """Types overlap, so a typed export may equal another type's or the full export byte for byte."""
+    service = Service(settings)
+    service.study_import_dir.mkdir(parents=True)
+    service.source_type_import_dir.mkdir(parents=True)
+    shutil.copyfile(csv_file, service.study_import_dir / "20260901_all_export-data.csv")
+    for kind in ("claims", "ehr"):
+        shutil.copyfile(csv_file, service.source_type_import_dir / f"20260901_{kind}_export-data.csv")
+    service.import_all()
+    status = service.catalogue_status()
+    assert {k: e["filename"] for k, e in status["exports"].items()} == {
+        "studies": "20260901_all_export-data.csv",
+        "claims": "20260901_claims_export-data.csv",
+        "ehr": "20260901_ehr_export-data.csv",
+    }
+    assert status["missing_source_type_exports"] == ["registry"] and status["snapshot_aligned"] is True
+    # The same kind exported again unchanged replaces that kind's record only
+    shutil.copyfile(csv_file, service.source_type_import_dir / "20261001_claims_export-data.csv")
+    service.import_catalogue_csv("20261001_claims_export-data.csv")
+    status = service.catalogue_status()
+    assert status["exports"]["claims"]["filename"] == "20261001_claims_export-data.csv"
+    assert len(service.repo.imports()) == 3 and set(status["exports"]) == {"studies", "claims", "ehr"}

@@ -76,13 +76,11 @@ def same_medicine(label: str, ingredients: list[str]) -> bool:
     return medicine_relation(label, ingredients) != "different"
 
 
-MAX_OMITTED = 30
-
-
 def omitted_report(omitted: list[dict]) -> dict:
-    """At most MAX_OMITTED omitted class members, one per name, and their total; nothing when none."""
+    """Every omitted class member, one per name, and their count; nothing when none. Never truncated: the
+    caller decides which belong to the class, so it must see them all (54 at most in 2026)."""
     unique = list({o["name"]: o for o in omitted}.values())
-    return {"omitted_members": unique[:MAX_OMITTED], "omitted_members_total": len(unique)} if unique else {}
+    return {"omitted_members": unique, "omitted_members_total": len(unique)} if unique else {}
 
 
 def expand_medicine(query: str, labels: dict[str, str]) -> dict | None:

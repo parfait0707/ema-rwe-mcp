@@ -598,6 +598,15 @@ PDF 取得先ディレクトリ名から X/Y が推測可能だった（P）、�
 - テスト：全体 413 passed、ruff 合格。
 - 公開：最終の main（2846627）でスナップショットを作り直し（研究 3,314、観測 432、補完 215、gzip 12.9 MB）、`data-20261001` として `--latest=false` で公開した。`gh release download` で取り直したファイルを `--verify` で照合できた。アプリの最新版の表示は v0.5.4 のまま。
 
+## 2026-10-09 探索の読み方の固定、省いた所属薬の全件、種別ごとの取り込みの記録（spec v1.10）
+
+- 指摘の出典：外部の再々々レビュー（9d69c3d）の 3 点。実装方針（同じ内容の別種別の CSV を拒否する案）にはレビュワーが反対し、種別は排他的でなく正当な一致がありうるとの指摘を受けて、記録を内容と種別ごとに残す方式に改めた。
+- 探索：内部 LLM の探索ループで開始後に別の英訳へ変えても、`search`、`outline`、`read` の応答と保存した回答の `source.reading` が開始時の値で、開始時の鍵の回答だけが保存されることを確かめた。呼出元の探索ツールの応答は、変更後の読み方を名乗る。各ツールに期待する読み方を渡して拒否させる仕組みは無く、呼出元が探索中の A→B→A を見落とせば、保存時の照合をすり抜ける（既知の制限）。
+- 省いた所属薬：同梱 DB で VACCINES 54 件、VIRAL VACCINES 44 件、Influenza vaccines 22 件が、`compare_protocols` の `medicine_expansion` に全件、`omitted_members_total` と同数で届いた（応答は 17〜42 KB）。
+- 検索の順位：VACCINES、VIRAL VACCINES、Influenza vaccines、Blood coagulation factors、apixaban（`role=exposure`）で、main と変更後の候補の順序、facets、検索語、カテゴリー語が一致した。
+- 取り込みの記録：実際の 20261001 の 4 つのエクスポートでスナップショットを作り直すと、manifest のエクスポートのファイル、件数、SHA-256 と研究数が公開済みの `data-20261001` と一致した（DB は取込日時を含むので SHA-256 は一致しない）。claims の内容を ehr に、全研究の内容を registry に複製した 4 つでも作成でき、件数は claims と ehr が 819、全研究と registry が 3,314、`catalogue_status` は 4 種類とも記録があり `missing_source_type_exports` が空になった。修正前はこの入力で manifest の作成が `KeyError` で止まった。
+- テスト：`test_server_exploration_reads_and_saves_under_the_translations_it_started_with`、`test_client_exploration_responses_name_the_reading_they_used`、`test_every_omitted_class_member_reaches_the_response`、`test_identical_exports_of_different_kinds_each_keep_their_import_record`。スナップショットのテストの入力は、別種別のバイト単位で同じ CSV に改めた（以前は内容を変えて衝突を避けていた）。修正を外すと、新しいテストとスナップショットのテストが失敗することを確認した。
+
 ## 未検証事項（継続）
 
 - 外部LLM API呼出しの実認証検証は未実施。キーなしの呼出元LLM方式は合成PDFで保存・再利用まで検証。

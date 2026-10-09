@@ -1527,10 +1527,8 @@ class Service:
     ):
         """Cache a caller's answer under the reading research_protocol returned with the question."""
         source = {"protocol_id": protocol_id}
-        self._reading_snapshot(source, reading, "answer the question again")
-        return await asyncio.to_thread(
-            self.explorer.save, protocol_id, question, answer, None, source["reading"]
-        )
+        translations = self._reading_snapshot(source, reading, "answer the question again")
+        return await asyncio.to_thread(self.explorer.save, protocol_id, question, answer, None, translations)
 
     async def cache_protocol_analysis(
         self,

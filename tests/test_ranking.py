@@ -1,5 +1,7 @@
 """Tiered screening: every column retrieved, blocks AND-ed, candidates ranked without dropping any."""
 
+import json
+
 import pytest
 from test_drugs import drug_file  # noqa: F401  (fixture)
 from test_screening import study
@@ -336,3 +338,28 @@ async def test_checked_protocol_overrides_an_earlier_observation(service, monkey
     result = await service.compare_protocols("q", ["statin"], check_protocols=7)
     row = next(c for c in result["candidates"] if c["study_id"] == "1")
     assert row["protocol_found"] is True and ids(result)[-1] != "1"
+
+
+async def test_every_omitted_class_member_reaches_the_response(service, tmp_path, monkeypatch):
+    # Given a class whose code the EMA dictionary gives to more members than any former display limit (30)
+    from string import ascii_lowercase
+
+    from test_drugs import row
+
+    names = [f"omit{a}{b}mab" for a in ascii_lowercase[:5] for b in ascii_lowercase[:7]]
+    path = tmp_path / "many.json"
+    monkeypatch.setenv("EMA_DRUG_DICTIONARY_PATH", str(path))
+    path.write_text(
+        json.dumps({"meta": {"timestamp": "2026-10-09"}, "data": [row(n, n, "A04AD12") for n in names]})
+    )
+    service.repo.upsert(study("1", exposures=["(A04AD12) aprepitant"]))
+    service.repo.upsert(study("2", exposures=["(A04AD) Other antiemetics"]))
+    for i in range(3, 9):
+        service.repo.upsert(study(str(i), title=f"Other antiemetics cohort {i}"))
+    # When the caller searches the class
+    result = await service.compare_protocols("q", ["Other antiemetics"], role="exposure")
+    # Then medicine_expansion carries every member left out, and the count matches the list
+    (added,) = result["medicine_expansion"]
+    assert len(names) > 30
+    assert sorted(m["name"] for m in added["omitted_members"]) == sorted(names)
+    assert added["omitted_members_total"] == len(names)

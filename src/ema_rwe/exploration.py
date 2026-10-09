@@ -74,17 +74,18 @@ class Explorer:
         return stored_translations(self.reading_record(protocol_id)) or {}
 
     def context(self, protocol_id, translations: dict[str, str] | None = None):
-        """Pages, sections and source of a PDF, read under the given translations (default: current)."""
+        """Pages, sections and source of a PDF, read under the given translations (default: current). The source
+        names that reading, so a caller exploring across several calls can tell when it changed."""
         data, source = self.archive.load(protocol_id)
         if translations is None:
             translations = self.translations(protocol_id)
         pages = extract_pages(data, translations=translations)
-        return pages, sections(pages), source
+        return pages, sections(pages), {**source, "reading": reading_hash(translations)}
 
-    def outline(self, protocol_id, offset=0, limit=100, detail="compact"):
+    def outline(self, protocol_id, offset=0, limit=100, detail="compact", translations=None):
         if offset < 0 or not 1 <= limit <= 200:
             raise RWEError("INVALID_INPUT", "offset >=0 and outline limit 1..200 required.")
-        pages, chunks, source = self.context(protocol_id)
+        pages, chunks, source = self.context(protocol_id, translations)
         keep = None if detail == "full" else {"section_id", "page", "section", "role"}
         selected = [
             {k: v for k, v in c.items() if k not in {"text", "relevant"} and (keep is None or k in keep)}
@@ -99,9 +100,11 @@ class Explorer:
             "network_requests": 0,
         }
 
-    def search(self, protocol_id, query, limit=10, synonyms=None, codes=None, max_chars=None):
+    def search(
+        self, protocol_id, query, limit=10, synonyms=None, codes=None, max_chars=None, translations=None
+    ):
         """Ranked hits; section text is included in rank order until max_chars, later hits keep ids only."""
-        _, chunks, source = self.context(protocol_id)
+        _, chunks, source = self.context(protocol_id, translations)
         found = search_sections(chunks, query, limit, synonyms, codes)
         budget = self.settings.search_budget_chars if max_chars is None else max_chars
         if budget < 1000:
@@ -115,8 +118,17 @@ class Explorer:
                 used += len(hit["text"])
         return {"source": source, **found, "max_chars": budget, "network_requests": 0}
 
-    def read(self, protocol_id, section_id=None, start_page=1, end_page=None, offset=0, max_chars=12000):
-        pages, chunks, source = self.context(protocol_id)
+    def read(
+        self,
+        protocol_id,
+        section_id=None,
+        start_page=1,
+        end_page=None,
+        offset=0,
+        max_chars=12000,
+        translations=None,
+    ):
+        pages, chunks, source = self.context(protocol_id, translations)
         end_page = end_page or start_page
         if offset < 0 or not 1000 <= max_chars <= 20000:
             raise RWEError("INVALID_INPUT", "offset >=0, max_chars 1000..20000 required.")
@@ -225,9 +237,11 @@ class Explorer:
         )
         return answer, {"mode": "provider_full_text", "batches": len(batches), "dropped": dropped}
 
-    def save(self, protocol_id, question, answer: ProtocolAnswer, trace=None, reading: str | None = None):
-        """Validate and cache an answer under the reading it was explored with (default: current)."""
-        pages, _, source = self.context(protocol_id)
+    def save(self, protocol_id, question, answer: ProtocolAnswer, trace=None, translations=None):
+        """Validate and cache an answer under the translations it was explored with (default: current): the
+        evidence is checked and the cache key made from the same reading."""
+        pages, _, source = self.context(protocol_id, translations)
+        reading = source["reading"]
         validate_evidence(Extraction(key_notes=answer.answers[:20]), pages)
         # Also validate answers beyond the Extraction key_notes limit.
         if len(answer.answers) > 20:
@@ -265,7 +279,11 @@ class Explorer:
             # Question-ranked section bundle within a budget, so the caller reads once instead of
             # paging through search/outline/read round trips.
             initial = self.search(
-                protocol_id, question, limit=30, max_chars=self.settings.research_budget_chars
+                protocol_id,
+                question,
+                limit=30,
+                max_chars=self.settings.research_budget_chars,
+                translations=translations,
             )
             return {
                 "status": "needs_client_exploration",
@@ -280,7 +298,8 @@ class Explorer:
                 "Translate clinical concepts to English and search related disease/drug terms and medical codes. "
                 "Pass codes=[{system,code}] for code-only tables. Consider vocabulary/version and source database; "
                 "never equate retrieved codes with the requested outcome until you read the definition and algorithm. "
-                "Then call cache_protocol_answer with exact quotes, physical pages, section labels and reading. "
+                "Then call cache_protocol_answer with exact quotes, physical pages, section labels and reading; if a "
+                "later tool's source.reading differs from reading, call research_protocol again and start over. "
                 "No match is not proof that the information is absent. "
                 + SOURCE_ASSESSMENT_PROMPT
                 + " Return source_assessments only for definitions relevant to this question. Inspect their actual "
@@ -289,8 +308,8 @@ class Explorer:
             }
         answer, trace_entry = await self.answer_from_full_text(protocol_id, question, translations)
         if answer.answers or answer.source_assessments:
-            return self.save(protocol_id, question, answer, [trace_entry], reading)
-        initial = self.search(protocol_id, question, limit=3)
+            return self.save(protocol_id, question, answer, [trace_entry], translations)
+        initial = self.search(protocol_id, question, limit=3, translations=translations)
         messages = [
             {
                 "role": "system",
@@ -327,7 +346,7 @@ class Explorer:
             try:
                 if action == "finish":
                     answer = ProtocolAnswer.model_validate(decision.get("answer"))
-                    return self.save(protocol_id, question, answer, trace, reading)
+                    return self.save(protocol_id, question, answer, trace, translations)
                 if action == "search":
                     result = self.search(
                         protocol_id,
@@ -335,9 +354,12 @@ class Explorer:
                         3,
                         decision.get("synonyms"),
                         proposed_codes(decision.get("codes", [])),
+                        translations=translations,
                     )
                 elif action == "outline":
-                    result = self.outline(protocol_id, decision.get("offset", 0), limit=40)
+                    result = self.outline(
+                        protocol_id, decision.get("offset", 0), limit=40, translations=translations
+                    )
                 elif action == "read":
                     result = self.read(
                         protocol_id,
@@ -346,6 +368,7 @@ class Explorer:
                         decision.get("end_page"),
                         decision.get("offset", 0),
                         max_chars=12000,
+                        translations=translations,
                     )
                 else:
                     raise RWEError(
