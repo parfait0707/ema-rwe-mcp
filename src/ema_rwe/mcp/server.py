@@ -190,7 +190,7 @@ def create_server(service: Service | None = None):
                 ge=0,
                 le=20,
                 description="Check Study documents of the top N listed candidates (only when needs_narrowing lists candidates, "
-                "listed, without study_ids, match_scope=concept)",
+                "without study_ids, match_scope=concept)",
             ),
         ] = 0,
     ) -> dict:

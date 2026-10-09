@@ -10,7 +10,7 @@ from .config import Settings
 from .domain import AnalogousTerm, CodeCandidate, Extraction, ProtocolAnswer, RWEError, SourcePreference
 from .ranking import ScreeningBlock
 from .selection import SearchFilters
-from .service import Service
+from .service import Service, source_type_from_filename
 from .storage import Repository, import_csv
 
 
@@ -37,7 +37,10 @@ def parser():
     commands = p.add_subparsers(dest="command", required=True)
     drugs = commands.add_parser("refresh-drugs")
     drugs.add_argument("--force", action="store_true")
-    imp = commands.add_parser("import-csv")
+    imp = commands.add_parser(
+        "import-csv",
+        help="Import one Studies export; a <date>_<claims|ehr|registry>_export-data.csv name tags its studies",
+    )
     imp.add_argument("input", type=Path)
     imp.add_argument("--column-map", type=Path, help="JSON mapping: internal field to exact CSV header")
     inbox = commands.add_parser("import-download")
@@ -205,7 +208,10 @@ async def run(args):
     settings = Settings()
     if args.command == "import-csv":
         mapping = json.loads(args.column_map.read_text(encoding="utf-8")) if args.column_map else None
-        return import_csv(Repository(settings.db_path), args.input, mapping)
+        # The file name's type tags the studies, as import_catalogue_csv and import-all do (catalogue_status
+        # reads the same name, so an untagged typed import would be reported as imported).
+        source_type = source_type_from_filename(args.input.name)
+        return import_csv(Repository(settings.db_path), args.input, mapping, source_type)
     service = Service(settings)
     try:
         filters = (

@@ -506,3 +506,17 @@ def test_identical_exports_of_different_kinds_each_keep_their_import_record(sett
     status = service.catalogue_status()
     assert status["exports"]["claims"]["filename"] == "20261001_claims_export-data.csv"
     assert len(service.repo.imports()) == 3 and set(status["exports"]) == {"studies", "claims", "ehr"}
+
+
+async def test_cli_import_csv_tags_a_typed_export_by_its_file_name(tmp_path, monkeypatch, csv_file):
+    """The CLI tags like import_catalogue_csv, so catalogue_status never reports an untagged type as imported."""
+    from ema_rwe.cli import parser, run
+
+    monkeypatch.setenv("EMA_DB_PATH", str(tmp_path / "db.sqlite3"))
+    typed = tmp_path / "20261001_claims_export-data.csv"
+    shutil.copyfile(csv_file, typed)
+    result = await run(parser().parse_args(["import-csv", str(typed)]))
+    assert result["source_type"] == "claims"
+    assert "claims" in Repository(tmp_path / "db.sqlite3").get("123").data_source_types
+    plain = await run(parser().parse_args(["import-csv", str(csv_file)]))
+    assert plain["source_type"] is None

@@ -327,7 +327,8 @@ class Service:
             or Path(filename).suffix.casefold() != ".csv"
         ):
             raise RWEError(
-                "INVALID_INPUT", "filename must be a CSV basename inside the Studies import directory."
+                "INVALID_INPUT",
+                "filename must be a CSV basename in the import directory (studies/, source_type/).",
             )
         root = self.import_dir.resolve()
         study_folder = self.study_import_dir.resolve()
@@ -337,7 +338,9 @@ class Service:
             raise RWEError("INVALID_INPUT", "CSV path escaped the configured import directory.")
         path = next((candidate for candidate in candidates if candidate.is_file()), None)
         if path is None:
-            raise RWEError("CSV_NOT_FOUND", "CSV was not found in the Studies import directory.")
+            raise RWEError(
+                "CSV_NOT_FOUND", "CSV was not found in the import directory (studies/, source_type/)."
+            )
         source_type = source_type_from_filename(filename) if path.parent == typed_folder else None
         if path.parent == typed_folder and not source_type:
             raise RWEError(
