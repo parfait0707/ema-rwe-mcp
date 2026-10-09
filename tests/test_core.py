@@ -106,7 +106,7 @@ def test_import_actual_export_columns_and_safe_clinical_search(settings, tmp_pat
         ]
     )
     path = tmp_path / "actual-shape.csv"
-    path.write_text(stream.getvalue(), encoding="utf-8-sig")
+    path.write_text(stream.getvalue(), encoding="utf-8-sig", newline="")
 
     repo = Repository(settings.db_path)
     result = import_csv(repo, path)

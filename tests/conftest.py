@@ -122,5 +122,5 @@ def csv_file(tmp_path):
         ]
     )
     path = tmp_path / "export.csv"
-    path.write_text(stream.getvalue(), encoding="utf-8-sig")
+    path.write_text(stream.getvalue(), encoding="utf-8-sig", newline="")
     return path

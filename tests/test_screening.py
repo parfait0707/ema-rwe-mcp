@@ -190,7 +190,7 @@ def test_import_fills_role_columns_from_the_official_headers(settings, tmp_path)
         ]
     )
     path = tmp_path / "export.csv"
-    path.write_text(stream.getvalue(), encoding="utf-8-sig")
+    path.write_text(stream.getvalue(), encoding="utf-8-sig", newline="")
     repo = Repository(settings.db_path)
     import_csv(repo, path)
     saved = repo.get("77")
