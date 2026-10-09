@@ -341,7 +341,8 @@ class Service:
             raise RWEError(
                 "CSV_NOT_FOUND", "CSV was not found in the import directory (studies/, source_type/)."
             )
-        source_type = source_type_from_filename(filename) if path.parent == typed_folder else None
+        # Tag by the file name in any folder, as catalogue_status reads it (and the CLI import-csv tags).
+        source_type = source_type_from_filename(filename)
         if path.parent == typed_folder and not source_type:
             raise RWEError(
                 "INVALID_INPUT",

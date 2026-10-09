@@ -520,3 +520,12 @@ async def test_cli_import_csv_tags_a_typed_export_by_its_file_name(tmp_path, mon
     assert "claims" in Repository(tmp_path / "db.sqlite3").get("123").data_source_types
     plain = await run(parser().parse_args(["import-csv", str(csv_file)]))
     assert plain["source_type"] is None
+
+
+def test_a_typed_export_outside_source_type_is_still_tagged_by_its_name(settings, csv_file):
+    service = Service(settings)
+    service.study_import_dir.mkdir(parents=True)
+    shutil.copyfile(csv_file, service.study_import_dir / "20261001_registry_export-data.csv")
+    assert service.import_catalogue_csv("20261001_registry_export-data.csv")["source_type"] == "registry"
+    assert "registry" in service.repo.get("123").data_source_types
+    assert "registry" in service.catalogue_status()["exports"]

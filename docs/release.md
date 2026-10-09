@@ -13,7 +13,7 @@
 | パッケージ情報 | `pyproject.toml` 0.1.0、readme / license / urls / classifiers |
 | 同梱データ | `data/ema.sqlite3`（42 MB、連絡先列なし）、`data/ema-medicines.json`（wheel同梱はこの2つ）。記入例`data/terminology.example.json`と`data/terminology_decisions.json`はリポジトリのみ |
 | ドキュメント | `README.md`（利用者）、`README_DEV.md`（開発者）、`CHANGELOG.md`、`docs/` |
-| Git 履歴 | 作業ログ（`docs/work_log/`）はツリーから削除し `.gitignore` 済み。**履歴からの除去は下記「履歴の書き換え」を公開前に実行する**（コミットハッシュが変わり、タグは再作成、GitHub の PR ページには旧コミットが残りうる） |
+| Git 履歴 | 作業ログ（`docs/work_log/`）はツリーから削除し `.gitignore` 済み。**履歴からの除去は下記「履歴の書き換え」で公開前に実行した**（コミットハッシュが変わり、タグは再作成、GitHub の PR ページには旧コミットが残りうる） |
 
 ## 履歴の書き換え（v0.1.1 の公開前に 1 回実施済み。再実行しない）
 
@@ -44,7 +44,7 @@ gh repo edit parfait0707/ema-rwe-mcp --visibility public --accept-visibility-cha
 ## 以降のリリース（vX.Y.Z）
 
 1. `pyproject.toml` の `version`、`uv.lock` のこのパッケージの版、`README.md`・`README_DEV.md` の版表記、`.mcp.json.sample`・`.codex/config.toml.sample` の固定タグ、`EMA_USER_AGENT` の既定値（`src/ema_rwe/config.py`、`.env.example`、`README_DEV.md` の 3 か所）、`CHANGELOG.md` の見出しを揃え、PR でマージする。
-   - 同梱のカタログを新しくするとき（任意）：新しいエクスポートを `data/imports/{studies,source_type}/` に置いて `uv run ema-rwe import-all` を実行し（補完の結果は残り、最後に `VACUUM`。README_DEV の「再構築」）、`data/ema.sqlite3` をコミットする。最新の `data-YYYYMMDD` スナップショットと同じエクスポートにそろえる。医薬品辞書は `uv run ema-rwe refresh-drugs` で `data/ema-medicines.json` を更新できる。
+   - 同梱のカタログを新しくするとき（任意）：新しいエクスポートを `data/imports/{studies,source_type}/` に置いて `uv run ema-rwe import-all` を実行し（補完の結果は残り、最後に `VACUUM`。README_DEV の「再構築」）、`data/ema.sqlite3` をコミットする。最新の `data-YYYYMMDD` スナップショットと同じエクスポートにそろえる。医薬品辞書は `uv run ema-rwe refresh-drugs --force` で `data/ema-medicines.json` を更新できる。
 2. main で `uv run pytest -q`、`uv run ruff check src tests`、`uv run ruff format --check src tests`、`uv build` が green であることを確認し、`git tag -a vX.Y.Z -m "..." && git push origin vX.Y.Z`。保守者の Claude Code の環境では、利用者レベルのフック（リポジトリには無い）が、タグとリリースの作成の前に整合性の監査を済ませ、コミットした状態に印を付けることを求める（スナップショットの公開も同じ）。
 3. `gh release create vX.Y.Z --title "vX.Y.Z" --notes-file <その版の CHANGELOG 節>`。
 4. 下記「公開後の確認」の 1 を新しいタグで行う。

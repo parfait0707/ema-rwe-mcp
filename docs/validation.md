@@ -610,8 +610,8 @@ PDF 取得先ディレクトリ名から X/Y が推測可能だった（P）、�
 ## 2026-10-09 v0.5.5 のリリース前の整合性監査
 
 - 範囲：v0.5.4 以降の変更（PR #65〜#72）と版の表記。読み取り専用のサブエージェント 3 体が、README と AGENTS.md と CHANGELOG、docs と仕様と設定の見本、プログラムが出力する文言とパッケージの中身を、コードと照合した。誤りは 0 件、不足 4 件、軽微 14 件（重複を除く）。
-- ユーザーの判断で変えた挙動：CLI の `import-csv` は、種別の CSV でも研究にタグを付けないのに、`catalogue_status` はファイル名から種別を取り込み済みと表示していた（v0.5.4 以前から）。MCP の `import_catalogue_csv` と `import-all` と同じく、ファイル名の種別でタグを付けるようにした（`test_cli_import_csv_tags_a_typed_export_by_its_file_name`。修正を外すと失敗する）。
-- 直したコード：`exploration_limit_reached` に `reading` を加えた（英語以外の文書で、呼出元が `cache_protocol_answer` に渡す値が無かった）、比較表の指示に `reading` を渡すことを加えた、`check_protocols` の説明の余分な語、取り込みのエラー文言のフォルダ名。
+- ユーザーの判断で変えた挙動：CLI の `import-csv` は、種別の CSV でも研究にタグを付けないのに、`catalogue_status` はファイル名から種別を取り込み済みと表示していた（v0.5.4 以前から）。ファイル名の種別でタグを付けるようにした（`test_cli_import_csv_tags_a_typed_export_by_its_file_name`。修正を外すと失敗する）。検証役の指摘で、MCP の `import_catalogue_csv` と `import-all` も `source_type/` の外に置いた種別の名前の CSV にタグを付けず、同じ食い違いがあると分かったので、どのフォルダでもファイル名の種別でタグを付けるようにそろえた（ユーザーの判断「経路をそろえ、表示とデータを一致させる」の範囲）（`test_a_typed_export_outside_source_type_is_still_tagged_by_its_name`。修正を外すと失敗する）。
+- 直したコード：`exploration_limit_reached` に `reading` を加えた（英語以外の文書で、呼出元が `cache_protocol_answer` に渡す値が無かった。`test_autonomous_loop_is_bounded_and_does_not_cache_unfinished_answer` で確かめる）、比較表の指示に `reading` を渡すことを加えた、`check_protocols` の説明の余分な語、取り込みのエラー文言のフォルダ名。
 - 直した文書：リリース手順（初回公開の節を実施済みの記録と明記、版を上げる箇所の一覧、同梱カタログの更新、監査のフック、公開後の確認の版と `stale` の扱い）、README（第 4 レベルのクラスを加える条件）、README_DEV（`snapshot_count`、旧形式の取り込みの記録、探索ツールの `source.reading`、`research_protocol` の `reading`）、手順書（役割で順位を付ける列）、spec v1.10 の `snapshot_count` の増え方、exploration.md の題の版。
 - パッケージ：`uv build` の wheel に、同梱 DB、医薬品辞書、手順書が入ることを確かめた。
 

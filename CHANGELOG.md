@@ -2,9 +2,10 @@
 
 ## 0.5.5 (2026-10-09)
 
-- CLI `import-csv` tags a typed export (`<date>_<claims|ehr|registry>_export-data.csv`) by its file name,
-  as `import_catalogue_csv` and `import-all` do; before, `catalogue_status` reported such a file's type as
-  imported while no study carried the tag.
+- A typed export (`<date>_<claims|ehr|registry>_export-data.csv`) tags its studies by its file name on
+  every import route: CLI `import-csv` (any path) and `import_catalogue_csv`/`import-all` (any import
+  folder, not only `source_type/`). Before, `catalogue_status`, which reads the type from the file name,
+  reported such a file's type as imported while no study carried the tag.
 - `research_protocol`'s `exploration_limit_reached` returns the `reading` to pass to
   `cache_protocol_answer`; the comparison instruction says to pass the reading when caching.
 - Question exploration keeps one reading (spec v1.10): `research_protocol` does the full-text pass, the
