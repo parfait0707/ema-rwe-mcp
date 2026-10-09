@@ -626,6 +626,12 @@ PDF 取得先ディレクトリ名から X/Y が推測可能だった（P）、�
   - 担当の 2 体が「後のバッチで省いた単一の項目が消えた」と報告した。コードでは、途中のバッチの統合（`llm.merge_into`）は空の項目を飛ばすので消さない。一方、`coverage_complete=true` の保存で途中のバッチは捨てられるので、保存の後に再び `coverage_complete=true` で一部だけを渡すと、解析全体がその内容で置き換わる。仕様どおりの挙動として README_DEV に注意を書いた。
   - 担当の 1 体が動作確認のため、49285 の PDF に質問 `__canary_test__` の回答を保存した。本来の質問の回答とは別の鍵で、比較表には出ない。回答を消すツールは無い。
 
+## 2026-10-09 Windows でのテストの CSV の改行
+
+- 外部の指摘：Windows で `tests/test_snapshot.py` の `test_snapshot_is_built_from_the_four_exports_of_one_refresh` が失敗する。テストの CSV（`conftest.csv_file`）は `csv.writer` が行末を `\r\n` にし、`write_text` の改行の変換がさらに `\r` を足して `\r\r\n` になる。`splitlines()` の 2 行目が空になり、`lines[:2]` で作る ehr と registry の CSV に研究が入らない（アプリの取り込みの不具合ではない）。
+- 修正：`csv.writer` で作るテストの CSV（`conftest.csv_file`、`test_core`、`test_screening` の 3 か所）を `newline=""` で書き、改行を変換しない。件数の検証は変えていない。
+- 確認：Linux では変換が起きないので、`newline="\r\n"`（Windows と同じ変換）に一時的に替えて同じ失敗を再現し、修正で通ることを確かめた。全体 419 passed。Windows の実機では実行していない。
+
 ## 未検証事項（継続）
 
 - 外部LLM API呼出しの実認証検証は未実施。キーなしの呼出元LLM方式は合成PDFで保存・再利用まで検証。
