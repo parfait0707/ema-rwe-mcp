@@ -1,0 +1,71 @@
+{
+  "date_jst": "2026-10-09",
+  "client": "Codex App",
+  "caller_model": "GPT-6.1 Sol",
+  "reasoning_effort": "medium",
+  "mode": "client_assisted",
+  "catalogue_snapshot": "20261001",
+  "mcp_execution_definition": "各ケースの検索開始から最終比較出力までの経過時間から、絞り込み質問の待機時間を差し引いた値。呼出元の読解・再試行・他ケース処理を含む。",
+  "cases": [
+    {
+      "case": 1,
+      "title": "T2DM×GLP-1×デンマーク",
+      "start_utc": "2026-10-09T12:16:33.144Z",
+      "end_utc": "2026-10-09T12:34:55.850Z",
+      "elapsed_seconds": 1102.706,
+      "question_wait_start_utc": "2026-10-09T12:16:58.471Z",
+      "answer_observed_utc": "2026-10-09T12:18:24.416Z",
+      "question_wait_observed_seconds": 85.945,
+      "mcp_execution_seconds": 1016.761,
+      "initial_local_candidates": 7,
+      "screened": 4,
+      "pdfs": 3,
+      "mcp_execution_display": "16分57秒"
+    },
+    {
+      "case": 2,
+      "title": "COPD×チオトロピウム",
+      "start_utc": "2026-10-09T12:17:01.500Z",
+      "end_utc": "2026-10-09T12:24:44.390Z",
+      "elapsed_seconds": 462.89,
+      "question_wait_start_utc": "2026-10-09T12:17:28.645Z",
+      "answer_observed_utc": "2026-10-09T12:23:07.184Z",
+      "question_wait_observed_seconds": 338.539,
+      "mcp_execution_seconds": 124.351,
+      "initial_local_candidates": 39,
+      "screened": 1,
+      "pdfs": 1,
+      "mcp_execution_display": "2分04秒"
+    },
+    {
+      "case": 3,
+      "title": "PAHのコード・時間条件",
+      "start_utc": "2026-10-09T12:17:28.645Z",
+      "end_utc": "2026-10-09T12:34:28.135Z",
+      "elapsed_seconds": 1019.49,
+      "question_wait_start_utc": "2026-10-09T12:17:42.675Z",
+      "answer_observed_utc": "2026-10-09T12:27:19.690Z",
+      "question_wait_observed_seconds": 577.015,
+      "mcp_execution_seconds": 442.475,
+      "initial_local_candidates": 30,
+      "screened": 3,
+      "pdfs": 3,
+      "mcp_execution_display": "7分22秒"
+    },
+    {
+      "case": 4,
+      "title": "PAHの実態調査デザイン",
+      "start_utc": "2026-10-09T12:17:42.675Z",
+      "end_utc": "2026-10-09T12:34:28.260Z",
+      "elapsed_seconds": 1005.585,
+      "question_wait_start_utc": "2026-10-09T12:18:14.446Z",
+      "answer_observed_utc": "2026-10-09T12:27:19.690Z",
+      "question_wait_observed_seconds": 545.244,
+      "mcp_execution_seconds": 460.341,
+      "initial_local_candidates": 28,
+      "screened": 3,
+      "pdfs": 3,
+      "mcp_execution_display": "7分40秒"
+    }
+  ]
+}
