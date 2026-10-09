@@ -1,6 +1,6 @@
-import json
-
 """Tiered screening: every column retrieved, blocks AND-ed, candidates ranked without dropping any."""
+
+import json
 
 import pytest
 from test_drugs import drug_file  # noqa: F401  (fixture)

@@ -176,7 +176,9 @@ filters. Never pick a subset yourself.
 ## 5. Follow-up questions
 
 `search_protocol_text`, `get_protocol_outline`, `read_protocol_text`, `research_protocol` and
-`cache_protocol_answer` (pass the `reading` that `research_protocol` returned) work on archived PDFs by immutable `protocol_id` without EMA requests. A
+`cache_protocol_answer` (pass the `reading` that `research_protocol` returned) work on archived PDFs by immutable `protocol_id` without EMA requests. If a
+search, outline or read response reports another `source.reading` than `research_protocol` returned, the
+heading translations changed: call `research_protocol` again and explore afresh. A
 zero-hit search does not prove absence; inspect methods, outcome/exposure definitions and code-list
 appendices.
 
