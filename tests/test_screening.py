@@ -353,6 +353,21 @@ def test_import_records_whether_the_export_lists_a_protocol(settings, tmp_path):
     assert (repo.get("1").protocol_listed, repo.get("2").protocol_listed) == (True, False)
 
 
+def test_import_reads_the_protocol_columns_of_the_november_2026_export(settings, tmp_path):
+    path = tmp_path / "export.csv"
+    path.write_text(
+        "Study ID,Official title and acronym,Study type,Initial protocol file - URI,"
+        "Updated protocol file(s) - URI\n"
+        "1,Initial,Non-interventional study,https://x/initial.pdf,\n"
+        "2,Updated only,Non-interventional study,,https://x/updated.pdf\n"
+        "3,Without protocol,Non-interventional study,,\n",
+        encoding="utf-8",
+    )
+    repo = Repository(settings.db_path)
+    import_csv(repo, path)
+    assert [repo.get(i).protocol_listed for i in "123"] == [True, True, False]
+
+
 def test_schema_5_text_layer_moves_to_the_observations(settings):
     import sqlite3
 
