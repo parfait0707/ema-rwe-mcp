@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.5.6 (2026-11-03)
 
 - Imports read the protocol columns of the November 2026 Studies export ("Initial protocol file - URI",
   "Updated protocol file(s) - URI"). Before, a study imported from that export lost `protocol_listed`, so
