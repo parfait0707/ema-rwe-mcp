@@ -1,6 +1,6 @@
 # EMA RWE MCP
 
-**バージョン 0.5.5**。EMA Catalogueで **Non-interventional study** と明示された研究を検索し、Study documentsの最新プロトコルPDFから、研究デザイン・疾患定義・データソースを出典付きで抽出・比較するPython MCPサーバーです。根拠にはPDFの物理ページ番号と逐語引用を付けます。検索はローカルSQLite FTSと保存済み解析を使い、PDF取得は絞り込んだ研究に限ります。
+**バージョン 0.5.6**。EMA Catalogueで **Non-interventional study** と明示された研究を検索し、Study documentsの最新プロトコルPDFから、研究デザイン・疾患定義・データソースを出典付きで抽出・比較するPython MCPサーバーです。根拠にはPDFの物理ページ番号と逐語引用を付けます。検索はローカルSQLite FTSと保存済み解析を使い、PDF取得は絞り込んだ研究に限ります。
 
 開発者（このMCP自体を改修する人）向けの情報は [README_DEV.md](README_DEV.md) にまとめています。
 
@@ -27,7 +27,7 @@ uvがあれば、cloneせずにMCPクライアントへ登録できます。カ�
 }
 ```
 
-[`.mcp.json.sample`](.mcp.json.sample)には、この内容を版`v0.5.5`に固定した形を置いています。版を固定するには `git+https://github.com/parfait0707/ema-rwe-mcp@v0.5.5` のようにタグを付けてください。
+[`.mcp.json.sample`](.mcp.json.sample)には、この内容を版`v0.5.6`に固定した形を置いています。版を固定するには `git+https://github.com/parfait0707/ema-rwe-mcp@v0.5.6` のようにタグを付けてください。
 
 **必要なもの**: [uv](https://docs.astral.sh/uv/) と git。Python 3.12 は uv が自動で用意します。初回起動時にパッケージのビルドと同梱データ（約50 MB）の複製が走るため、数十秒かかることがあります。追加のAPIキーは不要です（サーバー側抽出を使う場合のみ、後述の`LLM_*`を設定します）。
 

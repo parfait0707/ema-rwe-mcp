@@ -689,3 +689,4 @@ PDF 取得先ディレクトリ名から X/Y が推測可能だった（P）、�
 - 通信ありの補完：医薬品欄が空の716研究のうちプロトコルのある未読25件を取得、7件でPASS情報表から医薬品を補完、1件は`PDF_OCR_REQUIRED`、429や障害による停止なし。同梱DBで医薬品を補えた研究は214件→219件、観測455件、`integrity_check` ok。
 - `uv run pytest -q` 420 passed、`ruff check`・`ruff format --check` green。
 - data-20261102の公開前の整合性監査：`consistency_scan.py`で古い版の記述・壊れた参照なし。プロトコル列の記述を照合し、README_DEVの`protocol_listed`の説明に11月版の列を追加（spec v1.1は版付きの記録として変更しない）。スナップショットは`scripts/build_catalogue_snapshot.py 20261102`で作成（3,343研究、観測455件、補完あり221件）。pytest・ruff・`uv build`はgreen。
+- v0.5.6の公開前監査：版の表記（pyproject・uv.lock・README・README_DEV・`config.py`・`.env.example`・`.mcp.json.sample`・`.codex/config.toml.sample`・CHANGELOG）を0.5.6に揃え、`consistency_scan.py`の残りは日付付きの調査記録1件のみ。pytest 420 passed、ruff green、`uv build`のwheelに`ema_rwe/data/ema.sqlite3`（44,974,080 bytes、2026-11-02版）と`mcp-workflow.md`が入ることを確認。
