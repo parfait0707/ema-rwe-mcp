@@ -680,3 +680,11 @@ PDF 取得先ディレクトリ名から X/Y が推測可能だった（P）、�
 - メディアと検証記録のみの変更のためpytest・ruff・ビルドは未実施。GitHub上の再生と公開反映は未確認。
 - 追加依頼により、最終回答の網羅性に関する注記内の`EMA`も描画途中からモザイク化。処理中の`Ema Rwe`表示と`Catalogue status`は先のモザイク範囲内にあることを確認した。再保存後も97フレーム・57.5秒・無限ループを維持し、最終回答の拡大画像で追加範囲を目視確認、FFmpegで全フレームをデコードできた。
 - 再確認の依頼を受け、「候補数はEMA全体の網羅件数ではありません。」の折返し部分を含む文全体へ範囲を拡大。再保存した97フレームすべてで当該2領域が文字を保持しない粗いブロックになっていることを画素検証し、最終フレームを拡大して目視確認した。全フレームのFFmpegデコードも成功。旧表示との混同を避ける確認用コピーをローカルの`tmp/gif-edit-review/codex-demo-redacted-v2.gif`へ保存した。
+
+## 2026-11-03 2026-11-02エクスポートの取り込みとプロトコル列名の変更
+
+- 2026-11-02のStudies exportは文書の列名が変わった（`Protocol file(s)`・`Protocol file(s) - URI`・`Protocol URL`が無くなり、`Initial protocol file - URI`・`Updated protocol file(s) - URI`が加わった。題名・医薬品・国・種別などの列は不変）。旧コードはこの版から取り込むと全研究の`protocol_listed`を`null`にし、`backfill-protocols`の対象が0件になった。`storage.import_csv`に新しい2列を加え、回帰テスト`test_import_reads_the_protocol_columns_of_the_november_2026_export`を追加。再取り込み後の`protocol_listed`はtrue 2,150件・false 1,193件（2026-10-01版はtrue 2,037件）。
+- `import-all`後の同梱DBは3,343研究（claims 824、ehr 926、registry 575、タグなし1,515）、`catalogue_status`は4種とも`current`、`snapshot_aligned=true`。
+- 作業用DBの`backfill-protocols`は、医薬品辞書を`EMA_DB_PATH`の隣から読むため、辞書を置かない場所では題名の医薬品名を多く見落とす（題名から補えた研究122件、辞書を指定すると191件）。`EMA_DRUG_DICTIONARY_PATH=data/ema-medicines.json`を指定して実行し、README_DEVの手順に追記した。`merge-observations`は観測を消さないので、辞書なしの試行で同梱DBが失われたものはないことを照合した。
+- 通信ありの補完：医薬品欄が空の716研究のうちプロトコルのある未読25件を取得、7件でPASS情報表から医薬品を補完、1件は`PDF_OCR_REQUIRED`、429や障害による停止なし。同梱DBで医薬品を補えた研究は214件→219件、観測455件、`integrity_check` ok。
+- `uv run pytest -q` 420 passed、`ruff check`・`ruff format --check` green。
