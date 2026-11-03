@@ -581,8 +581,18 @@ def import_csv(
             "Required CSV columns: Study ID, Official title and acronym, "
             "Study type. Use --column-map for alternate headers. Found: " + str(fieldnames),
         )
+    # Exports up to October 2026 have "Protocol file(s)"/"Protocol URL"; from November 2026, "Initial
+    # protocol file - URI" and "Updated protocol file(s) - URI".
     protocol_columns = [
-        headers[h] for h in ("protocol file s", "protocol file s uri", "protocol url") if h in headers
+        headers[h]
+        for h in (
+            "protocol file s",
+            "protocol file s uri",
+            "protocol url",
+            "initial protocol file uri",
+            "updated protocol file s uri",
+        )
+        if h in headers
     ]
     other_sources_column = headers.get("other linked data sources")
     other_design_column = headers.get("non interventional study design other")

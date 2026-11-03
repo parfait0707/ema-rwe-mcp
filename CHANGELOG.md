@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Imports read the protocol columns of the November 2026 Studies export ("Initial protocol file - URI",
+  "Updated protocol file(s) - URI"). Before, a study imported from that export lost `protocol_listed`, so
+  ranking could not tell studies with a protocol and `backfill-protocols` queued none.
+- The bundled catalogue is the 2026-11-02 export (3,343 studies).
+
 ## 0.5.5 (2026-10-09)
 
 - A typed export (`<date>_<claims|ehr|registry>_export-data.csv`) tags its studies by its file name on
