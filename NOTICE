@@ -9,7 +9,7 @@ Bundled data
 data/ema.sqlite3 (shipped in the wheel as ema_rwe/data/ema.sqlite3)
   Derived from the official Studies CSV exports of the HMA-EMA Catalogues of
   real-world data sources and studies, https://catalogues.ema.europa.eu/,
-  accessed October 2026 (exports dated 2026-10-01). Contact-person columns
+  accessed November 2026 (exports dated 2026-11-02). Contact-person columns
   are not imported.
   Source: European Medicines Agency (EMA). (c) EMA.
   Study records are entered by marketing authorisation holders, researchers

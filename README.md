@@ -116,7 +116,7 @@ uvがあれば、cloneせずにMCPクライアントへ登録できます。カ�
 
 ## カタログの更新（任意）
 
-同梱DBは**2026-10-01の公式CSV export**から作成した非介入研究3,314件です（claims 819件、ehr 916件、registry 559件、タグなし＝others 1,511件。種別は重複します）。新しい版がより新しいDBを同梱している場合、既定の保存先では起動時にカタログを更新し、保存済み解析・回答を保持します。`EMA_DB_PATH`で指定したDBは自動更新の対象外です。
+同梱DBは**2026-11-02の公式CSV export**から作成した非介入研究3,343件です（claims 824件、ehr 926件、registry 575件、タグなし＝others 1,515件。種別は重複します）。新しい版がより新しいDBを同梱している場合、既定の保存先では起動時にカタログを更新し、保存済み解析・回答を保持します。`EMA_DB_PATH`で指定したDBは自動更新の対象外です。
 
 最新の研究を加えたい場合は、[EMA検索ページ](https://catalogues.ema.europa.eu/search?f%5B0%5D=content_type%3Adarwin_study)のExport Resultsで公式CSVを取得し、`import_catalogue_csv`で取り込みます。検索前に`catalogue_status`で鮮度と種別exportの有無を確認してください。CSV未取込、または期限切れの索引で候補0件の場合には、呼出元がPlaywright MCPの表示ブラウザで公式exportを1回行う経路もあります。ファイル名と取込手順は[開発ガイド](README_DEV.md#カタログ取込の内部仕様)を参照してください。
 
@@ -134,7 +134,7 @@ uvがあれば、cloneせずにMCPクライアントへ登録できます。カ�
 
 ## データの出所とプライバシー
 
-- カタログのスナップショットは [HMA-EMA Catalogues of real-world data sources and studies](https://catalogues.ema.europa.eu/)（accessed October 2026）の公式CSV export（2026-10-01）から作成しています。出典：European Medicines Agency（© EMA）。連絡先の列は取り込まず、索引にも含めていません。
+- カタログのスナップショットは [HMA-EMA Catalogues of real-world data sources and studies](https://catalogues.ema.europa.eu/)（accessed November 2026）の公式CSV export（2026-11-02）から作成しています。出典：European Medicines Agency（© EMA）。連絡先の列は取り込まず、索引にも含めていません。
 - 研究の登録内容は製薬企業・研究者・機関が入力したもので、第三者が著作権を持つ場合があります。再利用には[カタログのLegal notice](https://catalogues.ema.europa.eu/legal-notice)と[EMAのLegal notice](https://www.ema.europa.eu/en/about-us/about-website/legal-notice)が適用されます。
 - 医薬品辞書はEMA公式の医薬品データです。独自の疾患・薬剤の言い換えは`data/dictionaries/`のJSON辞書で追加できます（書式は`data/terminology.example.json`）。
 - プロトコルPDFは選択した研究についてのみ、間隔制御・robots確認付きでEMAサイトから取得し、あなたのPCに保存されます。本文はLLM（呼出元のClaude Code/Codex、または設定したサーバー側プロバイダ）へ送信されます。
