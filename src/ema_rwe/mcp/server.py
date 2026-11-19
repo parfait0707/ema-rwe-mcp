@@ -1,5 +1,8 @@
+import json
 import logging
+import time
 from contextlib import asynccontextmanager
+from functools import wraps
 from typing import Annotated, Literal
 
 from mcp.server.fastmcp import FastMCP
@@ -7,9 +10,12 @@ from pydantic import Field
 
 from ..config import WORKFLOW_URI, workflow_doc_path
 from ..domain import AnalogousTerm, CodeCandidate, Extraction, ProtocolAnswer, RWEError, SourcePreference
+from ..pdf import parse_stats
 from ..ranking import ScreeningBlock
 from ..selection import SearchFilters
 from ..service import Service
+
+log = logging.getLogger(__name__)
 
 MatchScope = Annotated[
     Literal["concept", "analogous"],
@@ -408,7 +414,33 @@ def create_server(service: Service | None = None):
 
     for tool in server._tool_manager._tools.values():
         tool.parameters = strip_titles(tool.parameters)
+        tool.fn = timed(tool.name, tool.fn)
     return server
+
+
+def timed(name: str, fn):
+    """Log each tool call to stderr: duration, response size and what PDF parsing it needed."""
+
+    @wraps(fn)
+    async def run(*args, **kwargs):
+        before, started = parse_stats(), time.perf_counter()
+        result = await fn(*args, **kwargs)
+        after = parse_stats()
+        log.info(
+            "tool=%s ms=%d chars=%d status=%s pdf_parsed=%d pdf_reused=%d pdf_parse_ms=%d",
+            name,
+            (time.perf_counter() - started) * 1000,
+            len(json.dumps(result, ensure_ascii=False, default=str)),
+            (result.get("status") or (result.get("error") or {}).get("code"))
+            if isinstance(result, dict)
+            else None,
+            after["parsed"] - before["parsed"],
+            after["reused"] - before["reused"],
+            after["parse_ms"] - before["parse_ms"],
+        )
+        return result
+
+    return run
 
 
 def strip_titles(node):

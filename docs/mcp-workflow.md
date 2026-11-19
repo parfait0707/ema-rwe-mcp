@@ -170,7 +170,15 @@ filters. Never pick a subset yourself.
   response returned and cache the last batch with its `batch_offset` too; then finish with
   `coverage_complete=true` (its `analysis` may be `{}`). `INCOMPLETE_EXTRACTION` names an offset that
   was never read and cached: read and cache it, follow `next_offset` to the end and repeat the call. A
-  `batch_offset` that no `analyze_protocol` response returned is refused. If your client can run a cheaper subagent (Claude Code: `Agent` with
+  `batch_offset` that no `analyze_protocol` response returned is refused.
+- Section text is returned with runs of three or more spaces shortened to two (table columns keep a gap);
+  copy quotes from it as they are, the comparison with the PDF ignores whitespace.
+- A data source `value` is the name as the protocol writes it, with no words of your own (no added
+  country or abbreviation). The name is matched by its words, in order, case and punctuation aside, in one
+  of the fact's quotes; when your quotes leave the name out but the protocol's methods text writes it (on a
+  page you cite, else the nearest one), the server adds the naming passage as one more quote.
+  `EVIDENCE_INVALID` names a value that is written nowhere outside the contents, references, background and
+  checklists: correct the name or cite the passage that names it. If your client can run a cheaper subagent (Claude Code: `Agent` with
   model sonnet), delegate one study's batch reading and caching to it and keep only results in
   the main context.
 - Quotes must be verbatim; pages are physical PDF pages; keep `usage` honest

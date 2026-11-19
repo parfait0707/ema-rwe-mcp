@@ -734,3 +734,36 @@ PDF 取得先ディレクトリ名から X/Y が推測可能だった（P）、�
 - 変えたのは import と、テストの差し替え先 3 種だけ：`ema_rwe.service.extract_with_provider` → `ema_rwe.extraction.extract_with_provider`、`ema_rwe.service.complete_json` → `ema_rwe.screening.complete_json`、`ema_rwe.service.MAX_NAMES` → `ema_rwe.screening.MAX_NAMES`。`ema_rwe.service` からの `Service` と `source_type_from_filename` の import は従来どおり使える。
 - `uv run --extra dev pytest -q` 425 passed、1 skipped（実 stdio の MCP テストを含む）。`ruff check`、`ruff format --check` 合格。`uv build` で wheel に新しい 5 モジュールが入ることを確認した。
 - 残したもの：12 個前後の位置引数（`repo.search`、`_union`、`_match_scope`）を 1 つのモデルにまとめる変更は、動作を変えない移動と分けるため行っていない。mixin はどれも `Service` の属性（`settings`、`repo`、`client`、`archive`、`explorer`）を前提にしており、単独では使えない。
+
+## 2026-11-19 解析済み PDF の再利用、読み手向け本文の空白、データソース名の確認、ツール呼び出しの計測（spec v1.12）
+
+- 計測の方法：`scripts/time_tools.py 49324 49276 49285 105807`。LLM を使わず、1 研究分のツール呼び出し（全バッチの `analyze_protocol` と `cache_protocol_analysis`、章一覧、検索、読取、`research_protocol`）を同じプロセスで順に実行する。PDF と HTTP の応答は取得済みのものを使い、通信はしていない。
+
+| 呼び出し | 変更前の平均（ms） | 変更後の平均（ms） |
+|---|---:|---:|
+| `analyze_protocol`（最初のバッチ） | 2,547 | 1,629 |
+| `cache_protocol_analysis`（バッチ） | 1,545 | 49 |
+| `analyze_protocol`（次のバッチ） | 1,481 | 38 |
+| `get_protocol_outline` | 1,480 | 10 |
+| `search_protocol_text` | 1,475 | 40 |
+| `read_protocol_text` | 1,427 | 9 |
+| `research_protocol` | 1,556 | 67 |
+
+- 4 研究の合計は 85.5 秒から 8.4 秒になった。変更後は PDF の解析が 4 回（研究ごとに 1 回、計 5.4 秒）で、49 回は解析済みのページを再利用した。変更前は呼び出しのたびに解析していた。
+- 空白を詰めた結果、読む節の本文は 529,273 字から 467,381 字（12% 減。研究ごとに 5〜18%）、バッチは 19 から 17 になった。空行だけを詰めても 0〜1% しか減らず、連続する空白を 1 つにしても 2 つに詰める場合より 1 ポイントしか減らないので、列の切れ目が残る「3 つ以上を 2 つ」にした。
+- データソース名の検証エラーの内容：方式の比較（前の節）では、エラーの大半がこの規則によるものだった。記録したエラーと呼出元の報告から、原因は 3 つに分かれた。
+  - 表で名前が行をまたぎ、別の列の値が間に入る（49276 の p.32：`Income and education registries from     -` の次の行に `Statistics Denmark`）。逐語の一致では通らず、呼出元は名前を途中で切って保存していた（`Income and education registries from`、`Norwegian Registry for Primary`）。
+  - 引用が使い方や定義の文で、名前は別の箇所にある。プロトコルは名前を一度書いた後、略語で続ける（105807 の `Hospital Episode Statistics (HES)` は p.44 と p.47、引用は p.48 など）。
+  - 呼出元がプロトコルに無い語を足した（`SDRN-EPI (Scotland)`）。これは拒否するのが正しい。
+- 規則を 2 段階で直し、それぞれ実プロトコルで確かめた（呼出元は Sonnet のサブエージェント、1 回方式）。
+  - 第 1 版（単語の並びで照合し、引用したページに名前があれば引用を足す）：3 研究で検証エラー 7 件、うち名前によるものは 4 件。4 件とも、名前が引用したページに無く、別のページにあった（`Hospital Episode Statistics (HES)`、`Office for National Statistics (ONS) mortality data`、`CPRD Aurum`、`Danish National Health Registers`）。正解 36 項目はすべて一致し、引用の裏づけも 36。
+  - 第 2 版（本文全体から探す。目次、参考文献、背景、チェックリストを除く）：上の 4 件を実 PDF で再現すると、すべて最寄りの方法の章から名前を含む引用が足されて通り、語を変えた名前（`Danish National Health Registries`、`CPRD Aurum database of Scotland`）は拒否された。2 研究の実行（105807、49285）で名前によるエラーは 0 件。データソースと種別判定の計 84 件のうち、31 件にサーバーが名前を含む引用を足した。
+- 残った検証エラー（第 2 版の 2 研究で 4 件）：8 字に満たない引用（`None`、`I42.1`）が 2 件、ページ番号の誤りが 1 件、1 つの事実に引用が 9 件以上が 1 件。今回は変えていない。
+- `uv run --extra dev pytest -q` 445 passed、1 skipped（追加 20 件：同じ PDF の解析が 1 回であること、読み方ごとの別扱い、節の複製、失敗した解析を保たないこと、同時の要求が 1 回の解析になること、古い PDF の追い出し、詰めた本文から写した引用の検証、名前の単語照合、同じページと別のページからの引用の追加、参考文献だけにある名前の拒否、呼出元のバッチの保存、ツール呼び出しの記録）。`ruff check`、`ruff format --check` 合格。実 stdio の MCP テストは通り、記録が stdout に出ないことを確かめている。
+- 限界：
+  - キャッシュはプロセスのメモリだけなので、CLI は呼び出しごとに 1 回は解析する。8 件を超える PDF を行き来すると解析し直す。
+  - 所要時間の計測は 1 台・各 1 回で、LLM の読む時間を含まない。呼出元抽出の全体の所要時間（1 研究 3〜5 分）に対して、短くなるのはツールの待ち時間（1 研究あたり約 20 秒から約 2 秒）である。
+  - 実プロトコルでの確認は第 1 版 3 件、第 2 版 2 件で、各 1 回。空白を詰めたことで表の読み取りが変わるかは、適格基準の正解（36 項目すべて一致）でしか見ていない。コード表の列の対応は採点していない。
+  - 名前の単語の間に入ってよい語は 3 つまでという値は、見た表の例から決めた経験則である。離れた語を拾って別の名前を通す誤りは、実プロトコルでは見ていないが、系統的には測っていない。
+  - サーバーが足した引用は名前の書かれた箇所であり、その事実の使い方や定義を支える引用ではない。足した引用かどうかは保存した解析では区別していない。
+  - 内部 LLM の経路は、本文の空白の詰めと単語の照合だけが変わる。実プロバイダでは実行していない。
