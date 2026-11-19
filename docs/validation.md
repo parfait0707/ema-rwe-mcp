@@ -718,10 +718,11 @@ PDF 取得先ディレクトリ名から X/Y が推測可能だった（P）、�
   - 検証エラーの大半は、引用の写し間違いではなく「データソース名が引用に現れること」の規則によるもので、どの方式でも起きた。
   - 結論：所要時間は、バッチを読んで抽出を書く部分でほぼ決まり、質問回答を別に読む分（最大 4 万字）は小さい。A は採らない。B は精度を落とさずに往復を減らすので採るが、所要時間の短縮は確認できていない。
 - 追加の計測（4 件の PDF）：`extract_pages` は 1 回 1.0〜1.3 秒、`sections` は 0.1〜0.7 秒。現状は探索と保存の呼び出しごとに解析し直している。読む節の本文は、連続する空白と空行を詰めると 6〜19% 短くなる。
-- `uv run --extra dev pytest -q` 425 passed、1 skipped。`ruff check`、`ruff format --check` 合格。実 stdio の MCP テストで `analyze_protocol` の `question`、`cache_protocol_analysis` の `answer` と `question` がスキーマにあることを確認した。
+- `uv run --extra dev pytest -q` 425 passed、1 skipped。`ruff check`、`ruff format --check` 合格。`uv build` で 0.5.7 の sdist と wheel を生成できた。実 stdio の MCP テストで `analyze_protocol` の `question`、`cache_protocol_analysis` の `answer` と `question` がスキーマにあることを確認した。
 - 限界：
   - 各方式 3 件 × 1 回で、方式の差は実行ごとのばらつき（同じ方式でも 1 分以上）より小さい。所要時間の順位は確定していない。
   - 呼出元は CLI 経由のサブエージェントで、実際の MCP クライアントでの往復ではない。最大 8 本を同時に走らせたので、所要時間は同時実行の影響を受けている（最終版の 3 回は 3 本同時）。
   - 質問は 1 種類（適格基準）。回答が抽出の対象外の節（付録など）にしかない質問で、B が `research_protocol` より見落とすかは測っていない。
   - 正解は実装者が作り、判定は正規表現による。誤った内容の有無（適合率）は系統的には採点していない。
   - 英語以外のプロトコル、内部 LLM の経路では実行していない（内部 LLM の経路は変えていない）。
+- v0.5.7 の版の表記：`pyproject.toml`、`uv.lock`、`README.md`、`README_DEV.md`、`src/ema_rwe/config.py`、`.env.example`、`.mcp.json.sample`、`.codex/config.toml.sample`、`CHANGELOG.md` を 0.5.7 に揃えた。残る 0.5.6 の記述は、日付付きの記録（CHANGELOG の過去の節、検証記録、調査記録、計測記録）だけ。影響を受ける文書として `docs/mcp-workflow.md`、`docs/comparisons.md`、`docs/exploration.md`、`README.md`（質問の仕方と流れの 4）、`README_DEV.md`（呼出元抽出の説明と注意点）を更新した。同梱 DB は変えていない。

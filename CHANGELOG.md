@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.5.7 (2026-11-19)
 
 - Batches of a caller's unfinished extraction are kept in the database (`extraction_batches`, a user-side
   table outside the schema version) instead of server memory: a server restart, another process (each CLI
