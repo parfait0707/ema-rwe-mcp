@@ -45,7 +45,7 @@ gh repo edit parfait0707/ema-rwe-mcp --visibility public --accept-visibility-cha
 
 1. `pyproject.toml` の `version`、`uv.lock` のこのパッケージの版、`README.md`・`README_DEV.md` の版表記、`.mcp.json.sample`・`.codex/config.toml.sample` の固定タグ、`EMA_USER_AGENT` の既定値（`src/ema_rwe/config.py`、`.env.example`、`README_DEV.md` の 3 か所）、`CHANGELOG.md` の見出しを揃え、PR でマージする。
    - 同梱のカタログを新しくするとき（任意）：新しいエクスポートを `data/imports/{studies,source_type}/` に置いて `uv run ema-rwe import-all` を実行し（補完の結果は残り、最後に `VACUUM`。README_DEV の「再構築」）、`data/ema.sqlite3` をコミットする。最新の `data-YYYYMMDD` スナップショットと同じエクスポートにそろえる。医薬品辞書は `uv run ema-rwe refresh-drugs --force` で `data/ema-medicines.json` を更新できる。
-2. main で `uv run pytest -q`、`uv run ruff check src tests`、`uv run ruff format --check src tests`、`uv build` が green であることを確認し、`git tag -a vX.Y.Z -m "..." && git push origin vX.Y.Z`。保守者の Claude Code の環境では、利用者レベルのフック（リポジトリには無い）が、タグとリリースの作成の前に整合性の監査を済ませ、コミットした状態に印を付けることを求める（スナップショットの公開も同じ）。
+2. main で `uv run python scripts/check.py` が通ることを確認し（版の表記の一致、`uv.lock`、ruff、pytest、ビルド、wheel の中身を順に確かめる）、`git tag -a vX.Y.Z -m "..." && git push origin vX.Y.Z`。保守者の Claude Code の環境では、利用者レベルのフック（リポジトリには無い）が、タグとリリースの作成の前に整合性の監査を済ませ、コミットした状態に印を付けることを求める（スナップショットの公開も同じ）。
 3. `gh release create vX.Y.Z --title "vX.Y.Z" --notes-file <その版の CHANGELOG 節>`。
 4. 下記「公開後の確認」の 1 を新しいタグで行う。
 

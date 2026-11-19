@@ -1,0 +1,15 @@
+#!/bin/sh
+# Runs the project's checks before a push. Enable once per clone:
+#   git config core.hooksPath .githooks
+# Skip for one push (not for a branch that others will build from): git push --no-verify
+# Deleting a remote branch pushes nothing to check.
+only_deletes=1
+while read -r local_ref local_sha remote_ref remote_sha; do
+    case "$local_sha" in
+        0000000000000000000000000000000000000000) ;;
+        *) only_deletes=0 ;;
+    esac
+done
+[ "$only_deletes" = 1 ] && [ -n "$local_ref" ] && exit 0
+cd "$(git rev-parse --show-toplevel)" || exit 1
+exec uv run python scripts/check.py </dev/null

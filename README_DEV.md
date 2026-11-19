@@ -10,14 +10,15 @@ Python 3.12以上とuvを使います。
 
 ```powershell
 uv venv --python 3.12
-uv sync --extra dev
+uv sync
+git config core.hooksPath .githooks
 $env:EMA_DB_PATH = "<checkout>/data/ema.sqlite3"
 $env:EMA_CACHE_DIR = "<checkout>/cache/http"
 $env:EMA_IMPORT_DIR = "<checkout>/data/imports"
 uv run ema-rwe --help
 ```
 
-内部LLM経路も試す場合は`uv sync --extra dev --extra llm`とします。別の場所にcloneした場合はパスを置き換えてください。CLIは各OSで`uv run ema-rwe`から実行します。
+開発用のツール（pytest、ruff）は`dev`の依存グループにあり、`uv sync`と`uv run`が既定で入れます。`git config core.hooksPath .githooks`は、pushの前に下記のチェックを自動で走らせる設定です（cloneごとに1回）。内部LLM経路も試す場合は`uv sync --extra llm`とします。別の場所にcloneした場合はパスを置き換えてください。CLIは各OSで`uv run ema-rwe`から実行します。
 
 `EMA_DB_PATH`未設定時は、`config.py`の`default_data_dir()`がチェックアウト内（`pyproject.toml`がある場所）かどうかを判定し、チェックアウト内なら`<repo>/data/ema.sqlite3`（Git管理のカタログDB）を、そうでなければOSのユーザーデータディレクトリ（初回のみ同梱データを複製）を使います。キャッシュは`EMA_CACHE_DIR`未設定時にOSのユーザーキャッシュディレクトリが既定です。`.env.example`は設定例のドキュメントであり、**このリポジトリは`.env`を自動読込しません**（`python-dotenv`等は使用していません）。環境変数はシェルまたはMCPクライアントの`env`で渡してください。
 
@@ -87,11 +88,22 @@ flowchart TD
 ## テスト・lint・ビルド
 
 ```bash
-uv run pytest -q
-uv run ruff check src tests
-uv run ruff format --check src tests
-uv build
+uv run python scripts/check.py
 ```
+
+このコマンドが、pushの前に通すべきチェックを順に実行します（ホスト型のCIは使っていません）。最初に失敗した段階で止まり、その名前を表示します。全体で20〜30秒です。
+
+| 段階 | 内容 |
+|---|---|
+| `versions` | 版の表記が、`pyproject.toml`と同じ値で全箇所に書かれている（`uv.lock`、README類、`config.py`、`.env.example`、サンプル設定、CHANGELOGの最新の版の見出し） |
+| `lock` | `uv.lock`が`pyproject.toml`と合っている |
+| `lint` / `format` | `ruff check`と`ruff format --check`（`src`、`tests`、`scripts`） |
+| `tests` | `pytest`（実stdioのMCPテストを含む） |
+| `build` / `wheel` | `uv build`と、wheelに全モジュールと同梱データ（カタログDB、医薬品辞書、手順書）が入っていること |
+
+編集中は`uv run python scripts/check.py --no-build`でビルドを省けます。個別に実行する場合は`uv run pytest -q`、`uv run ruff check src tests scripts`、`uv run ruff format --check src tests scripts`、`uv build`です。
+
+`.githooks/pre-push`は、pushのたびにこのチェックを実行し、失敗したらpushを止めます。有効にするには、cloneごとに1回`git config core.hooksPath .githooks`を実行します（有効にしていないcloneからのpushは確認されません）。1回だけ省くときは`git push --no-verify`です。Windowsでは、Git for Windowsに付属のshがhookを実行します。
 
 通常テストはネット通信せず、固定HTML断片・合成PDF・`MockTransport`を使用します。CSV取込・検索・対象外排除・新版選択・PDF抽出・引用検証・解析保存・再検索・差し替え検出・HTTPリトライ・期限切れ削除に加え、**MCP stdio初期化／discovery／実行／入力エラーの実stdio MCPテスト**を含みます。ツールのスキーマを変更した場合は必ずこれらを実行してください。依存関係は`uv.lock`に固定しています。検証結果と未実施の確認は[docs/validation.md](docs/validation.md)に記録してください。
 
@@ -222,7 +234,7 @@ uv run ema-rwe cleanup-cache
 ## 内部LiteLLM経路の設定例
 
 ```powershell
-uv sync --extra dev --extra llm
+uv sync --extra llm
 ```
 
 | 接続先 | `LLM_MODEL` | 認証・追加設定 |
