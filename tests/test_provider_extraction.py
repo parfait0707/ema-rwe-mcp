@@ -103,7 +103,7 @@ async def test_analyze_protocol_returns_extracting_then_result(service, monkeypa
         await release.wait()
         return sample_analysis()
 
-    monkeypatch.setattr("ema_rwe.service.extract_with_provider", slow_extract)
+    monkeypatch.setattr("ema_rwe.extraction.extract_with_provider", slow_extract)
     study_id = "123"
     pending = await service.analyze_protocol(study_id)
     assert pending["status"] == "extracting" and "progress" in pending
@@ -130,7 +130,7 @@ async def test_protocol_changed_during_extraction_never_returns_the_old_result(
         await releases[-1].wait()
         return sample_analysis()
 
-    monkeypatch.setattr("ema_rwe.service.extract_with_provider", slow_extract)
+    monkeypatch.setattr("ema_rwe.extraction.extract_with_provider", slow_extract)
     old = await service.analyze_protocol("123")
     assert old["status"] == "extracting"
     website["/system/files/protocol.pdf"] = pdf_bytes + b"\n%updated"

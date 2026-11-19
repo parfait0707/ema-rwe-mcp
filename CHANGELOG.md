@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Internal: `service.py` is split by moving its code unchanged. `Service` keeps every method and signature;
+  the bodies live in `catalogue.py`, `screening.py`, `protocols.py` and `extraction.py` (mixins of
+  `Service`), the unmatched-query log in `unmatched.py`. No tool, schema or behaviour changes.
+
 ## 0.5.7 (2026-11-19)
 
 - Batches of a caller's unfinished extraction are kept in the database (`extraction_batches`, a user-side

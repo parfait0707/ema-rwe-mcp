@@ -229,7 +229,7 @@ async def test_llm_plan_needs_no_client_translation_and_labels_its_terms(monkeyp
     async def complete(*args):
         return proposed
 
-    monkeypatch.setattr("ema_rwe.service.complete_json", complete)
+    monkeypatch.setattr("ema_rwe.screening.complete_json", complete)
     plan = await service.plan_study_search("線維筋痛症の研究", use_llm=True)
     assert plan["status"] == "planned" and plan["client_expansion"]["required"] is False
     assert plan["query_expansion"]["term_sources"][proposed["synonyms"][0]] == "llm"

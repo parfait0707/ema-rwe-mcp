@@ -183,7 +183,7 @@ async def test_configured_provider_translates_headings_before_extracting(service
         return Extraction()
 
     monkeypatch.setattr("ema_rwe.llm.complete_json", translate)
-    monkeypatch.setattr("ema_rwe.service.extract_with_provider", extract)
+    monkeypatch.setattr("ema_rwe.extraction.extract_with_provider", extract)
     done = await service.analyze_protocol("123")
     assert done["status"] == "analyzed" and len(asked) == 1
     assert "institucionalizados" in read[0] and "numerosos ingresos" not in read[0]
@@ -251,7 +251,7 @@ async def test_changed_translations_cancel_a_running_server_extraction(service, 
         return Extraction(missing_information=[f"extraction {call}"])
 
     monkeypatch.setattr("ema_rwe.llm.complete_json", translate)
-    monkeypatch.setattr("ema_rwe.service.extract_with_provider", slow_extract)
+    monkeypatch.setattr("ema_rwe.extraction.extract_with_provider", slow_extract)
     first = await service.analyze_protocol("123")
     assert first["status"] == "extracting" and "numerosos ingresos" not in read[0]
 
@@ -309,7 +309,7 @@ async def test_another_server_cannot_save_an_analysis_read_under_old_translation
             await release.wait()
         return Extraction(missing_information=[f"extraction {len(read)}"])
 
-    monkeypatch.setattr("ema_rwe.service.extract_with_provider", slow_extract)
+    monkeypatch.setattr("ema_rwe.extraction.extract_with_provider", slow_extract)
     started = await service.analyze_protocol("123")  # server B
     assert started["status"] == "extracting"
     other = second_server(settings, website)  # server A
@@ -342,7 +342,7 @@ async def test_returning_to_the_same_translations_keeps_work_read_that_way(servi
         await release.wait()
         return Extraction()
 
-    monkeypatch.setattr("ema_rwe.service.extract_with_provider", slow_extract)
+    monkeypatch.setattr("ema_rwe.extraction.extract_with_provider", slow_extract)
     started = await service.analyze_protocol("123")
     pid, task = started["source"]["protocol_id"], next(iter(service._extractions.values()))[0]
     reading = started["source"]["reading"]
