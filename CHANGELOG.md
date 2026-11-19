@@ -13,9 +13,9 @@
   batches; `cache_protocol_analysis` takes `question` and each batch's `answer`, and the final call saves
   the merged answer for `research_protocol` and comparisons (`answer_saved`). `compare_protocols` lists one
   pending tool per study instead of two (two remain with a configured server LLM). CLI: `analyze --question`,
-  `cache-analysis --answer --question`. In the trial of four protocols this cut the caller's time by about
-  a sixth without losing reference items; quoting by line number was tried and not adopted
-  (`docs/validation.md`, 2026-11-19).
+  `cache-analysis --answer --question`. In a trial on real protocols it needed a fifth fewer tool calls and
+  lost no reference item, but the caller's time did not measurably change; quoting by line number was
+  tried and not adopted (`docs/validation.md`, 2026-11-19).
 
 ## 0.5.6 (2026-11-03)
 
