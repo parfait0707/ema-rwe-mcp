@@ -7,7 +7,7 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from .config import Settings
-from .domain import AnalogousTerm, CodeCandidate, Extraction, ProtocolAnswer, RWEError, SourcePreference
+from .domain import AnalogousTerm, CodeCandidate, RWEError, SourcePreference
 from .ranking import ScreeningBlock
 from .selection import SearchFilters
 from .service import Service, source_type_from_filename

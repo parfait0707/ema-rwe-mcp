@@ -44,6 +44,7 @@ from .medicines import (
     pass_table_medicines,
 )
 from .pdf import (
+    LINE_REF_INSTRUCTION,
     PARSER_VERSION,
     audit_extraction,
     clean_translations,
@@ -51,9 +52,8 @@ from .pdf import (
     extract_pages,
     finalize_extraction,
     heading_texts,
-    reading_hash,
-    LINE_REF_INSTRUCTION,
     numbered,
+    reading_hash,
     reading_order,
     resolve_line_refs,
     sections,
