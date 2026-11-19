@@ -221,7 +221,7 @@ def test_category_only_match_is_not_reported_as_the_requested_concept():
 async def test_added_medicine_names_are_capped_per_question_and_never_relabel_caller_terms(
     service, monkeypatch
 ):
-    monkeypatch.setattr("ema_rwe.service.MAX_NAMES", 3)
+    monkeypatch.setattr("ema_rwe.screening.MAX_NAMES", 3)
     service.repo.upsert(study("1", title="Edoxaban and pancreatitis"))
     # Members known to the catalogue only: apixaban, edoxaban, rivaroxaban, zifaxaban -> one over the cap
     service.repo.upsert(study("9", exposures=["(B01AF07) edoxaban", "(B01AF99) zifaxaban"]))

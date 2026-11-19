@@ -726,3 +726,11 @@ PDF 取得先ディレクトリ名から X/Y が推測可能だった（P）、�
   - 正解は実装者が作り、判定は正規表現による。誤った内容の有無（適合率）は系統的には採点していない。
   - 英語以外のプロトコル、内部 LLM の経路では実行していない（内部 LLM の経路は変えていない）。
 - v0.5.7 の版の表記：`pyproject.toml`、`uv.lock`、`README.md`、`README_DEV.md`、`src/ema_rwe/config.py`、`.env.example`、`.mcp.json.sample`、`.codex/config.toml.sample`、`CHANGELOG.md` を 0.5.7 に揃えた。残る 0.5.6 の記述は、日付付きの記録（CHANGELOG の過去の節、検証記録、調査記録、計測記録）だけ。影響を受ける文書として `docs/mcp-workflow.md`、`docs/comparisons.md`、`docs/exploration.md`、`README.md`（質問の仕方と流れの 4）、`README_DEV.md`（呼出元抽出の説明と注意点）を更新した。同梱 DB は変えていない。
+
+## 2026-11-19 `service.py` の分割（動作を変えない移動）
+
+- 1,762 行の `service.py` を、コードを書き換えずに 6 つのモジュールへ移した。`Service` は入口として残し（100 行）、メソッドの本体は `catalogue.py`（カタログの状態・取込・補完）、`screening.py`（検索・候補の集計・検索語の計画）、`protocols.py`（研究ページとプロトコルの取得・PDF の読取）、`extraction.py`（抽出・見出し英訳・質問別回答の保存）の mixin に置く。未一致語の記録は `unmatched.py`。
+- 移動はスクリプトで行い、関数と定数の範囲を AST から取って本文をそのまま写した。移動の前後で、58 個の関数・メソッドと全定数の AST が一致することを確かめた（書式と位置を除いて同一）。`Service` の公開メソッドは 25 個のままで、引数も変わらない。
+- 変えたのは import と、テストの差し替え先 3 種だけ：`ema_rwe.service.extract_with_provider` → `ema_rwe.extraction.extract_with_provider`、`ema_rwe.service.complete_json` → `ema_rwe.screening.complete_json`、`ema_rwe.service.MAX_NAMES` → `ema_rwe.screening.MAX_NAMES`。`ema_rwe.service` からの `Service` と `source_type_from_filename` の import は従来どおり使える。
+- `uv run --extra dev pytest -q` 425 passed、1 skipped（実 stdio の MCP テストを含む）。`ruff check`、`ruff format --check` 合格。`uv build` で wheel に新しい 5 モジュールが入ることを確認した。
+- 残したもの：12 個前後の位置引数（`repo.search`、`_union`、`_match_scope`）を 1 つのモデルにまとめる変更は、動作を変えない移動と分けるため行っていない。mixin はどれも `Service` の属性（`settings`、`repo`、`client`、`archive`、`explorer`）を前提にしており、単独では使えない。

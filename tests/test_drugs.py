@@ -166,7 +166,7 @@ async def test_llm_translation_expands_official_drug_names(drug_file, settings, 
     async def complete(*args):
         return {"queries": ["apixaban cohort"], "synonyms": ["apixaban"]}
 
-    monkeypatch.setattr("ema_rwe.service.complete_json", complete)
+    monkeypatch.setattr("ema_rwe.screening.complete_json", complete)
     service = Service(settings)
     try:
         plan = await service.plan_study_search("未登録の日本語商品名", use_llm=True)

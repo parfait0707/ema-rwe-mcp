@@ -27,7 +27,9 @@ uv run ema-rwe --help
 
 | モジュール | 役割 |
 |---|---|
-| `service.py` / `cli.py` / `mcp/server.py` | 共通処理、CLI、stdio MCPの18ツール |
+| `service.py` / `cli.py` / `mcp/server.py` | 共通処理の入口（`Service`）、CLI、stdio MCPの18ツール |
+| `catalogue.py` / `screening.py` / `protocols.py` / `extraction.py` | `Service`のメソッドの本体。順に、カタログの状態・取込・補完、検索・候補の集計・検索語の計画、研究ページとプロトコルの取得・PDFの読取、抽出・見出し英訳・質問別回答の保存 |
+| `unmatched.py` | 未一致語の記録（利用者辞書があるときだけ書く） |
 | `storage.py` / `archive.py` | SQLite永続化、CSV取込、解析・読み方の履歴、不変ID付きPDFの保持 |
 | `pdf.py` / `domain.py` | PDF構造・節の役割・引用検証、抽出スキーマと例外型 |
 | `llm.py` / `exploration.py` | サーバー側抽出、見出し英訳、質問別探索・回答保存 |
@@ -142,7 +144,7 @@ PyPI公開やGitHub Releaseへのwheel添付など他の配布経路の比較検
 
 **呼出元抽出**（`LLM_MODEL`が未設定、または`LLM_BACKEND=compatible`で`LLM_BASE_URL`が未設定のとき）: 英語以外のプロトコルで英訳が無ければ、先に`needs_heading_translation`を返します。それ以外は`needs_client_extraction`と関連セクション・物理PDFページ・抽出JSON Schema・fingerprintを返します。呼出元は`offset`を進めながら`analyze_protocol(offset=next_offset)`で全バッチを読み、バッチごとに`cache_protocol_analysis(batch_offset=offset)`で途中保存します（サーバーは保存済みoffsetを`cached_batch_offsets`で返すので、コンテキスト圧縮後も既読分を再読しません。途中保存は利用者側の表`extraction_batches`に入るので、サーバーの再起動や別プロセス（CLIは呼び出しごとに別プロセス）でも失われません。サーバー側抽出の`status=extracting`の進行中の抽出はメモリにあるだけで、再起動すると最初からになります）。最後のバッチも`batch_offset`付きで保存してから`coverage_complete=true`を呼ぶと、サーバーが全バッチを統合して保存します。読んでいないバッチがあれば`INCOMPLETE_EXTRACTION`で読むべきoffsetを返し、`analyze_protocol`が返していないoffsetのバッチは受け付けません（spec v1.11）。`analyze_protocol(question=...)`のときは、抽出の指示に質問と`answer_schema`が加わります。呼出元は各バッチの`cache_protocol_analysis`に`question`とそのバッチの`answer`を渡し、最後の呼び出しが回答を結合して`research_protocol`と同じ鍵で保存します（`answer_saved`。空なら保存せず、`research_protocol`で探索します）。質問を渡しても、抽出はスキーマの全項目を埋めます。
 
-**サーバー側抽出**（`LLM_MODEL`があり、かつ`LLM_BACKEND=litellm`または`LLM_BASE_URL`があるとき）: 関連セクションを`LLM_BATCH_CHARS`（既定300,000文字）以下のバッチに分割し、`LLM_CONCURRENCY`（既定4）並列でプロバイダに投げて統合します（`llm.py`の`split_batches`/`merge_extractions`）。抽出が`LLM_WAIT_SECONDS`（既定120秒）を超えるときは`status=extracting`を返すので、呼出元は同じ`analyze_protocol`をポーリングします。保存前に`service.py`が`pdf.finalize_extraction`を呼び、その中の`prune_unverifiable`が証拠を検証します。隣のページに引用があればページを直し、データソース名が引用に無ければ名前を含む引用を加え、それでも原文と一致しない証拠だけを落として、件数と監査メモを`missing_information`に記録します。プロンプトはLLMに`evidence.section`を`null`のまま返すよう指示し（`llm.py`）、サーバーが引用の位置から節ラベルを導出します（`pdf.py`の`with_section`）。抽出プロンプトは節ラベル省略・電報体の`value`/`definition`・JSON最小化を指示しつつ「事実・コード・条件の省略禁止」も明示しており、出力トークンを削減しながら証拠件数を落とさない設計です（実測は[docs/validation.md](docs/validation.md)の2026-09-24節を参照）。
+**サーバー側抽出**（`LLM_MODEL`があり、かつ`LLM_BACKEND=litellm`または`LLM_BASE_URL`があるとき）: 関連セクションを`LLM_BATCH_CHARS`（既定300,000文字）以下のバッチに分割し、`LLM_CONCURRENCY`（既定4）並列でプロバイダに投げて統合します（`llm.py`の`split_batches`/`merge_extractions`）。抽出が`LLM_WAIT_SECONDS`（既定120秒）を超えるときは`status=extracting`を返すので、呼出元は同じ`analyze_protocol`をポーリングします。保存前に`extraction.py`が`pdf.finalize_extraction`を呼び、その中の`prune_unverifiable`が証拠を検証します。隣のページに引用があればページを直し、データソース名が引用に無ければ名前を含む引用を加え、それでも原文と一致しない証拠だけを落として、件数と監査メモを`missing_information`に記録します。プロンプトはLLMに`evidence.section`を`null`のまま返すよう指示し（`llm.py`）、サーバーが引用の位置から節ラベルを導出します（`pdf.py`の`with_section`）。抽出プロンプトは節ラベル省略・電報体の`value`/`definition`・JSON最小化を指示しつつ「事実・コード・条件の省略禁止」も明示しており、出力トークンを削減しながら証拠件数を落とさない設計です（実測は[docs/validation.md](docs/validation.md)の2026-09-24節を参照）。
 
 `research_protocol`（内部LLM設定時）は、まず`exploration.py`の`answer_from_full_text`（全関連セクションを`LLM_BATCH_CHARS`バッチへ分割し、並列で1回ずつ問い合わせて統合・pruneする「全文一括回答」）を試みます。これが回答を得られなかった場合のみ、`search`/`outline`/`read`/`finish`アクションを1手ずつ選ばせるステップ制限探索ループにフォールバックします（`LLM_MAX_STEPS`既定8・上限20。到達すると`exploration_limit_reached`を返し、未完了の回答は保存しません）。全文一括回答は2026-09-24に、旧来のステップ制限ループだけの構成（12,000字の読み取りでステップ予算を使い切っていた）を置き換える形で追加されました。
 

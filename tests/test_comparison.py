@@ -213,7 +213,7 @@ async def test_internal_llm_comparison_uses_same_completion_contract(service, we
         calls.append("answer")  # full-text answer in one provider call per study
         return ProtocolAnswer(answers=sample_analysis().disease_definitions).model_dump()
 
-    monkeypatch.setattr("ema_rwe.service.extract_with_provider", extract)
+    monkeypatch.setattr("ema_rwe.extraction.extract_with_provider", extract)
     monkeypatch.setattr("ema_rwe.exploration.complete_json", finish)
     result = await service.compare_protocols("How is diabetes defined?", ["opioid"])
     for pending in result["pending_tools"]:

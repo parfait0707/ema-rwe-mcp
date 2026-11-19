@@ -180,7 +180,7 @@ async def test_configured_provider_assessment_and_quote_validation(service, webs
     async def finish(*args):
         return {"action": "finish", "answer": ProtocolAnswer(source_assessments=[assessment()]).model_dump()}
 
-    monkeypatch.setattr("ema_rwe.service.extract_with_provider", extract)
+    monkeypatch.setattr("ema_rwe.extraction.extract_with_provider", extract)
     monkeypatch.setattr("ema_rwe.exploration.complete_json", finish)
     initial = await service.compare_protocols(
         "Source?", ["opioid"], source_preference=SourcePreference(types=["ehr"])

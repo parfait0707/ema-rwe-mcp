@@ -233,7 +233,7 @@ async def test_llm_planner_validates_queries(service, monkeypatch):
     async def completion(settings, messages):
         return {"queries": ["bleeding cohort", "haemorrhage incident users"], "synonyms": ["hemorrhage"]}
 
-    monkeypatch.setattr("ema_rwe.service.complete_json", completion)
+    monkeypatch.setattr("ema_rwe.screening.complete_json", completion)
     plan = await service.plan_study_search("出血", use_llm=True)
     assert len(plan["queries"]) == 2
     assert "hemorrhage" in plan["query_expansion"]["synonyms"]
