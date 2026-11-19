@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- A PDF is parsed once per process: parsed pages are cached by the PDF's bytes, parser version and reading
+  (the eight most recent; concurrent requests parse once). Every tool call of a caller extraction used to
+  parse the PDF again; on four real protocols a call after the first went from about 1.5 s to 10-60 ms (spec v1.12).
+- Section text handed to a reader (analysis batches, search, read, the server LLM) has runs of three or more
+  spaces shortened to two: 5-18% fewer characters on those protocols, so fewer batches. Quotes copied from it
+  verify as before; section splitting and the parser version are unchanged.
+- Data source names are checked by their words, in order, case and punctuation aside, with up to three other
+  words in between (a table breaks a name over lines). When the quotes leave the name out but a cited page
+  writes it, the server adds the naming passage as a quote, as the server-side route already did; a name on
+  none of the cited pages is refused with a message that names it. Whole words only: `HES` no longer matches
+  inside another word.
+- The MCP server logs one line per tool call to stderr (duration, response size, status, PDF parsing);
+  `scripts/time_tools.py` times the tool calls of an extraction without an LLM.
+
 - Internal: `service.py` is split by moving its code unchanged. `Service` keeps every method and signature;
   the bodies live in `catalogue.py`, `screening.py`, `protocols.py` and `extraction.py` (mixins of
   `Service`), the unmatched-query log in `unmatched.py`. No tool, schema or behaviour changes.

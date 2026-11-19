@@ -1,9 +1,13 @@
 """Native page-aware extraction. Raw PDF text remains in memory only."""
 
+import copy
 import hashlib
 import json
+import logging
 import re
-from collections import Counter
+import threading
+import time
+from collections import Counter, OrderedDict
 from dataclasses import dataclass, field
 
 import pymupdf
@@ -11,6 +15,8 @@ import pymupdf
 from .domain import Extraction, RWEError, with_notes
 from .terminology import search_units
 from .vocabulary import canonical, contains, expand
+
+log = logging.getLogger(__name__)
 
 RELEVANT = re.compile(
     r"design|method|setting|data source|database|population|inclusion|exclusion|exposure|"
@@ -386,12 +392,65 @@ def mark_contents_titles(pages: list[Page], rows: list[list]) -> None:
         page.outline_source = "toc"
 
 
-def extract_pages(
-    data: bytes, use_outline: bool = True, translations: dict[str, str] | None = None
-) -> list[Page]:
+class Pages(list):
+    """The pages of one parsed PDF. Callers treat them as read-only: the list is shared through the cache
+    below, and sections() remembers its chunks on it."""
+
+    chunks: list[dict] | None = None
+
+
+# Parsed PDFs of this process, most recently used last. A caller extraction asks for the same PDF in every
+# tool call (each batch, search, read and save), and parsing one takes a second or more.
+PARSE_CACHE_SIZE = 8
+_parsed: OrderedDict[tuple, Pages] = OrderedDict()
+_parsing: dict[tuple, threading.Lock] = {}
+_guard = threading.Lock()
+_stats = {"parsed": 0, "reused": 0, "parse_ms": 0.0}
+
+
+def parse_stats() -> dict:
+    """Counters of this process: PDFs parsed, parses answered from the cache, and time spent parsing."""
+    with _guard:
+        return dict(_stats)
+
+
+def extract_pages(data: bytes, use_outline: bool = True, translations: dict[str, str] | None = None) -> Pages:
     """Page texts with an outline applied: the PDF's bookmarks, else a verified text table of contents.
     use_outline=False ignores the bookmarks (structure evaluation measures text-only detection against them).
-    translations: English heading translations of a non-English protocol (see heading_texts)."""
+    translations: English heading translations of a non-English protocol (see heading_texts).
+
+    The result is cached by the PDF's bytes, the parser version and the reading; concurrent requests for the
+    same PDF parse it once. A failed parse is not cached."""
+    key = (hashlib.sha256(data).hexdigest(), PARSER_VERSION, use_outline, reading_hash(translations))
+    with _guard:
+        if key in _parsed:
+            _parsed.move_to_end(key)
+            _stats["reused"] += 1
+            return _parsed[key]
+        lock = _parsing.setdefault(key, threading.Lock())
+    with lock:
+        with _guard:
+            if key in _parsed:  # parsed by the request we waited for
+                _stats["reused"] += 1
+                return _parsed[key]
+        started = time.perf_counter()
+        try:
+            pages = Pages(_parse_pages(data, use_outline, translations))
+            elapsed = (time.perf_counter() - started) * 1000
+            with _guard:  # stored before the lock is retired, so a request arriving now finds it
+                _parsed[key] = pages
+                while len(_parsed) > PARSE_CACHE_SIZE:
+                    _parsed.popitem(last=False)
+                _stats["parsed"] += 1
+                _stats["parse_ms"] += elapsed
+        finally:
+            with _guard:
+                _parsing.pop(key, None)
+        log.info("pdf_parse pages=%d ms=%d", len(pages), elapsed)
+        return pages
+
+
+def _parse_pages(data: bytes, use_outline: bool, translations: dict[str, str] | None) -> list[Page]:
     if not data.lstrip().startswith(b"%PDF-"):
         raise RWEError("PDF_PARSE_FAILED", "Response is not a PDF.")
     try:
@@ -544,6 +603,29 @@ def ends_checklist(line: str, page: Page) -> bool:
 
 
 def sections(pages: list[Page]) -> list[dict]:
+    """The section chunks of the pages. For cached pages the chunks are computed once; every caller gets its
+    own copy, since callers add fields to the chunks and drop their text."""
+    if isinstance(pages, Pages):
+        if pages.chunks is None:
+            pages.chunks = _sections(pages)
+        return copy.deepcopy(pages.chunks)
+    return _sections(pages)
+
+
+SPACE_RUN = re.compile(r"[ \t]{3,}")
+
+
+def compact_spaces(chunks: list[dict]) -> list[dict]:
+    """Shorten the runs of spaces that PDF layout leaves in section text (table columns, justified lines) to
+    two spaces, in place. Only for text handed to a reader: quotes are compared with whitespace collapsed, so
+    a quote copied from the shortened text verifies against the PDF as before."""
+    for chunk in chunks:
+        if chunk.get("text"):
+            chunk["text"] = SPACE_RUN.sub("  ", chunk["text"])
+    return chunks
+
+
+def _sections(pages: list[Page]) -> list[dict]:
     result = []
 
     chapters = {p.page: (p.chapter, p.chapter_top, p.chapter_path) for p in pages}
@@ -864,6 +946,69 @@ def normalize_quote(text: str) -> str:
     return re.sub(r"\s+", " ", text.replace("\u00ad", "")).strip().casefold()
 
 
+WORD = re.compile(r"[^\W_]+")
+NAME_GAP = 3
+
+
+def name_span(name: str, text: str) -> tuple[int, int] | None:
+    """Where text writes the words of name, in order: the character span, or None.
+
+    Case and punctuation are ignored ('CPRD-Aurum' is 'CPRD Aurum'), and at most NAME_GAP other words may
+    stand between two words of the name: a table breaks a name over lines with other cells in between
+    ('Income and education registries from   -' / 'Statistics Denmark')."""
+    wanted = [w.casefold() for w in WORD.findall(name)]
+    if not wanted:
+        return None
+    words = [(m.group().casefold(), m.start(), m.end()) for m in WORD.finditer(text)]
+    for first, (word, start, _) in enumerate(words):
+        if word != wanted[0]:
+            continue
+        at, end = first, words[first][2]
+        for target in wanted[1:]:
+            following = next(
+                (i for i in range(at + 1, min(at + 2 + NAME_GAP, len(words))) if words[i][0] == target), None
+            )
+            if following is None:
+                break
+            at, end = following, words[following][2]
+        else:
+            return start, end
+    return None
+
+
+def name_window(name: str, text: str) -> str | None:
+    """A short verbatim passage of text around the place it writes name (see name_span), or None."""
+    span = name_span(name, text)
+    if not span:
+        return None
+    start, end = max(0, span[0] - 60), min(len(text), span[1] + 60)
+    while start > 0 and not text[start - 1].isspace():  # whole words at both ends
+        start -= 1
+    while end < len(text) and not text[end].isspace():
+        end += 1
+    return re.sub(r"\s+", " ", text[start:end]).strip()
+
+
+def with_source_name_quotes(facts: list, pages: list[Page]) -> list:
+    """Data sources and source assessments whose quotes do not name the source get one more quote: the
+    passage that writes the name on a page they already cite. A caller's quote supports the usage or the
+    definition and often leaves the name to a heading, a table cell or the sentence before; the server-side
+    route repairs its extractions the same way (prune_unverifiable). Facts whose name is on none of their
+    pages are returned unchanged, for validate_evidence to refuse."""
+    texts = {p.page: p.text for p in pages}
+    result = []
+    for fact in facts:
+        if not any(name_span(fact.value, e.quote) for e in fact.evidence) and len(fact.evidence) < 8:
+            for page in dict.fromkeys(e.page for e in fact.evidence):
+                quote = name_window(fact.value, texts.get(page, ""))
+                if quote and len(normalize_quote(quote)) >= 8:
+                    added = type(fact.evidence[0])(page=page, section=None, quote=quote)
+                    fact = fact.model_copy(update={"evidence": [*fact.evidence, added]})
+                    break
+        result.append(fact)
+    return result
+
+
 def validate_evidence(extraction: Extraction, pages: list[Page], chunks: list[dict] | None = None):
     page_map = {p.page: normalize_quote(p.text) for p in pages}
     chunks = sections(pages) if chunks is None else chunks
@@ -899,10 +1044,13 @@ def validate_evidence(extraction: Extraction, pages: list[Page], chunks: list[di
                         "Section does not match the cited page/quote; "
                         "use the returned section label or null.",
                     )
-        if is_source and not any(
-            normalize_quote(fact.value) in normalize_quote(e.quote) for e in fact.evidence
-        ):
-            raise RWEError("EVIDENCE_INVALID", "Data source name must occur verbatim in its evidence quote.")
+        if is_source and not any(name_span(fact.value, e.quote) for e in fact.evidence):
+            raise RWEError(
+                "EVIDENCE_INVALID",
+                f"Data source name {fact.value[:80]!r} is not written in its evidence quotes or elsewhere on "
+                "their pages: give the name as the protocol writes it (no added words), or cite the passage "
+                "that names it.",
+            )
 
     for name in type(extraction).model_fields:
         value = getattr(extraction, name)
@@ -1011,14 +1159,9 @@ def prune_unverifiable(extraction: Extraction, pages: list[Page]) -> tuple[Extra
             if quote in page_map.get(page, "") and verifies(name, fact, [dict(evidence, page=page)]):
                 return [dict(evidence, page=page)]
         if name in {"data_sources", "source_assessments"} and quote in page_map.get(evidence["page"], ""):
-            text = normalize_quote(next(p.text for p in pages if p.page == evidence["page"]))
-            at = text.find(normalize_quote(fact["value"]))
-            if at >= 0:
-                window = {
-                    "page": evidence["page"],
-                    "section": None,
-                    "quote": text[max(0, at - 40) : at + 120],
-                }
+            named = name_window(fact["value"], next(p.text for p in pages if p.page == evidence["page"]))
+            if named:
+                window = {"page": evidence["page"], "section": None, "quote": named}
                 # Keep the original quote only if the pair passes every rule (it may have failed
                 # the section check as well as the name check); otherwise the window alone.
                 for candidate in ([evidence, window], [window]):

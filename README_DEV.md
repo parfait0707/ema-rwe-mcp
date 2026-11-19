@@ -2,7 +2,7 @@
 
 エンドユーザー（このMCPを使って研究を調べる人）向けの使い方は[README.md](README.md)を参照してください。本ファイルはこのMCPサーバー自体を開発・改修する人向けの内部仕様です。
 
-公開版は0.5.7（内部履歴では0.1〜1.11の仕様段階を経ている）。`docs/spec/v0.1.md`〜`v1.11.md`が仕様の正本、[docs/mcp-workflow.md](docs/mcp-workflow.md)が呼出元向け手順の正本、開発ルールは[AGENTS.md](AGENTS.md)です。
+公開版は0.5.7（内部履歴では0.1〜1.12の仕様段階を経ている）。`docs/spec/v0.1.md`〜`v1.12.md`が仕様の正本、[docs/mcp-workflow.md](docs/mcp-workflow.md)が呼出元向け手順の正本、開発ルールは[AGENTS.md](AGENTS.md)です。
 
 ## 開発用セットアップ（checkout）
 
@@ -140,7 +140,7 @@ PyPI公開やGitHub Releaseへのwheel添付など他の配布経路の比較検
 
 **抽出スキーマ v0.3（`domain.py`）**: `cohort`ブロックを追加しました。`inclusion_criteria[]`・`exclusion_criteria[]`（各基準を1事実として根拠付き）、`index_date`、`baseline_period`（連続加入・ルックバック）、`follow_up`（開始・終了・打ち切り）、`design_schema`（設計図の物理ページ`figure_pages`と、本文にある対応する時間窓の記述`time_windows[]`）です。図そのものは画像のため読みません。fingerprintに`schema: 0.3`が入るため、既存の保存済み抽出は次回`analyze_protocol`で再抽出されます。比較表には「コホート定義」「設計図（ページ・時間窓）」の行が加わります。
 
-`analyze_protocol`は2つの経路を持ちます。
+`analyze_protocol`は2つの経路を持ちます。どちらの経路でも、同じPDFは1プロセスで1回だけ解析し（`pdf.extract_pages`が新しい順に8件をメモリに保ち、同時の要求は1回にまとめます）、読み手に渡す節の本文は3つ以上続く空白を2つに詰めます（spec v1.12。節の分け方と引用の照合は変わりません）。MCPサーバーはツール呼び出しごとに所要時間・応答の文字数・PDF解析の有無をstderrに記録します（`tool=... ms=... chars=... pdf_parsed=...`）。`uv run python scripts/time_tools.py <研究ID>...`で、LLMなしのツール呼び出しの所要時間を測れます。
 
 **呼出元抽出**（`LLM_MODEL`が未設定、または`LLM_BACKEND=compatible`で`LLM_BASE_URL`が未設定のとき）: 英語以外のプロトコルで英訳が無ければ、先に`needs_heading_translation`を返します。それ以外は`needs_client_extraction`と関連セクション・物理PDFページ・抽出JSON Schema・fingerprintを返します。呼出元は`offset`を進めながら`analyze_protocol(offset=next_offset)`で全バッチを読み、バッチごとに`cache_protocol_analysis(batch_offset=offset)`で途中保存します（サーバーは保存済みoffsetを`cached_batch_offsets`で返すので、コンテキスト圧縮後も既読分を再読しません。途中保存は利用者側の表`extraction_batches`に入るので、サーバーの再起動や別プロセス（CLIは呼び出しごとに別プロセス）でも失われません。サーバー側抽出の`status=extracting`の進行中の抽出はメモリにあるだけで、再起動すると最初からになります）。最後のバッチも`batch_offset`付きで保存してから`coverage_complete=true`を呼ぶと、サーバーが全バッチを統合して保存します。読んでいないバッチがあれば`INCOMPLETE_EXTRACTION`で読むべきoffsetを返し、`analyze_protocol`が返していないoffsetのバッチは受け付けません（spec v1.11）。`analyze_protocol(question=...)`のときは、抽出の指示に質問と`answer_schema`が加わります。呼出元は各バッチの`cache_protocol_analysis`に`question`とそのバッチの`answer`を渡し、最後の呼び出しが回答を結合して`research_protocol`と同じ鍵で保存します（`answer_saved`。空なら保存せず、`research_protocol`で探索します）。質問を渡しても、抽出はスキーマの全項目を埋めます。
 
@@ -264,7 +264,7 @@ CLIは`uv run ema-rwe <サブコマンド> --help`で確認できます（例：
 
 | ファイル | 内容 |
 |---|---|
-| [docs/spec/v0.1.md](docs/spec/v0.1.md)〜[v1.11.md](docs/spec/v1.11.md) | 段階的な追加要件の正本。対象変更の関連仕様を読む |
+| [docs/spec/v0.1.md](docs/spec/v0.1.md)〜[v1.12.md](docs/spec/v1.12.md) | 段階的な追加要件の正本。対象変更の関連仕様を読む |
 | [docs/mcp-workflow.md](docs/mcp-workflow.md) | 呼出元エージェント向けの完全な手順（英語） |
 | [docs/search-logic.md](docs/search-logic.md) | 検索語の展開・医薬品照合・順位付け |
 | [docs/benchmarks/20261009-codex-app.md](docs/benchmarks/20261009-codex-app.md) | Codex Appの4例とMCP実行時間の定義 |

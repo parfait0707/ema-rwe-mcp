@@ -21,6 +21,7 @@ from .pdf import (
     PARSER_VERSION,
     audit_extraction,
     clean_translations,
+    compact_spaces,
     english,
     extract_pages,
     finalize_extraction,
@@ -30,6 +31,7 @@ from .pdf import (
     sections,
     stored_translations,
     validate_evidence,
+    with_source_name_quotes,
 )
 
 
@@ -84,7 +86,7 @@ class ExtractionMixin:
         translations = self._translations(source["protocol_id"])
         source["reading"] = reading_hash(translations)
         pages = await asyncio.to_thread(extract_pages, pdf, True, translations)
-        chunks = reading_order(sections(pages))
+        chunks = compact_spaces(reading_order(sections(pages)))
         if not chunks:
             raise RWEError("SECTION_PARSE_FAILED", "No relevant protocol sections found.")
         selected, size = [], 0
@@ -268,6 +270,16 @@ class ExtractionMixin:
             raise RWEError("PROTOCOL_CHANGED", "Protocol/extractor changed; analyze current protocol again.")
         translations = self._reading_snapshot(source, reading, "reread the batches")
         pages = await asyncio.to_thread(extract_pages, pdf, True, translations)
+        analysis = analysis.model_copy(
+            update={
+                "data_sources": with_source_name_quotes(analysis.data_sources, pages),
+                "source_assessments": with_source_name_quotes(analysis.source_assessments, pages),
+            }
+        )
+        if answer is not None:
+            answer = answer.model_copy(
+                update={"source_assessments": with_source_name_quotes(answer.source_assessments, pages)}
+            )
         validate_evidence(analysis, pages)
         key = (study_id, fingerprint, source["reading"])
         served = self.repo.batches(*key, "served")
@@ -395,7 +407,7 @@ class ExtractionMixin:
             )
         # The task reads with this snapshot of the translations; its save is checked against the same reading.
         pages = await asyncio.to_thread(extract_pages, pdf, True, translations)
-        chunks = reading_order(sections(pages))
+        chunks = compact_spaces(reading_order(sections(pages)))
         if not chunks:
             raise RWEError("SECTION_PARSE_FAILED", "No relevant protocol sections found.")
         analysis = await extract_with_provider(self.settings, chunks, progress)

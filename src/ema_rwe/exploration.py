@@ -7,6 +7,7 @@ from pydantic import ValidationError
 from .domain import Extraction, ProtocolAnswer, RWEError, now, with_notes
 from .llm import SOURCE_ASSESSMENT_PROMPT, complete_json, configured, drop_invalid_evidence, split_batches
 from .pdf import (
+    compact_spaces,
     extract_pages,
     prune_unverifiable,
     reading_hash,
@@ -15,6 +16,7 @@ from .pdf import (
     sections,
     stored_translations,
     validate_evidence,
+    with_source_name_quotes,
 )
 from .terminology import clinical_expansion, proposed_codes
 
@@ -80,7 +82,7 @@ class Explorer:
         if translations is None:
             translations = self.translations(protocol_id)
         pages = extract_pages(data, translations=translations)
-        return pages, sections(pages), {**source, "reading": reading_hash(translations)}
+        return pages, compact_spaces(sections(pages)), {**source, "reading": reading_hash(translations)}
 
     def outline(self, protocol_id, offset=0, limit=100, detail="compact", translations=None):
         if offset < 0 or not 1 <= limit <= 200:
@@ -242,6 +244,9 @@ class Explorer:
         evidence is checked and the cache key made from the same reading."""
         pages, _, source = self.context(protocol_id, translations)
         reading = source["reading"]
+        answer = answer.model_copy(
+            update={"source_assessments": with_source_name_quotes(answer.source_assessments, pages)}
+        )
         validate_evidence(Extraction(key_notes=answer.answers[:20]), pages)
         # Also validate answers beyond the Extraction key_notes limit.
         if len(answer.answers) > 20:
