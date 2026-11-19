@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- A verbatim quote a caller gives on the wrong page is moved to the nearest page that holds it instead of
+  refusing the batch (analyses and answers); a quote found on no page, or equally near on both sides, is
+  still refused (spec v1.13).
+- `evidence[].server` marks what the server did to an item: `source_name` for a passage it added because it
+  writes the data source's name, `page` for a corrected page. The comparison table lists the page of a naming
+  passage apart from the pages that state the definition. The field is optional: the extraction schema
+  version and fingerprints are unchanged, and saved analyses read as before.
+- The quote minimum (8 characters) and the limit of 8 quotes per fact are stated in the batch instruction
+  and the schema descriptions; callers kept running into both.
+
 - A PDF is parsed once per process: parsed pages are cached by the PDF's bytes, parser version and reading
   (the eight most recent; concurrent requests parse once). Every tool call of a caller extraction used to
   parse the PDF again; on four real protocols a call after the first went from about 1.5 s to 10-60 ms (spec v1.12).

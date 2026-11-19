@@ -1032,11 +1032,36 @@ def with_source_name_quotes(facts: list, pages: list[Page], chunks: list[dict] |
             others = sorted((p for p in usable if p not in cited), key=lambda p: (abs(p - cited[0]), p))
             for page in [*cited, *others]:
                 if quote := naming_quote(wanted, page):
-                    added = type(fact.evidence[0])(page=page, section=None, quote=quote)
+                    added = type(fact.evidence[0])(page=page, section=None, quote=quote, server="source_name")
                     fact = fact.model_copy(update={"evidence": [*fact.evidence, added]})
                     break
         result.append(fact)
     return result
+
+
+def with_corrected_pages(model, pages: list[Page]):
+    """model (an extraction or an answer) with the page of each quote that is not on the page given but is
+    verbatim on another one set to the nearest page that holds it, marked server='page'. Callers count the
+    physical page wrongly now and then (a quote at the top of the next page); the quote itself is what is
+    verified. A quote found nowhere, or equally near on both sides, is left for validate_evidence to refuse.
+    The section label of a moved quote is dropped: it named a section of the page given."""
+    texts = {p.page: normalize_quote(p.text) for p in pages}
+
+    def walk(node):
+        if isinstance(node, list):
+            return [walk(item) for item in node]
+        if not isinstance(node, dict):
+            return node
+        if "quote" in node and "page" in node:
+            quote = normalize_quote(node["quote"])
+            if quote and quote not in texts.get(node["page"], ""):
+                holding = sorted((abs(p - node["page"]), p) for p, text in texts.items() if quote in text)
+                if holding and (len(holding) == 1 or holding[0][0] < holding[1][0]):
+                    return dict(node, page=holding[0][1], section=None, server="page")
+            return node
+        return {key: walk(value) for key, value in node.items()}
+
+    return type(model).model_validate(walk(model.model_dump()))
 
 
 def validate_evidence(extraction: Extraction, pages: list[Page], chunks: list[dict] | None = None):
@@ -1186,12 +1211,13 @@ def prune_unverifiable(extraction: Extraction, pages: list[Page]) -> tuple[Extra
         quote but present on the page -> add a short verbatim window containing the name."""
         quote = normalize_quote(evidence["quote"])
         for page in (evidence["page"] - 1, evidence["page"] + 1):
-            if quote in page_map.get(page, "") and verifies(name, fact, [dict(evidence, page=page)]):
-                return [dict(evidence, page=page)]
+            moved = dict(evidence, page=page, server="page")
+            if quote in page_map.get(page, "") and verifies(name, fact, [moved]):
+                return [moved]
         if name in {"data_sources", "source_assessments"} and quote in page_map.get(evidence["page"], ""):
             named = name_window(fact["value"], next(p.text for p in pages if p.page == evidence["page"]))
             if named:
-                window = {"page": evidence["page"], "section": None, "quote": named}
+                window = {"page": evidence["page"], "section": None, "quote": named, "server": "source_name"}
                 # Keep the original quote only if the pair passes every rule (it may have failed
                 # the section check as well as the name check); otherwise the window alone.
                 for candidate in ([evidence, window], [window]):

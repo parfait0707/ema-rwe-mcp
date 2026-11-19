@@ -227,3 +227,100 @@ def test_a_name_written_only_in_the_reference_list_is_not_evidence():
     assert with_source_name_quotes([source], pages) == [source]
     with pytest.raises(RWEError):
         validate_evidence(Extraction(data_sources=[source]), pages)
+
+
+def test_quote_on_another_page_is_moved_to_the_nearest_page_that_holds_it():
+    from ema_rwe.domain import Fact
+    from ema_rwe.pdf import with_corrected_pages
+
+    data = two_pages(
+        "9.1 Study design\nThis is a retrospective cohort study of adult patients in one country.",
+        "9.2 Setting\nPatients are followed from the index date until death or the end of the study.",
+    )
+    pages = extract_pages(data)
+    here = Evidence(page=1, quote="This is a retrospective cohort study of adult patients in one country.")
+    there = Evidence(
+        page=1,
+        section="9.1 Study design",
+        quote="Patients are followed from the index date until death or the end of the study.",
+    )
+    nowhere = Evidence(page=1, quote="A sentence that the protocol does not contain at all.")
+    both = Evidence(
+        page=1, quote="Descriptive statistics will summarise the baseline characteristics"
+    )  # filler, pages 1 and 2
+    extraction = Extraction(
+        study_design=Fact(value="retrospective cohort", evidence=[here, there]),
+        key_notes=[Fact(value="unknown", evidence=[nowhere]), Fact(value="analysis", evidence=[both])],
+    )
+    fixed = with_corrected_pages(extraction, pages)
+    assert fixed.study_design.evidence[0] == here  # on the page given: untouched
+    moved = fixed.study_design.evidence[1]
+    assert (moved.page, moved.section, moved.server) == (2, None, "page")
+    assert fixed.key_notes[0].evidence[0] == nowhere  # found nowhere: left for validation to refuse
+    assert fixed.key_notes[1].evidence[0] == both  # on the page given, although also elsewhere
+    validate_evidence(Extraction(study_design=fixed.study_design), pages)
+    with pytest.raises(RWEError):
+        validate_evidence(Extraction(key_notes=[fixed.key_notes[0]]), pages)
+
+
+def test_a_quote_equally_near_on_both_sides_is_not_moved():
+    from ema_rwe.pdf import with_corrected_pages
+
+    with pymupdf.open() as doc:
+        for text in (
+            "9.1 Aims\nThe aims are described here in full detail.",
+            "9.2 Design\nNothing of note on this page.",
+            "9.3 Aims again\nThe aims are described here in full detail.",
+        ):
+            doc.new_page().insert_text(
+                (50, 50), text + FILLER.replace("baseline", f"baseline {len(text)}"), fontsize=8
+            )
+        data = doc.tobytes()
+    pages = extract_pages(data)
+    ambiguous = Evidence(page=2, quote="The aims are described here in full detail.")
+    extraction = Extraction(key_notes=[{"value": "aims", "evidence": [ambiguous]}])
+    assert with_corrected_pages(extraction, pages).key_notes[0].evidence[0] == ambiguous
+
+
+def test_server_added_naming_quote_is_marked_and_listed_apart_in_the_table():
+    from ema_rwe.comparison import cited_pages
+
+    data = two_pages(
+        "9.4 Data sources\nThe National Example Hospital Register (NEHR) holds all inpatient stays since 1995.",
+        "9.5 Study size\nAbout 20,000 eligible patients are expected in NEHR during the study period.",
+    )
+    pages = extract_pages(data)
+    cited = Evidence(
+        page=2, quote="About 20,000 eligible patients are expected in NEHR during the study period."
+    )
+    source = DataSource(value="National Example Hospital Register (NEHR)", usage="planned", evidence=[cited])
+    (named,) = with_source_name_quotes([source], pages)
+    assert [e.server for e in named.evidence] == [None, "source_name"]
+    evidence = [e.model_dump() for e in named.evidence]
+    assert cited_pages(evidence) == "p. 2; 名前の記載 p. 1"
+    assert cited_pages(evidence[:1]) == "p. 2"
+    assert cited_pages(evidence[1:]) == "p. 1"  # only the naming passage: it is all the evidence there is
+
+
+async def test_caller_batch_with_a_quote_on_the_wrong_page_is_saved_with_the_page_corrected(service, website):
+    from test_source_types import QUOTE, typed_pdf
+
+    from ema_rwe.domain import Fact
+
+    typed_pdf(website)  # adds a second page that holds QUOTE
+    first = await service.analyze_protocol("123")
+    assert first["total_pdf_pages"] == 2
+    analysis = sample_analysis()
+    analysis.key_notes = [Fact(value="cohort source", evidence=[Evidence(page=1, quote=QUOTE)])]
+    done = await service.cache_protocol_analysis("123", first["source"]["fingerprint"], analysis, True)
+    assert done["status"] == "analyzed"
+    saved = service.repo.analysis("123")["analysis"]
+    assert saved["key_notes"][0]["evidence"][0] == {
+        "page": 2,
+        "section": None,
+        "quote": QUOTE,
+        "server": "page",
+    }
+    assert saved["study_design"]["evidence"][0]["server"] is None
+    # The limits a caller keeps running into are stated where it reads them
+    assert "at least 8 characters" in first["instruction"] and "at most 8 quotes" in first["instruction"]

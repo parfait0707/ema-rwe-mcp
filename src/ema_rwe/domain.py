@@ -96,7 +96,17 @@ def quote_length(quote: str) -> int:
 class Evidence(Model):
     page: int = Field(ge=1)
     section: str | None = None
-    quote: str = Field(min_length=8, max_length=1000)
+    quote: str = Field(
+        min_length=8,
+        max_length=1000,
+        description="Verbatim; at least 8 characters, so quote the whole line around a bare code or word",
+    )
+    # What the server did to this item, if anything (spec v1.13): 'source_name' = a passage it added because
+    # it writes the data source's name, which the caller's quotes left out; it does not support the fact's
+    # usage or definition. 'page' = the quote was verbatim on another page than the one given, corrected.
+    server: Literal["source_name", "page"] | None = Field(
+        default=None, description="Set by the server (a passage it added, a page it corrected); leave it out"
+    )
 
     @field_validator("quote")
     @classmethod
@@ -109,7 +119,9 @@ class Evidence(Model):
 
 class Fact(Model):
     value: str = Field(min_length=1, max_length=4000)
-    evidence: list[Evidence] = Field(min_length=1, max_length=8)
+    evidence: list[Evidence] = Field(
+        min_length=1, max_length=8, description="1-8 quotes; split the fact when more passages are needed"
+    )
 
 
 class DataSource(Fact):

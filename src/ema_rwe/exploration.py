@@ -16,6 +16,7 @@ from .pdf import (
     sections,
     stored_translations,
     validate_evidence,
+    with_corrected_pages,
     with_source_name_quotes,
 )
 from .terminology import clinical_expansion, proposed_codes
@@ -244,6 +245,7 @@ class Explorer:
         evidence is checked and the cache key made from the same reading."""
         pages, _, source = self.context(protocol_id, translations)
         reading = source["reading"]
+        answer = with_corrected_pages(answer, pages)
         answer = answer.model_copy(
             update={"source_assessments": with_source_name_quotes(answer.source_assessments, pages)}
         )

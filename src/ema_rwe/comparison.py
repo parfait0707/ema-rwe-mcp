@@ -61,6 +61,17 @@ def cell(value):
     )
 
 
+def cited_pages(evidence: list[dict]) -> str:
+    """'p. 48, 50' for a fact's evidence. A passage the server added because it writes the data source's
+    name is listed apart: it shows where the name stands, not where the usage or definition is stated."""
+    naming = [e for e in evidence if e.get("server") == "source_name"]
+    stated = [e for e in evidence if e.get("server") != "source_name"] or naming
+    text = "p. " + ", ".join(str(e["page"]) for e in stated)
+    if naming and stated is not naming:
+        text += "; 名前の記載 p. " + ", ".join(str(e["page"]) for e in naming)
+    return text
+
+
 def cohort_cells(cohort: dict | None) -> list[str] | None:
     """Flatten the cohort block into labelled lines for the comparison table."""
     if not cohort:
@@ -113,7 +124,7 @@ def table(rows, relations: dict[str, str] | None = None):
             "PDF由来のタイプ・用途・判定根拠",
             lambda r: [
                 f"{a['value']}: {', '.join(a['types'])}; {a['role']}; {a['basis']}; {a['usage']}; "
-                f"連結データ必要={a['requires_linkage']}; {a['definition']} (p. {', '.join(str(e['page']) for e in a['evidence'])})"
+                f"連結データ必要={a['requires_linkage']}; {a['definition']} ({cited_pages(a['evidence'])})"
                 for a in r.get("source_suitability", {}).get("assessments", [])
             ],
         ),
