@@ -236,7 +236,7 @@ async def test_screening_limit_can_exceed_five(service, website):
     extend_website(website, 6)
     service.settings.max_screening_studies = 6
     result = await service.compare_protocols("How defined?", ["opioid"])
-    assert len(result["rows"]) == 6 and len(result["pending_tools"]) == 12
+    assert len(result["rows"]) == 6 and len(result["pending_tools"]) == 6
     assert result["search"]["max_comparison_studies"] == 5
     assert result["displayed_study_ids"] == []
     assert len(list(service.archive.directory.glob("*.pdf"))) == 6

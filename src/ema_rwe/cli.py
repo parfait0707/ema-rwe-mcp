@@ -7,7 +7,7 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from .config import Settings
-from .domain import AnalogousTerm, CodeCandidate, RWEError, SourcePreference
+from .domain import AnalogousTerm, CodeCandidate, Extraction, ProtocolAnswer, RWEError, SourcePreference
 from .ranking import ScreeningBlock
 from .selection import SearchFilters
 from .service import Service, source_type_from_filename
@@ -164,7 +164,6 @@ def parser():
     ask.add_argument("protocol_id")
     ask.add_argument("question")
     ask.add_argument("--force", action="store_true")
-    ask.add_argument("--evidence", choices=["quote", "lines"], default="quote")
     for name in ("study", "protocol", "analyze"):
         cmd = commands.add_parser(name)
         cmd.add_argument("study_id")
@@ -176,7 +175,6 @@ def parser():
             cmd.add_argument("--offset", type=int, default=0)
             cmd.add_argument("--max-chars", type=int, default=30000)
             cmd.add_argument("--detail", choices=["summary", "full"], default="summary")
-            cmd.add_argument("--evidence", choices=["quote", "lines"], default="quote")
             cmd.add_argument("--question", help="Also answer this question while reading (one pass)")
     submit = commands.add_parser("cache-analysis")
     submit.add_argument("study_id")
@@ -321,9 +319,7 @@ async def run(args):
                     args.max_chars,
                 )
             case "ask":
-                return await service.research_protocol(
-                    args.protocol_id, args.question, args.force, args.evidence
-                )
+                return await service.research_protocol(args.protocol_id, args.question, args.force)
             case "study":
                 return (await service.get_study(args.study_id, args.refresh)).model_dump()
             case "protocol":
@@ -337,13 +333,15 @@ async def run(args):
                     args.offset,
                     args.max_chars,
                     args.detail,
-                    args.evidence,
                     args.question,
                 )
             case "cache-analysis":
-                # Line references are resolved against the PDF by the service, so the raw object goes in.
-                analysis = json.loads(args.input.read_text(encoding="utf-8"))
-                answer = json.loads(args.answer.read_text(encoding="utf-8")) if args.answer else None
+                analysis = Extraction.model_validate_json(args.input.read_text(encoding="utf-8"))
+                answer = (
+                    ProtocolAnswer.model_validate_json(args.answer.read_text(encoding="utf-8"))
+                    if args.answer
+                    else None
+                )
                 return await service.cache_protocol_analysis(
                     args.study_id,
                     args.fingerprint,
@@ -355,7 +353,7 @@ async def run(args):
                     args.question,
                 )
             case "cache-answer":
-                answer = json.loads(args.input.read_text(encoding="utf-8"))
+                answer = ProtocolAnswer.model_validate_json(args.input.read_text(encoding="utf-8"))
                 return await service.cache_protocol_answer(
                     args.protocol_id, args.question, answer, args.reading
                 )

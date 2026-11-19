@@ -6,9 +6,10 @@ import json
 import pytest
 from test_core import sample_analysis
 
-from ema_rwe.domain import Evidence, Extraction, Fact, RWEError, with_notes
+from ema_rwe.domain import Evidence, Extraction, Fact, ProtocolAnswer, RWEError, with_notes
 from ema_rwe.llm import drop_invalid_evidence, extract_with_provider, split_batches
 from ema_rwe.pdf import extract_pages, prune_unverifiable
+from ema_rwe.service import Service
 
 
 def test_split_batches_respects_limit_and_keeps_oversized_sections():
@@ -273,3 +274,82 @@ async def test_search_and_research_respect_text_budgets(service):
     assert set(compact["sections"][0]) == {"section_id", "page", "section", "role"}
     full = await service.get_protocol_outline(pid, detail="full")
     assert "parent_section" in full["sections"][0]
+
+
+async def test_cached_batches_survive_a_server_restart(service):
+    first = await service.analyze_protocol("123")
+    fingerprint = first["source"]["fingerprint"]
+    partial = Extraction(data_sources=sample_analysis().data_sources)
+    await service.cache_protocol_analysis("123", fingerprint, partial, batch_offset=0)
+    restarted = Service(service.settings, client=service.client)
+    assert (await restarted.analyze_protocol("123"))["cached_batch_offsets"] == [0]
+    done = await restarted.cache_protocol_analysis("123", fingerprint, Extraction(), coverage_complete=True)
+    assert done["status"] == "analyzed" and done["analysis_summary"]["data_sources"] == 1
+
+
+async def test_a_batch_that_was_never_read_stops_the_merge(service):
+    later = await service.analyze_protocol("123", offset=1, max_chars=6000)
+    fingerprint = later["source"]["fingerprint"]
+    await service.cache_protocol_analysis("123", fingerprint, Extraction(), batch_offset=1)
+    with pytest.raises(RWEError) as error:
+        await service.cache_protocol_analysis("123", fingerprint, sample_analysis(), coverage_complete=True)
+    assert error.value.code == "INCOMPLETE_EXTRACTION" and "offset=0" in error.value.message
+    assert service.repo.analysis("123") is None
+    # Reading the missing batch completes the extraction; the batches cached so far were kept.
+    await service.analyze_protocol("123")
+    await service.cache_protocol_analysis("123", fingerprint, sample_analysis(), batch_offset=0)
+    done = await service.cache_protocol_analysis("123", fingerprint, Extraction(), coverage_complete=True)
+    assert done["status"] == "analyzed"
+
+
+async def test_a_batch_offset_that_was_not_served_is_rejected(service):
+    first = await service.analyze_protocol("123")
+    with pytest.raises(RWEError) as error:
+        await service.cache_protocol_analysis(
+            "123", first["source"]["fingerprint"], sample_analysis(), batch_offset=99
+        )
+    assert error.value.code == "INVALID_INPUT"
+    assert (
+        first["cached_batch_offsets"] == (await service.analyze_protocol("123"))["cached_batch_offsets"] == []
+    )
+
+
+async def test_question_is_answered_in_the_same_pass_as_the_extraction(service):
+    question = "How is diabetes defined?"
+    first = await service.analyze_protocol("123", question=question)
+    assert question in first["instruction"] and "answers" in first["answer_schema"]["properties"]
+    assert "answer_schema" not in await service.analyze_protocol("123")  # only when a question is given
+    fingerprint = first["source"]["fingerprint"]
+    answer = ProtocolAnswer(answers=sample_analysis().disease_definitions)
+    with pytest.raises(RWEError) as error:  # an answer without its question cannot be saved
+        await service.cache_protocol_analysis(
+            "123", fingerprint, sample_analysis(), batch_offset=0, answer=answer
+        )
+    assert error.value.code == "INVALID_INPUT"
+    await service.cache_protocol_analysis(
+        "123", fingerprint, sample_analysis(), batch_offset=0, answer=answer, question=question
+    )
+    done = await service.cache_protocol_analysis(
+        "123", fingerprint, Extraction(), coverage_complete=True, question=question
+    )
+    assert done["status"] == "analyzed" and done["answer_saved"] is True
+    saved = await service.research_protocol(first["source"]["protocol_id"], question)
+    assert saved["status"] == "answered" and saved["cached"] is True
+    assert saved["answer"]["answers"][0]["value"] == answer.answers[0].value
+    assert saved["trace"] == [{"mode": "single_pass"}]
+
+
+async def test_single_pass_without_an_answer_leaves_the_question_to_research(service):
+    question = "Which sensitivity analyses are planned?"
+    first = await service.analyze_protocol("123", question=question)
+    fingerprint = first["source"]["fingerprint"]
+    await service.cache_protocol_analysis(
+        "123", fingerprint, sample_analysis(), batch_offset=0, answer=ProtocolAnswer(), question=question
+    )
+    done = await service.cache_protocol_analysis(
+        "123", fingerprint, Extraction(), coverage_complete=True, question=question
+    )
+    assert done["answer_saved"] is False
+    assert (await service.research_protocol(first["source"]["protocol_id"], question))["status"] == (
+        "needs_client_exploration"
+    )

@@ -5,6 +5,7 @@ import re
 import uuid
 
 from .domain import RWEError, atomic_write, now
+from .llm import configured
 from .pdf import reading_hash
 from .source_types import select_rows
 
@@ -295,10 +296,6 @@ class Comparisons:
                     },
                 )
                 continue
-            if analysis:
-                row["analysis"] = analysis["analysis"]
-            else:
-                todo.append({"tool": "analyze_protocol", "arguments": {"study_id": sid}})
             with self.service.repo.connection() as db:
                 cached = db.execute(
                     "SELECT body FROM protocol_answers WHERE cache_key=?",
@@ -306,7 +303,15 @@ class Comparisons:
                 ).fetchone()
             if cached:
                 row["answer"] = json.loads(cached[0])["answer"]
+            # One pass (spec v1.11): a caller that extracts the protocol itself answers the question while it
+            # reads the batches. A configured LLM extracts server-side, so its answer stays a separate call.
+            single_pass = not analysis and not cached and not configured(self.service.settings)
+            if analysis:
+                row["analysis"] = analysis["analysis"]
             else:
+                arguments = {"study_id": sid, **({"question": result["question"]} if single_pass else {})}
+                todo.append({"tool": "analyze_protocol", "arguments": arguments})
+            if not cached and not single_pass:
                 todo.append(
                     {
                         "tool": "research_protocol",
@@ -321,7 +326,9 @@ class Comparisons:
         select_rows(result, selected_study_ids)
         result["instruction"] = (
             "Execute every pending tool for ALL rows. If needs_client_extraction, read all next_offset batches "
-            "and cache_protocol_analysis with reading=source.reading; if extracting, call analyze_protocol again for that study (do not extract client-side); if needs_heading_translation, cache_heading_translations and analyze again before research_protocol for that protocol; if needs_client_exploration, inspect relevant text and cache_protocol_answer with its reading. "
+            "and cache_protocol_analysis with reading=source.reading (and, when analyze_protocol carries a "
+            "question, with question and each batch's answer: no research_protocol is then needed for that "
+            "study unless the final call reports answer_saved=false); if extracting, call analyze_protocol again for that study (do not extract client-side); if needs_heading_translation, cache_heading_translations and analyze again before research_protocol for that protocol; if needs_client_exploration, inspect relevant text and cache_protocol_answer with its reading. "
             "Then call get_protocol_comparison to update ALL JSON files and the table. Present comparison_markdown with "
             "citations; do not describe incomplete exports as finished. Report every error/missing protocol. "
             "Report source_suitability by definition role; prefer matched sources, distinguish linked/inferred/other/unknown. "

@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+- Batches of a caller's unfinished extraction are kept in the database (`extraction_batches`, a user-side
+  table outside the schema version) instead of server memory: a server restart, another process (each CLI
+  call) or context compaction no longer loses them (spec v1.11).
+- The final `cache_protocol_analysis(coverage_complete=true)` refuses to save while a batch was never read
+  and cached (`INCOMPLETE_EXTRACTION`, naming the offset to read), and a `batch_offset` that no
+  `analyze_protocol` response returned is refused (`INVALID_INPUT`). Before, a caller that miscounted the
+  next offset saved an analysis that silently lacked those sections (2 of 8 trial runs did).
+- One pass: `analyze_protocol(question=...)` lets the caller answer the question while it reads the
+  batches; `cache_protocol_analysis` takes `question` and each batch's `answer`, and the final call saves
+  the merged answer for `research_protocol` and comparisons (`answer_saved`). `compare_protocols` lists one
+  pending tool per study instead of two (two remain with a configured server LLM). CLI: `analyze --question`,
+  `cache-analysis --answer --question`. In the trial of four protocols this cut the caller's time by about
+  a sixth without losing reference items; quoting by line number was tried and not adopted
+  (`docs/validation.md`, 2026-11-19).
+
 ## 0.5.6 (2026-11-03)
 
 - Imports read the protocol columns of the November 2026 Studies export ("Initial protocol file - URI",

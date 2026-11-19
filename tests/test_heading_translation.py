@@ -402,7 +402,9 @@ async def test_comparisons_and_cached_reads_never_use_an_analysis_of_another_rea
         db.execute("UPDATE analyses SET body=?", (json.dumps(body),))
     collected = await service.get_protocol_comparison(comparison["comparison_id"], detail="full")
     assert "analysis" not in collected["rows"][0]
-    assert {"tool": "analyze_protocol", "arguments": {"study_id": "123"}} in collected["pending_tools"]
+    assert [
+        t["arguments"]["study_id"] for t in collected["pending_tools"] if t["tool"] == "analyze_protocol"
+    ] == ["123"]
     assert (await service.analyze_protocol("123"))["status"] == "needs_client_extraction"
 
 

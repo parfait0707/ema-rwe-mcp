@@ -81,6 +81,11 @@ async def test_stdio_discovery_validation_and_local_search(settings, csv_file, p
         for name in ("cache_protocol_analysis", "cache_protocol_answer"):
             tool = next(t for t in tools.tools if t.name == name)
             assert "reading" in tool.inputSchema["properties"]
+        # One pass (spec v1.11): the question travels with the extraction and its batches
+        analyze_tool = next(t for t in tools.tools if t.name == "analyze_protocol")
+        assert "question" in analyze_tool.inputSchema["properties"]
+        cache_tool = next(t for t in tools.tools if t.name == "cache_protocol_analysis")
+        assert {"answer", "question"} <= set(cache_tool.inputSchema["properties"])
         collection_tool = next(t for t in tools.tools if t.name == "get_protocol_comparison")
         assert "selected_study_ids" in collection_tool.inputSchema["properties"]
         imported = await session.call_tool("import_catalogue_csv", {"filename": "export-data.csv"})
