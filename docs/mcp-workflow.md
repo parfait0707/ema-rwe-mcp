@@ -175,9 +175,10 @@ filters. Never pick a subset yourself.
   copy quotes from it as they are, the comparison with the PDF ignores whitespace.
 - A data source `value` is the name as the protocol writes it, with no words of your own (no added
   country or abbreviation). The name is matched by its words, in order, case and punctuation aside, in one
-  of the fact's quotes; when your quotes leave the name out but a page you cite writes it, the server adds
-  the naming passage as one more quote. `EVIDENCE_INVALID` names the value that is written on none of the
-  cited pages: correct the name or cite the passage that names it. If your client can run a cheaper subagent (Claude Code: `Agent` with
+  of the fact's quotes; when your quotes leave the name out but the protocol's methods text writes it (on a
+  page you cite, else the nearest one), the server adds the naming passage as one more quote.
+  `EVIDENCE_INVALID` names a value that is written nowhere outside the contents, references, background and
+  checklists: correct the name or cite the passage that names it. If your client can run a cheaper subagent (Claude Code: `Agent` with
   model sonnet), delegate one study's batch reading and caching to it and keep only results in
   the main context.
 - Quotes must be verbatim; pages are physical PDF pages; keep `usage` honest

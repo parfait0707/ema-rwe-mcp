@@ -950,16 +950,11 @@ WORD = re.compile(r"[^\W_]+")
 NAME_GAP = 3
 
 
-def name_span(name: str, text: str) -> tuple[int, int] | None:
-    """Where text writes the words of name, in order: the character span, or None.
+def _words(text: str) -> list[tuple[str, int, int]]:
+    return [(m.group().casefold(), m.start(), m.end()) for m in WORD.finditer(text)]
 
-    Case and punctuation are ignored ('CPRD-Aurum' is 'CPRD Aurum'), and at most NAME_GAP other words may
-    stand between two words of the name: a table breaks a name over lines with other cells in between
-    ('Income and education registries from   -' / 'Statistics Denmark')."""
-    wanted = [w.casefold() for w in WORD.findall(name)]
-    if not wanted:
-        return None
-    words = [(m.group().casefold(), m.start(), m.end()) for m in WORD.finditer(text)]
+
+def _span(wanted: list[str], words: list[tuple[str, int, int]]) -> tuple[int, int] | None:
     for first, (word, start, _) in enumerate(words):
         if word != wanted[0]:
             continue
@@ -976,32 +971,67 @@ def name_span(name: str, text: str) -> tuple[int, int] | None:
     return None
 
 
-def name_window(name: str, text: str) -> str | None:
-    """A short verbatim passage of text around the place it writes name (see name_span), or None."""
-    span = name_span(name, text)
-    if not span:
-        return None
+def name_span(name: str, text: str) -> tuple[int, int] | None:
+    """Where text writes the words of name, in order: the character span, or None.
+
+    Case and punctuation are ignored ('CPRD-Aurum' is 'CPRD Aurum'), and at most NAME_GAP other words may
+    stand between two words of the name: a table breaks a name over lines with other cells in between
+    ('Income and education registries from   -' / 'Statistics Denmark')."""
+    wanted = [w.casefold() for w in WORD.findall(name)]
+    return _span(wanted, _words(text)) if wanted else None
+
+
+def _window(text: str, span: tuple[int, int]) -> str:
+    """A short verbatim passage of text around span, cut at whole words."""
     start, end = max(0, span[0] - 60), min(len(text), span[1] + 60)
-    while start > 0 and not text[start - 1].isspace():  # whole words at both ends
+    while start > 0 and not text[start - 1].isspace():
         start -= 1
     while end < len(text) and not text[end].isspace():
         end += 1
     return re.sub(r"\s+", " ", text[start:end]).strip()
 
 
-def with_source_name_quotes(facts: list, pages: list[Page]) -> list:
+def name_window(name: str, text: str) -> str | None:
+    """A short verbatim passage of text around the place it writes name (see name_span), or None."""
+    span = name_span(name, text)
+    return _window(text, span) if span else None
+
+
+def with_source_name_quotes(facts: list, pages: list[Page], chunks: list[dict] | None = None) -> list:
     """Data sources and source assessments whose quotes do not name the source get one more quote: the
-    passage that writes the name on a page they already cite. A caller's quote supports the usage or the
-    definition and often leaves the name to a heading, a table cell or the sentence before; the server-side
-    route repairs its extractions the same way (prune_unverifiable). Facts whose name is on none of their
-    pages are returned unchanged, for validate_evidence to refuse."""
-    texts = {p.page: p.text for p in pages}
+    passage of the protocol that writes the name, from a page the fact already cites if one does, else from
+    the nearest page that does. A caller's quote supports the usage or the definition and often leaves the
+    name to a heading, a table cell or another page, where the text goes on with an abbreviation. Passages in
+    the contents, references, background or a checklist do not count: they are no evidence of this study's
+    sources. A name the protocol writes nowhere else is returned unchanged, for validate_evidence to refuse."""
+    chunks = sections(pages) if chunks is None else chunks
+    # The name is looked for section by section, so the added quote lies inside one usable section.
+    usable: dict[int, list[tuple[str, list]]] = {}
+    for chunk in chunks:
+        if chunk["role"] not in EVIDENCE_REJECT_ROLES:
+            usable.setdefault(chunk["page"], []).append((chunk["text"], []))
+
+    def naming_quote(wanted: list[str], page: int) -> str | None:
+        for text, words in usable.get(page, []):
+            if not words:
+                words.extend(_words(text))
+            span = _span(wanted, words)
+            if span and len(normalize_quote(quote := _window(text, span))) >= 8:
+                return quote
+        return None
+
     result = []
     for fact in facts:
-        if not any(name_span(fact.value, e.quote) for e in fact.evidence) and len(fact.evidence) < 8:
-            for page in dict.fromkeys(e.page for e in fact.evidence):
-                quote = name_window(fact.value, texts.get(page, ""))
-                if quote and len(normalize_quote(quote)) >= 8:
+        wanted = [w.casefold() for w in WORD.findall(fact.value)]
+        if (
+            wanted
+            and len(fact.evidence) < 8
+            and not any(name_span(fact.value, e.quote) for e in fact.evidence)
+        ):
+            cited = list(dict.fromkeys(e.page for e in fact.evidence))
+            others = sorted((p for p in usable if p not in cited), key=lambda p: (abs(p - cited[0]), p))
+            for page in [*cited, *others]:
+                if quote := naming_quote(wanted, page):
                     added = type(fact.evidence[0])(page=page, section=None, quote=quote)
                     fact = fact.model_copy(update={"evidence": [*fact.evidence, added]})
                     break
@@ -1047,9 +1077,9 @@ def validate_evidence(extraction: Extraction, pages: list[Page], chunks: list[di
         if is_source and not any(name_span(fact.value, e.quote) for e in fact.evidence):
             raise RWEError(
                 "EVIDENCE_INVALID",
-                f"Data source name {fact.value[:80]!r} is not written in its evidence quotes or elsewhere on "
-                "their pages: give the name as the protocol writes it (no added words), or cite the passage "
-                "that names it.",
+                f"Data source name {fact.value[:80]!r} is not written in its evidence quotes, nor in the "
+                "protocol's methods text: give the name as the protocol writes it (no added words, no "
+                "abbreviation the text does not join to it), or cite the passage that names it.",
             )
 
     for name in type(extraction).model_fields:

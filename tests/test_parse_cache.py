@@ -188,3 +188,42 @@ async def test_tool_calls_are_timed_on_the_log(service, caplog):
     assert lines[0].startswith("tool=catalogue_status ms=") and "chars=" in lines[0]
     assert "tool=analyze_protocol" in lines[1] and "status=needs_client_extraction" in lines[1]
     assert "pdf_parsed=" in lines[1] and "pdf_parse_ms=" in lines[1]
+
+
+def two_pages(first: str, second: str) -> bytes:
+    with pymupdf.open() as doc:
+        doc.new_page().insert_text((50, 50), first + FILLER, fontsize=8)
+        doc.new_page().insert_text((50, 50), second + FILLER, fontsize=8)
+        return doc.tobytes()
+
+
+def test_source_named_on_another_page_gets_the_naming_quote_from_there():
+    data = two_pages(
+        "9.4 Data sources\nThe National Example Hospital Register (NEHR) holds all inpatient stays since 1995.",
+        "9.5 Study size\nAbout 20,000 eligible patients are expected in NEHR during the study period.",
+    )
+    pages = extract_pages(data)
+    cited = Evidence(
+        page=2, quote="About 20,000 eligible patients are expected in NEHR during the study period."
+    )
+    source = DataSource(value="National Example Hospital Register (NEHR)", usage="planned", evidence=[cited])
+    (named,) = with_source_name_quotes([source], pages)
+    assert [e.page for e in named.evidence] == [2, 1]
+    assert "National Example Hospital Register (NEHR)" in named.evidence[1].quote
+    validate_evidence(Extraction(data_sources=[named]), pages)
+
+
+def test_a_name_written_only_in_the_reference_list_is_not_evidence():
+    data = two_pages(
+        "9.4 Data sources\nThe study will use routinely collected hospital data from one national source.",
+        "References\n1. Smith J, et al. The Remote Example Claims Database: a profile. J Epidemiol 2019;1:1-9. doi:10.1/x",
+    )
+    pages = extract_pages(data)
+    assert {c["role"] for c in sections(pages) if c["page"] == 2} == {"references"}
+    cited = Evidence(
+        page=1, quote="The study will use routinely collected hospital data from one national source."
+    )
+    source = DataSource(value="Remote Example Claims Database", usage="planned", evidence=[cited])
+    assert with_source_name_quotes([source], pages) == [source]
+    with pytest.raises(RWEError):
+        validate_evidence(Extraction(data_sources=[source]), pages)

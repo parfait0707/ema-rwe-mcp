@@ -9,9 +9,10 @@
   spaces shortened to two: 5-18% fewer characters on those protocols, so fewer batches. Quotes copied from it
   verify as before; section splitting and the parser version are unchanged.
 - Data source names are checked by their words, in order, case and punctuation aside, with up to three other
-  words in between (a table breaks a name over lines). When the quotes leave the name out but a cited page
-  writes it, the server adds the naming passage as a quote, as the server-side route already did; a name on
-  none of the cited pages is refused with a message that names it. Whole words only: `HES` no longer matches
+  words in between (a table breaks a name over lines). When the quotes leave the name out but the protocol's
+  methods text writes it (a cited page first, else the nearest), the server adds the naming passage as a
+  quote instead of refusing the batch; a name written nowhere outside the contents, references, background
+  and checklists is refused with a message that names it. Whole words only: `HES` no longer matches
   inside another word.
 - The MCP server logs one line per tool call to stderr (duration, response size, status, PDF parsing);
   `scripts/time_tools.py` times the tool calls of an extraction without an LLM.
