@@ -178,7 +178,13 @@ filters. Never pick a subset yourself.
   of the fact's quotes; when your quotes leave the name out but the protocol's methods text writes it (on a
   page you cite, else the nearest one), the server adds the naming passage as one more quote.
   `EVIDENCE_INVALID` names a value that is written nowhere outside the contents, references, background and
-  checklists: correct the name or cite the passage that names it. If your client can run a cheaper subagent (Claude Code: `Agent` with
+  checklists: correct the name or cite the passage that names it.
+- A quote has at least 8 characters (quote the whole line around a bare code or word) and a fact at most 8
+  quotes (split the fact for more). A verbatim quote given on the wrong page is moved to the nearest page
+  that holds it; a quote found on no page is refused.
+- In saved analyses and answers `evidence[].server` marks what the server did: `source_name` is a passage it
+  added because it writes the data source's name (not support for the usage or definition; the comparison
+  table lists its page apart), `page` a quote whose page it corrected. Leave `server` out of what you send. If your client can run a cheaper subagent (Claude Code: `Agent` with
   model sonnet), delegate one study's batch reading and caching to it and keep only results in
   the main context.
 - Quotes must be verbatim; pages are physical PDF pages; keep `usage` honest

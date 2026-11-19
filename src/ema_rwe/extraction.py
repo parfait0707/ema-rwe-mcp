@@ -31,6 +31,7 @@ from .pdf import (
     sections,
     stored_translations,
     validate_evidence,
+    with_corrected_pages,
     with_source_name_quotes,
 )
 
@@ -123,7 +124,8 @@ class ExtractionMixin:
                 "progress survives context compaction (skip offsets already in cached_batch_offsets). Always "
                 "continue at the next_offset the previous response returned, and cache the last batch with its "
                 "batch_offset too; then call it once more with coverage_complete=true (analysis may be {}) to "
-                "merge and save. A batch that was not read and cached is reported, not skipped. Later batches "
+                "merge and save. A quote has at least 8 characters (quote the whole line around a bare code or "
+                "word) and a fact at most 8 quotes (split the fact for more). A batch that was not read and cached is reported, not skipped. Later batches "
                 "omit this instruction and analysis_schema."
                 + (SINGLE_PASS_INSTRUCTION.format(question=question) if question else ""),
                 analysis_schema=Extraction.model_json_schema(),
@@ -270,6 +272,9 @@ class ExtractionMixin:
             raise RWEError("PROTOCOL_CHANGED", "Protocol/extractor changed; analyze current protocol again.")
         translations = self._reading_snapshot(source, reading, "reread the batches")
         pages = await asyncio.to_thread(extract_pages, pdf, True, translations)
+        analysis = with_corrected_pages(analysis, pages)
+        if answer is not None:
+            answer = with_corrected_pages(answer, pages)
         analysis = analysis.model_copy(
             update={
                 "data_sources": with_source_name_quotes(analysis.data_sources, pages),

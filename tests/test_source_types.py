@@ -191,13 +191,22 @@ async def test_configured_provider_assessment_and_quote_validation(service, webs
     assert done["status"] == "complete"
     assert done["rows"][0]["source_suitability"]["status"] == "matched"
     pid = done["rows"][0]["source"]["protocol_id"]
-    for wrong in (assessment(value="Invented Database"), assessment(evidence=[{"page": 1, "quote": QUOTE}])):
+    for wrong in (
+        assessment(value="Invented Database"),
+        assessment(evidence=[{"page": 1, "quote": "A sentence the protocol does not contain anywhere."}]),
+    ):
         with pytest.raises(RWEError, match="(evidence|quote|Quote)"):
             await service.cache_protocol_answer(pid, "Source?", ProtocolAnswer(source_assessments=[wrong]))
     # Rejected replacements leave the valid answer intact.
-    assert (await service.research_protocol(pid, "Source?"))["answer"]["source_assessments"][0][
-        "value"
-    ] == assessment().value
+    kept = (await service.research_protocol(pid, "Source?"))["answer"]["source_assessments"][0]
+    assert kept["value"] == assessment().value and kept["evidence"][0]["server"] is None
+    # A verbatim quote given on the wrong page is moved to the page that holds it, and marked (spec v1.13)
+    misplaced = assessment(evidence=[{"page": 1, "quote": QUOTE}])
+    await service.cache_protocol_answer(pid, "Source?", ProtocolAnswer(source_assessments=[misplaced]))
+    moved = (await service.research_protocol(pid, "Source?"))["answer"]["source_assessments"][0]["evidence"][
+        0
+    ]
+    assert (moved["page"], moved["server"]) == (2, "page")
 
 
 async def test_independent_screening_and_display_limits_keep_all_artifacts(service, website):
