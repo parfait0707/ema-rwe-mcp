@@ -1246,6 +1246,10 @@ class Service:
             selected.append(chunk)
             size += len(chunk["text"])
         next_offset = offset + len(selected)
+        # Which sections each batch held, so the final save can tell a batch that was never read.
+        self.repo.save_batch(
+            study_id, source["fingerprint"], source["reading"], "served", offset, {"next": next_offset}
+        )
         result = {
             "status": "needs_client_extraction",
             "source": source,
@@ -1266,9 +1270,11 @@ class Service:
                 "window pass max_chars=120000 to cut round trips). After each batch call "
                 "cache_protocol_analysis with fingerprint, reading (source.reading), that batch's analysis and "
                 "batch_offset=offset so "
-                "progress survives context compaction (skip offsets already in cached_batch_offsets); after "
-                "the last batch call it with coverage_complete=true to merge and save. Later batches omit "
-                "this instruction and analysis_schema."
+                "progress survives context compaction (skip offsets already in cached_batch_offsets). Always "
+                "continue at the next_offset the previous response returned, and cache the last batch with its "
+                "batch_offset too; then call it once more with coverage_complete=true (analysis may be {}) to "
+                "merge and save. A batch that was not read and cached is reported, not skipped. Later batches "
+                "omit this instruction and analysis_schema."
                 + (LINE_REF_INSTRUCTION if evidence == "lines" else "")
                 + (
                     " ALSO ANSWER THIS QUESTION while reading (one pass, do not call research_protocol): "
@@ -1613,7 +1619,25 @@ class Service:
                 "study_id": study_id,
                 "cached_batch_offsets": sorted(self.repo.batches(*key, "analysis")),
             }
-        partials = [Extraction.model_validate(b) for b in self.repo.batches(*key, "analysis").values()]
+        cached = self.repo.batches(*key, "analysis")
+        if cached:
+            # Batches were cached one by one: every section must be in one of them (or in this final call's).
+            served = self.repo.batches(*key, "served")
+            have = set(cached) | ({batch_offset} if batch_offset is not None else set())
+            total, position, missing = len(reading_order(sections(pages))), 0, None
+            while position < total:
+                if position not in have or position not in served:
+                    missing = position
+                    break
+                position = served[position]["next"]
+            if missing is not None:
+                raise RWEError(
+                    "INCOMPLETE_EXTRACTION",
+                    f"Sections from offset {missing} were not read and cached: call analyze_protocol with "
+                    f"offset={missing}, cache that batch with batch_offset={missing}, follow next_offset to the "
+                    "end, then repeat the coverage_complete call.",
+                )
+        partials = [Extraction.model_validate(b) for b in cached.values()]
         if partials:
             analysis = merge_extractions([*partials, analysis])
         if question:
