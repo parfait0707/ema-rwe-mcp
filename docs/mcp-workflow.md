@@ -140,10 +140,17 @@ filters. Never pick a subset yourself.
 
 ## 4. Process within the screening limit
 
-- The response's top-level `pending_tools` lists `{tool, arguments}` calls of `analyze_protocol` and
-  `research_protocol`. Run all of them, each followed by `cache_protocol_analysis` (every
-  `next_offset` batch) or `cache_protocol_answer` (pass the `reading` `research_protocol` returned) as
-  their status asks. While exploring, `search_protocol_text`, `get_protocol_outline` and
+- The response's top-level `pending_tools` lists `{tool, arguments}` calls. A study with neither an
+  analysis nor an answer gets one call, `analyze_protocol` with the `question` (one pass, below); with
+  a configured server LLM, or when only the answer is missing, `research_protocol` is listed too. Run
+  all of them, each followed by `cache_protocol_analysis` (every `next_offset` batch) or
+  `cache_protocol_answer` (pass the `reading` `research_protocol` returned) as their status asks.
+- One pass: when `analyze_protocol` was given a `question`, its instruction and `answer_schema` ask you
+  to answer it while you read. Pass `question` and that batch's `answer` (`answers=[]` when the batch
+  says nothing) with every `cache_protocol_analysis`, one fact per item with its own quote. The
+  question never narrows the extraction. The `coverage_complete` call (pass `question` again) saves the
+  merged answer and returns `answer_saved`; only when it is `false`, call `research_protocol`.
+- While exploring, `search_protocol_text`, `get_protocol_outline` and
   `read_protocol_text` report `source.reading`; if it differs from that `reading`, the heading translations
   changed: call `research_protocol` again and explore afresh.
 - `analyze_protocol` may return `status=extracting` (server-side provider extraction running):
@@ -158,8 +165,12 @@ filters. Never pick a subset yourself.
   (also pass `reading=source.reading`, even when it is empty; only a non-English protocol requires it,
   and `READING_CONTEXT_CHANGED` means it was omitted there or the translations changed: call
   `analyze_protocol` and reread)
-  so progress survives context compaction; skip offsets listed in `cached_batch_offsets`; finish with
-  `coverage_complete=true`. If your client can run a cheaper subagent (Claude Code: `Agent` with
+  so progress survives context compaction and a server restart (batches are kept in the database);
+  skip offsets listed in `cached_batch_offsets`. Always continue at the `next_offset` the previous
+  response returned and cache the last batch with its `batch_offset` too; then finish with
+  `coverage_complete=true` (its `analysis` may be `{}`). `INCOMPLETE_EXTRACTION` names an offset that
+  was never read and cached: read and cache it, follow `next_offset` to the end and repeat the call. A
+  `batch_offset` that no `analyze_protocol` response returned is refused. If your client can run a cheaper subagent (Claude Code: `Agent` with
   model sonnet), delegate one study's batch reading and caching to it and keep only results in
   the main context.
 - Quotes must be verbatim; pages are physical PDF pages; keep `usage` honest

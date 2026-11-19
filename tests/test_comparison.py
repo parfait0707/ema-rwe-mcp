@@ -6,7 +6,7 @@ from conftest import labelled
 from test_core import sample_analysis
 
 from ema_rwe.cli import parser
-from ema_rwe.domain import ProtocolAnswer, RWEError, Study
+from ema_rwe.domain import Extraction, ProtocolAnswer, RWEError, Study
 from ema_rwe.ema import BASE, parse_study
 from ema_rwe.selection import SearchFilters
 from ema_rwe.service import Service
@@ -53,7 +53,9 @@ async def test_count_before_limit_and_no_network_before_narrowing(service, websi
         assert not service.comparisons.root.exists()
     else:
         assert len(result["rows"]) == count
-        assert len(result["pending_tools"]) == count * 2
+        # One pass per study: the caller answers the question while it extracts (spec v1.11).
+        assert [t["tool"] for t in result["pending_tools"]] == ["analyze_protocol"] * count
+        assert all(t["arguments"]["question"] == result["question"] for t in result["pending_tools"])
         assert len(list(service.archive.directory.glob("*.pdf"))) == count
         assert result["status"] == "incomplete"
         for row in result["rows"]:
@@ -130,7 +132,7 @@ async def test_every_pdf_and_json_then_validated_answers_survive_restart(service
         if i == 0:
             partial = await service.get_protocol_comparison(result["comparison_id"])
             assert partial["status"] == "incomplete"
-            assert len(partial["pending_tools"]) == 8
+            assert len(partial["pending_tools"]) == 4
     restarted = Service(service.settings)
     try:
         completed = await restarted.get_protocol_comparison(result["comparison_id"], detail="full")
@@ -180,7 +182,7 @@ async def test_failed_study_does_not_drop_other_pdfs(service, website):
     assert Path(error["json_path"]).exists()
     assert error["pdf_path"] is None
     assert len(list(service.archive.directory.glob("*.pdf"))) == 2
-    assert len(result["pending_tools"]) == 4
+    assert len(result["pending_tools"]) == 2
 
 
 async def test_comparison_does_not_mix_extraction_versions(service):
@@ -273,3 +275,32 @@ def test_comparison_cli_filter_arguments():
     assert args.query == ["NVAF", "atrial fibrillation"]
     assert args.source_type == ["claims"]
     assert not args.darwin_only
+
+
+async def test_comparison_is_complete_after_one_pass_per_study(service):
+    seed(service.repo, 1)
+    result = await service.compare_protocols("How is diabetes defined?", ["opioid"])
+    (pending,) = result["pending_tools"]
+    assert pending == {
+        "tool": "analyze_protocol",
+        "arguments": {"study_id": "123", "question": "How is diabetes defined?"},
+    }
+    first = await service.analyze_protocol(**pending["arguments"])
+    answer = ProtocolAnswer(answers=sample_analysis().disease_definitions)
+    await service.cache_protocol_analysis(
+        "123",
+        first["source"]["fingerprint"],
+        sample_analysis(),
+        batch_offset=0,
+        answer=answer,
+        question=pending["arguments"]["question"],
+    )
+    await service.cache_protocol_analysis(
+        "123",
+        first["source"]["fingerprint"],
+        Extraction(),
+        coverage_complete=True,
+        question=pending["arguments"]["question"],
+    )
+    completed = await service.get_protocol_comparison(result["comparison_id"])
+    assert completed["status"] == "complete" and not completed["pending_tools"]

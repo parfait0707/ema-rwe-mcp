@@ -2,7 +2,7 @@
 
 エンドユーザー（このMCPを使って研究を調べる人）向けの使い方は[README.md](README.md)を参照してください。本ファイルはこのMCPサーバー自体を開発・改修する人向けの内部仕様です。
 
-公開版は0.5.6（内部履歴では0.1〜1.10の仕様段階を経ている）。`docs/spec/v0.1.md`〜`v1.10.md`が仕様の正本、[docs/mcp-workflow.md](docs/mcp-workflow.md)が呼出元向け手順の正本、開発ルールは[AGENTS.md](AGENTS.md)です。
+公開版は0.5.7（内部履歴では0.1〜1.11の仕様段階を経ている）。`docs/spec/v0.1.md`〜`v1.11.md`が仕様の正本、[docs/mcp-workflow.md](docs/mcp-workflow.md)が呼出元向け手順の正本、開発ルールは[AGENTS.md](AGENTS.md)です。
 
 ## 開発用セットアップ（checkout）
 
@@ -140,7 +140,7 @@ PyPI公開やGitHub Releaseへのwheel添付など他の配布経路の比較検
 
 `analyze_protocol`は2つの経路を持ちます。
 
-**呼出元抽出**（`LLM_MODEL`が未設定、または`LLM_BACKEND=compatible`で`LLM_BASE_URL`が未設定のとき）: 英語以外のプロトコルで英訳が無ければ、先に`needs_heading_translation`を返します。それ以外は`needs_client_extraction`と関連セクション・物理PDFページ・抽出JSON Schema・fingerprintを返します。呼出元は`offset`を進めながら`analyze_protocol(offset=next_offset)`で全バッチを読み、バッチごとに`cache_protocol_analysis(batch_offset=offset)`で途中保存します（サーバーは保存済みoffsetを`cached_batch_offsets`で返すので、コンテキスト圧縮後も既読分を再読しません。途中保存はサーバープロセスのメモリにあるだけで、サーバーを再起動すると失われます。`status=extracting`の進行中の抽出も同じです）。最後のバッチで`coverage_complete=true`を渡すとサーバーが全バッチを統合して保存します。
+**呼出元抽出**（`LLM_MODEL`が未設定、または`LLM_BACKEND=compatible`で`LLM_BASE_URL`が未設定のとき）: 英語以外のプロトコルで英訳が無ければ、先に`needs_heading_translation`を返します。それ以外は`needs_client_extraction`と関連セクション・物理PDFページ・抽出JSON Schema・fingerprintを返します。呼出元は`offset`を進めながら`analyze_protocol(offset=next_offset)`で全バッチを読み、バッチごとに`cache_protocol_analysis(batch_offset=offset)`で途中保存します（サーバーは保存済みoffsetを`cached_batch_offsets`で返すので、コンテキスト圧縮後も既読分を再読しません。途中保存は利用者側の表`extraction_batches`に入るので、サーバーの再起動や別プロセス（CLIは呼び出しごとに別プロセス）でも失われません。サーバー側抽出の`status=extracting`の進行中の抽出はメモリにあるだけで、再起動すると最初からになります）。最後のバッチも`batch_offset`付きで保存してから`coverage_complete=true`を呼ぶと、サーバーが全バッチを統合して保存します。読んでいないバッチがあれば`INCOMPLETE_EXTRACTION`で読むべきoffsetを返し、`analyze_protocol`が返していないoffsetのバッチは受け付けません（spec v1.11）。`analyze_protocol(question=...)`のときは、抽出の指示に質問と`answer_schema`が加わります。呼出元は各バッチの`cache_protocol_analysis`に`question`とそのバッチの`answer`を渡し、最後の呼び出しが回答を結合して`research_protocol`と同じ鍵で保存します（`answer_saved`。空なら保存せず、`research_protocol`で探索します）。質問を渡しても、抽出はスキーマの全項目を埋めます。
 
 **サーバー側抽出**（`LLM_MODEL`があり、かつ`LLM_BACKEND=litellm`または`LLM_BASE_URL`があるとき）: 関連セクションを`LLM_BATCH_CHARS`（既定300,000文字）以下のバッチに分割し、`LLM_CONCURRENCY`（既定4）並列でプロバイダに投げて統合します（`llm.py`の`split_batches`/`merge_extractions`）。抽出が`LLM_WAIT_SECONDS`（既定120秒）を超えるときは`status=extracting`を返すので、呼出元は同じ`analyze_protocol`をポーリングします。保存前に`service.py`が`pdf.finalize_extraction`を呼び、その中の`prune_unverifiable`が証拠を検証します。隣のページに引用があればページを直し、データソース名が引用に無ければ名前を含む引用を加え、それでも原文と一致しない証拠だけを落として、件数と監査メモを`missing_information`に記録します。プロンプトはLLMに`evidence.section`を`null`のまま返すよう指示し（`llm.py`）、サーバーが引用の位置から節ラベルを導出します（`pdf.py`の`with_section`）。抽出プロンプトは節ラベル省略・電報体の`value`/`definition`・JSON最小化を指示しつつ「事実・コード・条件の省略禁止」も明示しており、出力トークンを削減しながら証拠件数を落とさない設計です（実測は[docs/validation.md](docs/validation.md)の2026-09-24節を参照）。
 
@@ -197,7 +197,7 @@ uv run ema-rwe cleanup-cache
 | `EMA_MAX_SCREENING_STUDIES` | `5`（1〜1000） | 一次判定でPDF取得・全件解析へ進める最大研究数 |
 | `EMA_MAX_COMPARISON_STUDIES` | `5`（1〜1000） | 比較表へ掲載する最大研究数 |
 | `EMA_MAX_LISTED_CANDIDATES` | `50`（1〜1000） | `needs_narrowing`時に`candidates`一覧を返す最大件数 |
-| `EMA_USER_AGENT` | `ema-rwe-mcp/0.5.6` | EMAへのHTTPリクエストのUser-Agent |
+| `EMA_USER_AGENT` | `ema-rwe-mcp/0.5.7` | EMAへのHTTPリクエストのUser-Agent |
 | `EMA_RESEARCH_BUDGET_CHARS` | `40000` | 呼出元向けの追加探索応答の文字数予算 |
 | `EMA_SEARCH_BUDGET_CHARS` | `20000` | 呼出元向けのPDF全文検索応答の文字数予算 |
 | `EMA_PROTOCOL_DIR` | DBと同じ親フォルダ内の`protocols` | 保持するPDF/JSONの保存先（見出しの英訳はDBに置く。以前の版の`.headings`は取り込みにだけ使う） |
@@ -253,6 +253,7 @@ stdioで18ツールを公開します。引数・範囲・既定値の正本は[
 - screening上限と比較表上限は独立です。上限以内の全`pending_tools`を処理・保存し、最終的に`get_protocol_comparison`で全screening研究の出力を更新します。
 - `source_preference`はPDFの定義用途に対する優先条件です。既定は`prefer`、明示的な限定依頼だけ`only`を使い、未評価・不明の候補を優先条件だけで除外しません。
 - 英語以外のPDFでは、抽出・探索の応答の`reading`を保存へ渡します。途中で読み方が変わった場合はやり直します。
+- `compare_protocols`の`pending_tools`は、解析も回答も無い研究には質問付きの`analyze_protocol`を1つだけ出します（内部LLM設定時は`analyze_protocol`と`research_protocol`の2つ）。
 - 完了済み解析を`coverage_complete=true`で修正するときは全項目を渡します。一部だけの再保存は解析全体を置き換えます。
 
 CLIは`uv run ema-rwe <サブコマンド> --help`で確認できます（例：`pdf-search`, `ask`, `cache-headings`, `cache-answer`）。入力範囲はCoreが検査し、MCPとCLIに共通で適用します。
@@ -261,7 +262,7 @@ CLIは`uv run ema-rwe <サブコマンド> --help`で確認できます（例：
 
 | ファイル | 内容 |
 |---|---|
-| [docs/spec/v0.1.md](docs/spec/v0.1.md)〜[v1.10.md](docs/spec/v1.10.md) | 段階的な追加要件の正本。対象変更の関連仕様を読む |
+| [docs/spec/v0.1.md](docs/spec/v0.1.md)〜[v1.11.md](docs/spec/v1.11.md) | 段階的な追加要件の正本。対象変更の関連仕様を読む |
 | [docs/mcp-workflow.md](docs/mcp-workflow.md) | 呼出元エージェント向けの完全な手順（英語） |
 | [docs/search-logic.md](docs/search-logic.md) | 検索語の展開・医薬品照合・順位付け |
 | [docs/benchmarks/20261009-codex-app.md](docs/benchmarks/20261009-codex-app.md) | Codex Appの4例とMCP実行時間の定義 |

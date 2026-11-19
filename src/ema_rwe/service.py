@@ -208,7 +208,6 @@ class Service:
         # ponytail: in-process registry of running provider extractions; a server restart loses them
         # and the next analyze_protocol simply starts over (add DB checkpoints if that ever matters).
         self._extractions: dict[tuple[str, str], tuple[asyncio.Task, dict]] = {}  # (study, fingerprint)
-        self._partials: dict[tuple[str, str], dict[int, Extraction]] = {}
 
     @property
     def import_dir(self):
@@ -1192,7 +1191,10 @@ class Service:
         offset: int = 0,
         max_chars: int = 30000,
         detail: str = "summary",
+        question: str | None = None,
     ):
+        if question is not None and (not question.strip() or len(question) > 2000):
+            raise RWEError("INVALID_INPUT", "Question must be 1..2000 characters.")
         if offset < 0 or not 6000 <= max_chars <= 150000:
             raise RWEError("INVALID_INPUT", "offset >= 0; max_chars must be 6000..150000.")
         if detail not in {"summary", "full"}:
@@ -1240,12 +1242,16 @@ class Service:
             selected.append(chunk)
             size += len(chunk["text"])
         next_offset = offset + len(selected)
+        # Which sections each batch held, so the final save can tell a batch that was never read.
+        self.repo.save_batch(
+            study_id, source["fingerprint"], source["reading"], "served", offset, {"next": next_offset}
+        )
         result = {
             "status": "needs_client_extraction",
             "source": source,
             "cached": False,
             "cached_batch_offsets": sorted(
-                self._partials.get((study_id, source["fingerprint"], source["reading"]), {})
+                self.repo.batches(study_id, source["fingerprint"], source["reading"], "analysis")
             ),
             "sections": selected,
             "offset": offset,
@@ -1260,10 +1266,14 @@ class Service:
                 "window pass max_chars=120000 to cut round trips). After each batch call "
                 "cache_protocol_analysis with fingerprint, reading (source.reading), that batch's analysis and "
                 "batch_offset=offset so "
-                "progress survives context compaction (skip offsets already in cached_batch_offsets); after "
-                "the last batch call it with coverage_complete=true to merge and save. Later batches omit "
-                "this instruction and analysis_schema.",
+                "progress survives context compaction (skip offsets already in cached_batch_offsets). Always "
+                "continue at the next_offset the previous response returned, and cache the last batch with its "
+                "batch_offset too; then call it once more with coverage_complete=true (analysis may be {}) to "
+                "merge and save. A batch that was not read and cached is reported, not skipped. Later batches "
+                "omit this instruction and analysis_schema."
+                + (SINGLE_PASS_INSTRUCTION.format(question=question) if question else ""),
                 analysis_schema=Extraction.model_json_schema(),
+                **({"answer_schema": ProtocolAnswer.model_json_schema()} if question else {}),
                 selection_coverage="Keyword/heading selected sections; unselected text may contain additional facts.",
                 exploration_tools=[
                     "get_protocol_outline",
@@ -1353,8 +1363,7 @@ class Service:
         if self.repo.set_reading(protocol_id, record, reading_hash(kept), self.repo.get(study_id)):
             # This process's held batches and server-side extractions (running or uncollected) read the
             # old way: drop them rather than let them fail at save time.
-            for key in [k for k in self._partials if k[0] == study_id]:
-                self._partials.pop(key)
+            self.repo.clear_batches(study_id)
             for key in [k for k in self._extractions if k[0] == study_id]:
                 self._extractions.pop(key)[0].cancel()
         return {
@@ -1542,16 +1551,22 @@ class Service:
         coverage_complete: bool = False,
         batch_offset: int | None = None,
         reading: str | None = None,
+        answer: ProtocolAnswer | None = None,
+        question: str | None = None,
     ):
-        """Save a caller extraction. With batch_offset the batch is held server-side until the final
-        coverage_complete call merges every cached batch, so context compaction cannot lose progress.
+        """Save a caller extraction. With batch_offset the batch is kept in the database until the final
+        coverage_complete call merges every cached batch, so neither context compaction nor a server restart
+        loses progress; the merge refuses to save while a batch was never read (spec v1.11).
         reading is analyze_protocol's source.reading: a non-English protocol's batches must have been read
-        under its current heading translations."""
+        under its current heading translations. answer/question: what this batch states about the question
+        given to analyze_protocol; the final call saves the merged answer for research_protocol to serve."""
         if not coverage_complete and batch_offset is None:
             raise RWEError(
                 "INCOMPLETE_EXTRACTION",
                 "Read all section batches before caching, or cache each batch with batch_offset first.",
             )
+        if answer is not None and not (question or "").strip():
+            raise RWEError("INVALID_INPUT", "answer needs the question it answers.")
         pdf, source = await self._context(study_id)
         if source["fingerprint"] != fingerprint:
             raise RWEError("PROTOCOL_CHANGED", "Protocol/extractor changed; analyze current protocol again.")
@@ -1559,20 +1574,91 @@ class Service:
         pages = await asyncio.to_thread(extract_pages, pdf, True, translations)
         validate_evidence(analysis, pages)
         key = (study_id, fingerprint, source["reading"])
+        served = self.repo.batches(*key, "served")
+        if batch_offset is not None and batch_offset not in served:
+            raise RWEError(
+                "INVALID_INPUT",
+                f"No batch was read at offset {batch_offset}: batch_offset is the offset of an analyze_protocol "
+                "response for this protocol.",
+            )
+        if answer is not None:
+            for start in range(0, len(answer.answers), 20):  # Extraction.key_notes holds 20 facts per check
+                validate_evidence(Extraction(key_notes=answer.answers[start : start + 20]), pages)
+            validate_evidence(Extraction(source_assessments=answer.source_assessments), pages)
+            # The final call's own answer is merged after every batch's (FINAL sorts past any section index).
+            self.repo.save_batch(
+                *key,
+                answer_kind(question),
+                FINAL if batch_offset is None else batch_offset,
+                answer.model_dump(),
+            )
+        if batch_offset is not None:
+            self.repo.save_batch(*key, "analysis", batch_offset, analysis.model_dump())
         if not coverage_complete:
-            self._partials.setdefault(key, {})[batch_offset] = analysis
             return {
                 "status": "batch_cached",
                 "study_id": study_id,
-                "cached_batch_offsets": sorted(self._partials[key]),
+                "cached_batch_offsets": sorted(self.repo.batches(*key, "analysis")),
             }
-        partials = self._partials.pop(key, {})
+        cached = self.repo.batches(*key, "analysis")
+        # Batches cached one by one must hold every section between them. A final call that carries the last
+        # batch without its offset stands for the one batch that ends the protocol, never for a skipped one.
+        total, position = len(reading_order(sections(pages))), 0
+        while cached and position < total:
+            step = served.get(position)
+            if position not in cached and not (step and step["next"] >= total and batch_offset is None):
+                raise RWEError(
+                    "INCOMPLETE_EXTRACTION",
+                    f"Sections from offset {position} were not read and cached: call analyze_protocol with "
+                    f"offset={position}, cache that batch with batch_offset={position}, follow next_offset to "
+                    "the end, then repeat the coverage_complete call.",
+                )
+            position = step["next"]
+        partials = [Extraction.model_validate(b) for o, b in cached.items() if o != batch_offset]
         if partials:
-            analysis = merge_extractions([*partials.values(), analysis])
+            analysis = merge_extractions([*partials, analysis])
+        answer_saved = None
+        if question:
+            answer_saved = await self._save_batch_answers(source, key, question, translations)
         notes = audit_extraction(analysis, pages, self.repo.get(study_id).catalogue_data_sources)
         if notes:
             analysis.missing_information = with_notes(analysis.missing_information, notes)
-        return self._save(study_id, analysis, source, "client_assisted", detail="summary")
+        saved = self._save(study_id, analysis, source, "client_assisted", detail="summary")
+        self.repo.clear_batches(study_id)
+        return saved if answer_saved is None else {**saved, "answer_saved": answer_saved}
+
+    async def _save_batch_answers(self, source: dict, key: tuple, question: str, translations: dict) -> bool:
+        """Merge the answers cached with the batches into the saved answer to the question; False when the
+        batches hold nothing about it (the caller then explores with research_protocol)."""
+        parts = [
+            ProtocolAnswer.model_validate(body)
+            for _, body in sorted(self.repo.batches(*key, answer_kind(question)).items())
+        ]
+        answers = [fact for part in parts for fact in part.answers]
+        assessments = [fact for part in parts for fact in part.source_assessments]
+        if not answers and not assessments:
+            return False
+        missing = [note for part in parts for note in part.missing_information]
+        if len(answers) > 30:
+            missing.insert(
+                0, f"{len(answers)} verified answers found; only the first 30 are kept (schema limit)."
+            )
+        if len(assessments) > 120:
+            missing.insert(0, f"{len(assessments)} source assessments found; only the first 120 were kept.")
+        merged = ProtocolAnswer(
+            answers=answers[:30],
+            source_assessments=assessments[:120],
+            missing_information=with_notes(missing, []),
+        )
+        await asyncio.to_thread(
+            self.explorer.save,
+            source["protocol_id"],
+            question,
+            merged,
+            [{"mode": "single_pass"}],
+            translations,
+        )
+        return True
 
     async def _provider_extraction(self, study_id: str, pdf: bytes, source: dict) -> dict:
         """Run (or keep running) the server-side extraction; return status=extracting when it outlasts the wait."""
@@ -1635,6 +1721,23 @@ class Service:
         }
         self.repo.save_analysis(self.repo.get(study_id), result, reading=source.get("reading", ""))
         return analysis_view(result, detail)
+
+
+FINAL = 10**9  # batch offset of the answer passed with the coverage_complete call itself
+
+SINGLE_PASS_INSTRUCTION = (
+    " ALSO ANSWER THIS QUESTION while reading (one pass; do not call research_protocol for it): {question!r}. "
+    "With every batch pass `question` and `answer` to cache_protocol_analysis: an object matching answer_schema "
+    "holding what THIS batch states about the question (answers=[] when nothing), under the evidence rules of "
+    "the analysis. Give each item its own fact with the quote that states it (one criterion, definition or "
+    "condition per fact; do not gather a list into one fact). The question never narrows the extraction: fill "
+    "the analysis completely. The coverage_complete call (pass `question` again) merges the batch answers and "
+    "saves them as the answer; only if it reports answer_saved=false, call research_protocol afterwards."
+)
+
+
+def answer_kind(question: str) -> str:
+    return "answer:" + hashlib.sha256(question.encode()).hexdigest()[:16]
 
 
 def analysis_view(result: dict, detail: str) -> dict:

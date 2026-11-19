@@ -261,9 +261,16 @@ def create_server(service: Service | None = None):
         offset: Annotated[int, Field(ge=0)] = 0,
         max_chars: Annotated[int, Field(ge=6000, le=150000)] = 30000,
         detail: Literal["summary", "full"] = "summary",
+        question: Annotated[
+            str | None,
+            Field(
+                max_length=2000,
+                description="Also answer this question while reading the batches (one pass); pending_tools supplies it",
+            ),
+        ] = None,
     ) -> dict:
         """Cached extraction summary (detail=full for the whole extraction); status=extracting means call again later; needs_heading_translation means translate `headings`, call cache_heading_translations, then call again; else paginated sections to extract (follow next_offset)."""
-        return await call("analyze_protocol", study_id, force_refresh, offset, max_chars, detail)
+        return await call("analyze_protocol", study_id, force_refresh, offset, max_chars, detail, question)
 
     @server.tool()
     async def cache_protocol_analysis(
@@ -280,8 +287,21 @@ def create_server(service: Service | None = None):
                 description="source.reading returned by analyze_protocol, even when empty; required for a non-English protocol"
             ),
         ] = None,
+        answer: Annotated[
+            ProtocolAnswer | None,
+            Field(
+                description="What this batch states about `question` (analyze_protocol was given a question)"
+            ),
+        ] = None,
+        question: Annotated[
+            str | None,
+            Field(
+                max_length=2000, description="The question given to analyze_protocol; pass it with every call"
+            ),
+        ] = None,
     ) -> dict:
-        """Save a caller extraction (verbatim quotes verified). Pass batch_offset per batch; finish with coverage_complete=true."""
+        """Save a caller extraction (verbatim quotes verified). Cache every batch with its batch_offset, then
+        finish with coverage_complete=true; an unread batch is reported as INCOMPLETE_EXTRACTION."""
         return await call(
             "cache_protocol_analysis",
             study_id,
@@ -290,6 +310,8 @@ def create_server(service: Service | None = None):
             coverage_complete,
             batch_offset,
             reading,
+            answer,
+            question,
         )
 
     @server.tool()

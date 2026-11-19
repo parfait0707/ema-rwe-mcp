@@ -175,6 +175,7 @@ def parser():
             cmd.add_argument("--offset", type=int, default=0)
             cmd.add_argument("--max-chars", type=int, default=30000)
             cmd.add_argument("--detail", choices=["summary", "full"], default="summary")
+            cmd.add_argument("--question", help="Also answer this question while reading (one pass)")
     submit = commands.add_parser("cache-analysis")
     submit.add_argument("study_id")
     submit.add_argument("fingerprint")
@@ -184,6 +185,8 @@ def parser():
     submit.add_argument(
         "--reading", help="source.reading from analyze, even '' (required for a non-English protocol)"
     )
+    submit.add_argument("--answer", type=Path, help="ProtocolAnswer JSON of this batch (analyze --question)")
+    submit.add_argument("--question", help="The question --answer answers")
     answer = commands.add_parser(
         "cache-answer", help="Save a question-specific answer (answer to ask status=needs_client_exploration)"
     )
@@ -325,10 +328,20 @@ async def run(args):
                 )
             case "analyze":
                 return await service.analyze_protocol(
-                    args.study_id, args.refresh, args.offset, args.max_chars, args.detail
+                    args.study_id,
+                    args.refresh,
+                    args.offset,
+                    args.max_chars,
+                    args.detail,
+                    args.question,
                 )
             case "cache-analysis":
                 analysis = Extraction.model_validate_json(args.input.read_text(encoding="utf-8"))
+                answer = (
+                    ProtocolAnswer.model_validate_json(args.answer.read_text(encoding="utf-8"))
+                    if args.answer
+                    else None
+                )
                 return await service.cache_protocol_analysis(
                     args.study_id,
                     args.fingerprint,
@@ -336,6 +349,8 @@ async def run(args):
                     args.coverage_complete,
                     args.batch_offset,
                     args.reading,
+                    answer,
+                    args.question,
                 )
             case "cache-answer":
                 answer = ProtocolAnswer.model_validate_json(args.input.read_text(encoding="utf-8"))

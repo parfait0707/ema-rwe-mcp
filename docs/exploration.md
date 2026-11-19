@@ -63,6 +63,8 @@ PDFは追加要望に従ってユーザーが削除するまで保持する。�
 
 内部LLM未設定の `research_protocol` は `needs_client_exploration`、初期検索ヒット、回答schema、読み方 `reading`（英訳のある文書でだけ空でない）を返す。呼出元LLMは追加語で検索し、章一覧や前後ページを辿ってから保存する。章一覧・検索・読取の応答の `source.reading` がこの `reading` と違えば、途中で英訳が変わったので `research_protocol` からやり直す（spec v1.10）。内部LLMの探索は開始時の英訳で一貫して読む。回答schemaは `answers: [{value, evidence:[{page,section,quote}]}]`、`source_assessments`（データタイプと定義用途の判定。[用途別分類](source-types.md)）、`missing_information`。元の共通抽出schemaを上書きしない。質問別回答は別SQLiteテーブルに保存する。
 
+比較の中では、解析も回答も無い研究の質問は `analyze_protocol(question=...)` で抽出と同時に答える（spec v1.11）。呼出元は各バッチの `cache_protocol_analysis` に `question` と `answer` を渡し、最後の `coverage_complete=true` の呼び出しが回答を結合して、`research_protocol` と同じ鍵で保存する。保存後の `research_protocol` は保存済みの回答を返す。回答が空のとき（`answer_saved=false`）と、解析が既にある研究では、従来どおり `research_protocol` で探索する。抽出で読むのは関連する節だけなので、対象外の節（付録など）にしか答えが無い質問は `research_protocol` で探す。
+
 例:
 
 ```text

@@ -216,6 +216,42 @@ class Repository:
             ),
         )
 
+    BATCHES = (
+        "CREATE TABLE IF NOT EXISTS extraction_batches (study_id TEXT NOT NULL, fingerprint TEXT NOT NULL, "
+        "reading TEXT NOT NULL, kind TEXT NOT NULL, batch_offset INTEGER NOT NULL, body TEXT NOT NULL, "
+        "saved_at TEXT NOT NULL, PRIMARY KEY (study_id, fingerprint, reading, kind, batch_offset))"
+    )
+
+    def save_batch(self, study_id: str, fingerprint: str, reading: str, kind: str, offset: int, body: dict):
+        """Keep one batch of a caller's unfinished extraction (or of its answer to a question): a user-side
+        table like protocol_answers, outside the catalogue tables and the schema version."""
+        with self.connection() as db:
+            db.execute(self.BATCHES)
+            # Batches read from another PDF, extractor or heading reading can never be merged with these.
+            db.execute(
+                "DELETE FROM extraction_batches WHERE study_id=? AND (fingerprint<>? OR reading<>?)",
+                (study_id, fingerprint, reading),
+            )
+            db.execute(
+                "INSERT OR REPLACE INTO extraction_batches VALUES (?,?,?,?,?,?,?)",
+                (study_id, fingerprint, reading, kind, offset, json.dumps(body, ensure_ascii=False), now()),
+            )
+
+    def batches(self, study_id: str, fingerprint: str, reading: str, kind: str) -> dict[int, dict]:
+        with self.connection() as db:
+            db.execute(self.BATCHES)
+            rows = db.execute(
+                "SELECT batch_offset, body FROM extraction_batches WHERE study_id=? AND fingerprint=? AND "
+                "reading=? AND kind=? ORDER BY batch_offset",
+                (study_id, fingerprint, reading, kind),
+            ).fetchall()
+        return {offset: json.loads(body) for offset, body in rows}
+
+    def clear_batches(self, study_id: str) -> None:
+        with self.connection() as db:
+            db.execute(self.BATCHES)
+            db.execute("DELETE FROM extraction_batches WHERE study_id=?", (study_id,))
+
     def analysis(self, study_id: str) -> dict | None:
         with self.connection() as db:
             row = db.execute("SELECT body FROM analyses WHERE study_id=?", (study_id,)).fetchone()
