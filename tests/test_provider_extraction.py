@@ -170,7 +170,7 @@ async def test_batch_caching_merges_partials_on_completion(service):
     full = await service.analyze_protocol("123", detail="full")
     assert full["analysis"]["data_sources"][0]["value"] == batch.data_sources[0].value
     assert full["analysis"]["study_design"]["value"] == batch.study_design.value
-    assert service._partials == {}
+    assert service.repo.batches("123", fingerprint, first["source"]["reading"], "analysis") == {}
 
 
 async def test_incomplete_without_batch_offset_is_rejected(service):

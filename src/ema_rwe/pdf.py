@@ -860,6 +860,65 @@ def search_sections(
     }
 
 
+LINE_REF = re.compile(r"^(s\d{4}):(\d+)(?:-(\d+))?$")
+LINE_REF_INSTRUCTION = (
+    " EVIDENCE BY LINE REFERENCE: every line of a section's text is prefixed 'N|'. Do not copy quotes. Give "
+    'each evidence item as {"ref":"<section_id>:<first>-<last>"} (or "<section_id>:<line>"): the smallest '
+    "contiguous line range of ONE section that states the fact, at most 1000 characters (use several refs "
+    "for more). Omit page, section and quote; the server copies the lines from the PDF. This replaces the "
+    "verbatim-quote rules above and the evidence shape in the schema."
+)
+
+
+def number_lines(text: str) -> str:
+    """Section text with 1-based line numbers (blank lines keep their number but are not shown)."""
+    return "\n".join(f"{i}|{line}" for i, line in enumerate(text.split("\n"), 1) if line.strip())
+
+
+def numbered(chunks: list[dict]) -> list[dict]:
+    return [dict(c, text=number_lines(c["text"])) if c.get("text") else c for c in chunks]
+
+
+def resolve_line_refs(node, chunks: list[dict]):
+    """Replace every evidence item {"ref": "s0012:7-9"} by the page and verbatim text of those lines."""
+    by_id = {c["section_id"]: c for c in chunks}
+
+    def walk(value):
+        if isinstance(value, list):
+            return [walk(v) for v in value]
+        if not isinstance(value, dict):
+            return value
+        if "ref" not in value or value.get("quote"):
+            return {k: walk(v) for k, v in value.items() if k != "ref"}
+        match = LINE_REF.match(str(value["ref"]).strip())
+        chunk = by_id.get(match[1]) if match else None
+        if not chunk:
+            raise RWEError(
+                "EVIDENCE_INVALID",
+                f"Unknown line reference {value['ref']!r}; use <section_id>:<first>-<last>.",
+            )
+        lines = chunk["text"].split("\n")
+        first, last = int(match[2]), int(match[3] or match[2])
+        if not 1 <= first <= last <= len(lines):
+            raise RWEError(
+                "EVIDENCE_INVALID",
+                f"Line reference {value['ref']} is outside section {match[1]} (1-{len(lines)}).",
+            )
+        quote = "\n".join(re.sub(r"[ \t]+", " ", line.strip()) for line in lines[first - 1 : last]).strip()
+        if len(quote) > 1000:
+            raise RWEError(
+                "EVIDENCE_INVALID",
+                f"Line reference {value['ref']} spans {len(quote)} characters; cite at most 1000 (split it).",
+            )
+        if len(normalize_quote(quote)) < 8:
+            raise RWEError(
+                "EVIDENCE_INVALID", f"Line reference {value['ref']} holds fewer than 8 characters of text."
+            )
+        return {"page": chunk["page"], "section": None, "quote": quote}
+
+    return walk(node)
+
+
 def normalize_quote(text: str) -> str:
     return re.sub(r"\s+", " ", text.replace("\u00ad", "")).strip().casefold()
 
