@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Development: `uv run python scripts/check.py` runs every check a change must pass (the version written the
+  same everywhere, `uv.lock`, ruff, pytest, the build and the wheel's contents); `.githooks/pre-push` runs it
+  before each push once `git config core.hooksPath .githooks` is set. No hosted CI is used. Development tools
+  moved from the `dev` extra to the `dev` dependency group, so `uv run pytest` works without `--extra dev`.
+
 - A verbatim quote a caller gives on the wrong page is moved to the nearest page that holds it instead of
   refusing the batch (analyses and answers); a quote found on no page, or equally near on both sides, is
   still refused (spec v1.13).

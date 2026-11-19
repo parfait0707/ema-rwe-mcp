@@ -31,11 +31,10 @@ Python 3.12+. Source: `src/ema_rwe/`; core service: `service.py` (the `Service` 
 Run every Python tool through `uv` (the PreToolUse hook blocks bare `python`/`pip`):
 
 ```bash
-uv run pytest -q
-uv run ruff check src tests
-uv run ruff format --check src tests
-uv build
+uv run python scripts/check.py   # versions, lock, ruff, pytest, build, wheel contents; --no-build while editing
 ```
+
+That one command is the project's CI (no hosted CI is used): it must pass before a push, and `.githooks/pre-push` runs it once `git config core.hooksPath .githooks` is set for the clone. Its steps can be run alone: `uv run pytest -q`, `uv run ruff check src tests scripts`, `uv run ruff format --check src tests scripts`, `uv build`. Development tools live in the `dev` dependency group, which `uv run` installs by default.
 
 Run relevant tests for changed behaviour, including real stdio MCP tests when tool schemas change. Use mocked external responses for deterministic tests; do not require paid API credentials. Record actual validation and untested limits in `docs/validation.md`. Keep CLI, MCP schemas and documentation consistent. Keep MCP `instructions` and tool docstrings short; the caller procedure lives in `docs/mcp-workflow.md` (bundled in the wheel and served as the MCP resource `ema-rwe://docs/mcp-workflow`), and search responses default to compact rows.
 
