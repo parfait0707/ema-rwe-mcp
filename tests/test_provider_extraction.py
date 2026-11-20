@@ -589,6 +589,21 @@ async def test_a_batch_served_again_with_another_budget_keeps_the_sections_it_he
     assert done["status"] == "analyzed"
 
 
+async def test_a_final_call_with_no_batch_cached_is_refused_while_the_protocol_has_unread_batches(
+    service, website
+):
+    """The coverage check also holds when no batch at all was cached (found while releasing v0.5.8)."""
+    website["/system/files/protocol.pdf"] = four_section_pdf()
+    first = await service.analyze_protocol("123", max_chars=6000)
+    assert first["next_offset"] < first["total_sections"]
+    with pytest.raises(RWEError) as error:
+        await service.cache_protocol_analysis(
+            "123", first["source"]["fingerprint"], Extraction(), coverage_complete=True
+        )
+    assert error.value.code == "INCOMPLETE_EXTRACTION" and "offset=0" in error.value.message
+    assert service.repo.analysis("123") is None
+
+
 async def test_a_final_call_without_offset_stands_only_for_the_batch_that_ends_the_protocol(service, website):
     website["/system/files/protocol.pdf"] = four_section_pdf()
     offset, served = 0, []
