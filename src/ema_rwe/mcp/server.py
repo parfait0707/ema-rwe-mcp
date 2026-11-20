@@ -22,6 +22,8 @@ MatchScope = Annotated[
     Literal["concept", "analogous"],
     Field(description="analogous searches only clinically analogous concepts (the zero-hit fallback)"),
 ]
+# The core refuses a longer question; the schema says so up front (as for analyze_protocol's question).
+Question = Annotated[str, Field(max_length=2000)]
 AnalogousTerms = Annotated[
     list[AnalogousTerm] | None,
     Field(description="Caller-proposed analogous concepts {term, relation: broader/sibling/associated}"),
@@ -155,7 +157,7 @@ def create_server(service: Service | None = None):
 
     @server.tool()
     async def compare_protocols(
-        question: str,
+        question: Question,
         queries: Annotated[
             list[str] | None, Field(description="Single-concept terms; leave empty when blocks are given")
         ] = None,
@@ -406,7 +408,7 @@ def create_server(service: Service | None = None):
         )
 
     @server.tool()
-    async def research_protocol(protocol_id: str, question: str, force: bool = False) -> dict:
+    async def research_protocol(protocol_id: str, question: Question, force: bool = False) -> dict:
         """Answer a question from one archived PDF: saved answer, provider run (status=answering means call again
         later), or caller-driven hits."""
         return await call("research_protocol", protocol_id, question, force)
@@ -414,7 +416,7 @@ def create_server(service: Service | None = None):
     @server.tool()
     async def cache_protocol_answer(
         protocol_id: str,
-        question: str,
+        question: Question,
         answer: ProtocolAnswer,
         reading: Annotated[
             str | None,

@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- CLI subcommands and MCP tools are checked against each other (spec v1.17): `tests/test_cli_mcp_parity.py`
+  fails when a parameter, a required flag, a default, a choice list or a bound exists on one side only. The
+  check found no missing argument; it aligned two bounds: `compare_protocols`, `research_protocol` and
+  `cache_protocol_answer` now state the 2000-character question limit in their schemas (the core already
+  refused longer ones), and `cache_protocol_analysis` refuses a longer question with the batch that carries
+  it instead of at the final save.
+
 - Every MCP tool has a title and the four MCP hints (read-only, destructive, idempotent, open world), so a
   client can tell which calls change or replace something and which reach EMA or the configured LLM
   (spec v1.16). Seven tools are read-only; four may replace stored data without keeping a copy.
