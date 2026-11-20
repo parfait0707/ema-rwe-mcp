@@ -1024,6 +1024,38 @@ def mentions(text: str, term: str) -> bool:
     return contains(text, other)
 
 
+SHORT_SECTION_CHARS = 1000
+
+
+def raise_neighbours(hits: list[dict], terms: list[str]) -> None:
+    """A short section named for the question's concept often only lists what its neighbours define
+    ('9.3.2 Outcomes definition' in four lines, the definitions under '9.3.1 Exposure definition'). The
+    sections beside it under the same numbered heading that matched the question themselves are ranked
+    right after it, in place (spec v1.23). Only for a section numbered three levels deep or more, so that
+    the neighbours are a subsection's, never a whole chapter's."""
+    length: dict[str, int] = {}
+    for hit in hits:
+        length[hit["section"]] = length.get(hit["section"], 0) + len(hit["text"])
+    named = [
+        h
+        for h in hits
+        if len(section_number(h["section"])) >= 3
+        and length[h["section"]] <= SHORT_SECTION_CHARS
+        and h["role"] not in NON_METHOD_ROLES
+        and any(mentions(h["section"], t) for t in terms)
+    ]
+    for hit in hits:
+        number = section_number(hit["section"])
+        for anchor in named:
+            parent = section_number(anchor["section"])[:-1]
+            if (
+                hit["section"] != anchor["section"]
+                and number[: len(parent)] == parent
+                and hit["score"] < anchor["score"] - 0.5
+            ):
+                hit["score"], hit["beside"] = anchor["score"] - 0.5, anchor["section_id"]
+
+
 def search_sections(
     chunks: list[dict], query: str, limit: int = 10, synonyms: list[str] | None = None, codes=None
 ) -> dict:
@@ -1042,6 +1074,7 @@ def search_sections(
             if chunk["role"] in NON_METHOD_ROLES:
                 score *= 0.15
             hits.append(dict(chunk, score=score, matched_terms=matched))
+    raise_neighbours(hits, terms)
     hits.sort(key=lambda c: (-c["score"], c["page"], c["section_id"]))
     return {
         "query_expansion": expansion,

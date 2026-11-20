@@ -2,6 +2,7 @@ import asyncio
 import hashlib
 import json
 import os
+import re
 
 import httpx
 from pydantic import BaseModel, ValidationError
@@ -279,35 +280,79 @@ async def extract_with_provider(
 
 
 def merge_extractions(outputs: list[Extraction]) -> Extraction:
-    """Union list fields and concatenate differing single facts, within the Extraction schema limits."""
-    merged = Extraction()
-    for output in outputs:
-        merge_into(merged, output)
-    merged.missing_information = with_notes(merged.missing_information, cap_lists(merged))
+    """Union list fields and concatenate differing single facts, within the Extraction schema limits.
+    Entries of a list that say the same thing in several batches become one entry (spec v1.23); a list
+    still over its limit keeps entries from every batch instead of the first batches only."""
+    merged, origins = Extraction(), {}
+    for index, output in enumerate(outputs):
+        merge_into(merged, output, index, origins)
+    merged.missing_information = with_notes(merged.missing_information, cap_lists(merged, origins=origins))
     try:
         return Extraction.model_validate(merged.model_dump())
     except ValidationError as exc:
         raise RWEError("SCHEMA_VALIDATION_FAILED", "Merged extraction exceeds schema limits.") from exc
 
 
-def merge_into(merged, output) -> None:
+USAGE_RANK = {"unclear": 0, "candidate": 1, "used": 2, "planned": 3}
+
+
+def same_entry(item) -> tuple | None:
+    """What makes two list entries the same statement: the value without case, spacing or punctuation,
+    and for a source assessment also its role and types. None for entries that are not facts."""
+    if not hasattr(item, "evidence"):
+        return None
+    name = re.sub(r"[^\w]+", " ", item.value.casefold()).strip()
+    return (name, getattr(item, "role", None), tuple(sorted(getattr(item, "types", ()))))
+
+
+def absorb(kept, other) -> None:
+    """Fold a repeated entry into the one already kept: its further quotes (8 at most), the more definite
+    usage (a source called both planned and used stays planned: a protocol plans), and for an assessment
+    the explicit basis, the linkage need and a differing definition."""
+    kept.evidence.extend(e for e in other.evidence if e not in kept.evidence)
+    del kept.evidence[8:]
+    if hasattr(kept, "usage") and USAGE_RANK[other.usage] > USAGE_RANK[kept.usage]:
+        kept.usage = other.usage
+    if hasattr(kept, "definition"):
+        if other.basis == "explicit":
+            kept.basis = "explicit"
+        kept.requires_linkage = kept.requires_linkage or other.requires_linkage
+        if other.definition not in kept.definition:
+            kept.definition = (kept.definition + "\n" + other.definition)[:4000]
+
+
+def merge_into(merged, output, origin: int = 0, origins: dict | None = None) -> None:
     """Merge one model into another field by field; nested blocks (cohort, design_schema) recurse.
-    Lists may exceed the schema limits here; cap_lists trims them afterwards and reports what it drops."""
+    Lists may exceed the schema limits here; cap_lists trims them afterwards and reports what it drops.
+    origins records the batch each list entry came from first (by id), for cap_lists."""
     for name in type(merged).model_fields:
         if name == "schema_version":
             continue
         value, existing = getattr(output, name), getattr(merged, name)
         if isinstance(value, list):
+            known = {same_entry(e): e for e in existing if same_entry(e)}
             for item in value:
-                if item not in existing:
+                key = same_entry(item)
+                if key and key in known:
+                    if item != known[key]:
+                        absorb(known[key], item)
+                elif item not in existing:
                     existing.append(item)
+                    if key:
+                        known[key] = item
+                    if origins is not None:
+                        origins[id(item)] = origin
         elif value is None:
             continue
         elif not hasattr(value, "evidence"):  # nested block
             if existing is None:
                 setattr(merged, name, value)
+                if origins is not None:  # its list entries all come from this batch
+                    for field in type(value).model_fields:
+                        for item in getattr(value, field) if isinstance(getattr(value, field), list) else ():
+                            origins[id(item)] = origin
             else:
-                merge_into(existing, value)
+                merge_into(existing, value, origin, origins)
         elif existing and existing.value != value.value:
             # Preserve evidence from multiple sections instead of silently taking the first,
             # within the Fact limits (value 4000 chars, 8 evidence items).
@@ -318,7 +363,21 @@ def merge_into(merged, output) -> None:
             setattr(merged, name, value)
 
 
-def cap_lists(model, prefix: str = "") -> list[str]:
+def spread(items: list, limit: int, origins: dict) -> list:
+    """limit entries taken in turn from each batch, in their original order: a list over its limit keeps
+    what the later batches found (analysis, limitations) and not only the first chapters."""
+    queues: dict[int, list] = {}
+    for item in items:
+        queues.setdefault(origins.get(id(item), 0), []).append(item)
+    chosen: set[int] = set()
+    while len(chosen) < limit:
+        for queue in queues.values():
+            if queue and len(chosen) < limit:
+                chosen.add(id(queue.pop(0)))
+    return [item for item in items if id(item) in chosen]
+
+
+def cap_lists(model, prefix: str = "", origins: dict | None = None) -> list[str]:
     """Trim list fields (nested blocks included) to the schema limits; one note per trimmed field."""
     limits = {n: p.get("maxItems") for n, p in type(model).model_json_schema()["properties"].items()}
     notes = []
@@ -327,11 +386,13 @@ def cap_lists(model, prefix: str = "") -> list[str]:
         if name == "missing_information":
             continue
         if isinstance(value, list) and limits.get(name) and len(value) > limits[name]:
+            batches = len({origins.get(id(item), 0) for item in value}) if origins else 1
             notes.append(
-                f"{prefix}{name}: {len(value)} found across batches; only the first {limits[name]} are kept "
-                f"(schema limit), {len(value) - limits[name]} omitted."
+                f"{prefix}{name}: {len(value)} found across batches; only {limits[name]} are kept "
+                f"(schema limit), {len(value) - limits[name]} omitted"
+                + (f", taken in turn from the {batches} batches." if batches > 1 else " from the end.")
             )
-            del value[limits[name] :]
+            value[:] = spread(value, limits[name], origins) if batches > 1 else value[: limits[name]]
         elif isinstance(value, BaseModel) and not hasattr(value, "evidence"):
-            notes += cap_lists(value, f"{prefix}{name}.")
+            notes += cap_lists(value, f"{prefix}{name}.", origins)
     return notes

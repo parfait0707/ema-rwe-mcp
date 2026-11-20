@@ -63,8 +63,8 @@ async def test_parallel_batches_merge_within_schema_limits(settings, monkeypatch
     # The facts beyond the limit are reported, not dropped silently
     assert result.missing_information == [
         (
-            f"key_notes: 45 found across batches; only the first {max_notes} are kept (schema limit), "
-            f"{45 - max_notes} omitted."
+            f"key_notes: 45 found across batches; only {max_notes} are kept (schema limit), "
+            f"{45 - max_notes} omitted, taken in turn from the 3 batches."
         )
     ]
 
@@ -458,3 +458,70 @@ async def test_server_side_extraction_resumes_after_a_restart(service, monkeypat
     assert done["analysis"]["study_design"]["value"] == design.value
     with restarted.repo.connection() as db:
         assert db.execute("SELECT COUNT(*) FROM extraction_batches WHERE study_id='123'").fetchone()[0] == 0
+
+
+def test_entries_repeated_across_batches_merge_and_an_overfull_list_keeps_every_batch():
+    """spec v1.23. Two readers of the reference run met the 60-source limit with the same sources named in
+    several batches, and lost the notes of the later batches to the 20-note limit."""
+    from ema_rwe.domain import DataSource, Evidence, Fact, SourceAssessment
+    from ema_rwe.llm import merge_extractions
+
+    def quote(text, page=1):
+        return [Evidence(page=page, quote=f"The protocol says {text} here.")]
+
+    def assessment(basis, linkage, definition, text):
+        return SourceAssessment(
+            value="Danish Cancer Registry", usage="planned", types=["registry"], role="outcome",
+            basis=basis, definition=definition, requires_linkage=linkage, evidence=quote(text),
+        )  # fmt: skip
+
+    first = Extraction(
+        data_sources=[DataSource(value="Danish Cancer Registry", usage="candidate", evidence=quote("one"))],
+        source_assessments=[assessment("inferred", False, "cancer diagnoses", "one")],
+        key_notes=[Fact(value=f"design note {i}", evidence=quote(f"d{i}")) for i in range(18)],
+    )
+    second = Extraction(
+        data_sources=[
+            DataSource(value="danish cancer  registry.", usage="planned", evidence=quote("two", 2)),
+            DataSource(value="Danish National Patient Register", usage="planned", evidence=quote("three")),
+        ],
+        source_assessments=[
+            assessment("explicit", True, "linked by personal number", "two"),
+            SourceAssessment(
+                value="Danish Cancer Registry",
+                usage="planned",
+                types=["registry"],
+                role="cohort",
+                basis="explicit",
+                definition="history of cancer",
+                requires_linkage=False,
+                evidence=quote("four"),
+            ),
+        ],
+        key_notes=[Fact(value=f"analysis note {i}", evidence=quote(f"a{i}")) for i in range(18)],
+    )
+    merged = merge_extractions([first, second])
+    # One source named twice is one entry with both quotes and the more definite usage
+    assert [(d.value, d.usage, len(d.evidence)) for d in merged.data_sources] == [
+        ("Danish Cancer Registry", "planned", 2),
+        ("Danish National Patient Register", "planned", 1),
+    ]
+    # The same source in the same role is one assessment; another role stays its own
+    outcome, cohort = merged.source_assessments
+    assert (outcome.role, outcome.basis, outcome.requires_linkage) == ("outcome", "explicit", True)
+    assert outcome.definition == "cancer diagnoses\nlinked by personal number" and cohort.role == "cohort"
+    # 36 notes for 20 places: ten from each batch, not the first batch's eighteen and two
+    kept = [note.value for note in merged.key_notes]
+    assert len(kept) == 20 and sum(v.startswith("analysis") for v in kept) == 10
+    assert kept[:10] == [f"design note {i}" for i in range(10)]
+    assert merged.missing_information == [
+        (
+            "key_notes: 36 found across batches; only 20 are kept (schema limit), 16 omitted, "
+            "taken in turn from the 2 batches."
+        )
+    ]
+    # A source both planned and used stays planned
+    used = Extraction(
+        data_sources=[DataSource(value="Danish Cancer Registry", usage="used", evidence=quote("u"))]
+    )
+    assert merge_extractions([second, used]).data_sources[0].usage == "planned"

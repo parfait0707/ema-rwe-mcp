@@ -154,7 +154,7 @@ def test_the_reference_files_are_well_formed_and_hold_no_protocol_text():
     golds = {gold["name"]: gold for gold in evaluation.load_all()}
     assert set(golds) == {"eligibility", "outcomes"} and golds["eligibility"]["question"] == QUESTION
     counts = {name: sum(len(p["items"]) for p in gold["protocols"]) for name, gold in golds.items()}
-    assert counts == {"eligibility": 51, "outcomes": 27}
+    assert counts == {"eligibility": 51, "outcomes": 31}
     for gold in golds.values():
         assert 0 < gold["minimum"]["analysis_found"] <= gold["minimum"]["answer_found"] <= 1
         assert gold["analysis_fields"] and len(gold["protocols"]) == 4
@@ -231,3 +231,33 @@ def test_a_section_label_retyped_with_single_spaces_is_accepted():
     validate_evidence(note("9.2 Selection criteria"), pages, spaced)
     with pytest.raises(RWEError, match="Section does not match"):
         validate_evidence(note("9.3 Variables"), pages, spaced)
+
+
+def test_the_neighbours_of_a_short_section_named_for_the_question_follow_it():
+    """spec v1.23: '9.3.2 Outcomes definition' lists the outcomes in a few lines; '9.3.1 Exposure
+    definition' beside it defines them. The neighbour that matched the question is ranked right after."""
+    from ema_rwe.pdf import raise_neighbours
+
+    def hit(section_id, section, score, text="x" * 300, role="definitions"):
+        return {"section_id": section_id, "section": section, "score": score, "text": text, "role": role}
+
+    hits = [
+        hit("a", "9.4.2 A database", 9),
+        hit("b", "9.3.2.    Outcomes definition", 5),
+        hit("c", "9.3.1.    Exposure definition", 3),
+        hit("d", "9.3.3.1.  Variables defining eligibility", 4),
+        hit("e", "9.7.1 Analysis", 3),
+        hit("f", "4. Abstract", 4),
+    ]
+    raise_neighbours(hits, ["outcome", "defined"])
+    scores = {h["section_id"]: h["score"] for h in hits}
+    assert scores == {"a": 9, "b": 5, "c": 4.5, "d": 4.5, "e": 3, "f": 4}
+    assert hits[2]["beside"] == "b" and "beside" not in hits[4]
+    # A long section named for the question holds its own definitions: its neighbours stay where they are
+    long = [hit("b", "9.3.2 Outcome variables", 9, "x" * 1500), hit("c", "9.3.3 Other variables", 3)]
+    raise_neighbours(long, ["outcome"])
+    assert long[1]["score"] == 3
+    # A chapter-level heading has no neighbours of this kind
+    top = [hit("b", "9.3 Outcomes", 9), hit("c", "9.4 Data sources", 3)]
+    raise_neighbours(top, ["outcome"])
+    assert top[1]["score"] == 3
