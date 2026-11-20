@@ -2,7 +2,7 @@
 
 エンドユーザー（このMCPを使って研究を調べる人）向けの使い方は[README.md](README.md)を参照してください。本ファイルはこのMCPサーバー自体を開発・改修する人向けの内部仕様です。
 
-公開版は0.5.7（内部履歴では0.1〜1.19の仕様段階を経ている）。`docs/spec/v0.1.md`〜`v1.25.md`が仕様の正本、[docs/mcp-workflow.md](docs/mcp-workflow.md)が呼出元向け手順の正本、開発ルールは[AGENTS.md](AGENTS.md)です。
+公開版は0.5.7（内部履歴では0.1〜1.26の仕様段階を経ている）。`docs/spec/v0.1.md`〜`v1.26.md`が仕様の正本、[docs/mcp-workflow.md](docs/mcp-workflow.md)が呼出元向け手順の正本、開発ルールは[AGENTS.md](AGENTS.md)です。
 
 ## 開発用セットアップ（checkout）
 
@@ -88,7 +88,7 @@ flowchart TD
 ## テスト・lint・ビルド
 
 ```bash
-uv run python scripts/check.py
+uv run scripts/check.py
 ```
 
 このコマンドが、pushの前に通すべきチェックを順に実行します（ホスト型のCIは使っていません）。最初に失敗した段階で止まり、その名前を表示します。全体で20〜30秒です。
@@ -99,10 +99,10 @@ uv run python scripts/check.py
 | `lock` | `uv.lock`が`pyproject.toml`と合っている |
 | `lint` / `format` | `ruff check`と`ruff format --check`（`src`、`tests`、`scripts`） |
 | `tests` | `pytest`（実stdioのMCPテストを含む） |
-| `gold` | 抽出の正解データ（4つのプロトコルの組入れ・除外基準60項目とアウトカム定義40項目）が、すべて見つかり、読み手に渡り、根拠として受理される（spec v1.20、v1.21、v1.24）。プロトコルはcloneごとに1回`uv run python scripts/extraction_eval.py fetch`で取得する。未取得のときは`--allow-missing-gold`。詳細は[tests/fixtures/extraction_gold/README.md](tests/fixtures/extraction_gold/README.md) |
+| `gold` | 抽出の正解データ（4つのプロトコルの組入れ・除外基準60項目とアウトカム定義40項目）が、すべて見つかり、読み手に渡り、根拠として受理される（spec v1.20、v1.21、v1.24）。プロトコルはcloneごとに1回`uv run scripts/extraction_eval.py fetch`で取得する。未取得のときは`--allow-missing-gold`。詳細は[tests/fixtures/extraction_gold/README.md](tests/fixtures/extraction_gold/README.md) |
 | `build` / `wheel` | `uv build`と、wheelに全モジュールと同梱データ（カタログDB、医薬品辞書、手順書）が入っていること |
 
-編集中は`uv run python scripts/check.py --no-build`でビルドを省けます。個別に実行する場合は`uv run pytest -q`、`uv run ruff check src tests scripts`、`uv run ruff format --check src tests scripts`、`uv build`です。
+編集中は`uv run scripts/check.py --no-build`でビルドを省けます。個別に実行する場合は`uv run pytest -q`、`uv run ruff check src tests scripts`、`uv run ruff format --check src tests scripts`、`uv build`です。
 
 `.githooks/pre-push`は、pushのたびにこのチェックを実行し、失敗したらpushを止めます。有効にするには、cloneごとに1回`git config core.hooksPath .githooks`を実行します（有効にしていないcloneからのpushは確認されません）。1回だけ省くときは`git push --no-verify`です。Windowsでは、Git for Windowsに付属のshがhookを実行します。
 
@@ -112,12 +112,15 @@ uv run python scripts/check.py
 
 wheelにはカタログDB、EMA医薬品辞書、呼出元手順書を同梱します。チェックアウト外では初回起動時にOSのユーザーデータディレクトリへ複製します。手順書はMCPリソース`ema-rwe://docs/mcp-workflow`からも取得できます。
 
-既定DBの更新は`storage.refresh_from_bundle`で、1プロセスにつき1回確認します。
+既定DBのカタログは2つの経路で更新します。どちらもカタログの表の置き換えは`storage.refresh_from_bundle`が行い、失敗したときは理由をstderrにwarningとして記録して元のカタログのまま動きます。
+
+1. 新しい版のパッケージが同梱するDB。1プロセスにつき1回確認します。
+2. GitHub Releasesに公開した月ごとのスナップショット（`catalogue_update.py`、spec v1.18、v1.26）。サーバーは起動時にデーモンスレッドで確かめ（1日1回まで）、検証してから取り込みます。終了はこのスレッドを待ちません。作業フォルダはDBと同じフォルダの`ema-rwe-update-*`で、止まった更新が残したもの（6時間より古いもの）は次の更新の開始時に消えます。
 
 - 同梱DBの取込日時が新しければカタログの表だけをトランザクションで更新します。同じスキーマ版でなければ更新せず、利用者のCSVが新しい場合も保持します。
 - PDF由来の事実は`protocol_observations`に分離して保持します。手元にない項目を補い、医薬品の補完値は出所ごとに`EXPOSURE_RULES`の版が新しい場合だけ置き換えます。
 - 解析・回答・見出しの読み方は保持します。`get_study`で更新したカタログ行は同梱値へ戻り得ますが、PDF観測は保持します。
-- `EMA_DB_PATH`で指定したDBは自動更新・統合の対象外です。医薬品辞書は`refresh_drug_dictionary`で更新します。更新失敗時は元のカタログで起動します。
+- `EMA_DB_PATH`で指定したDBとcheckoutのDBは、どちらの経路でも自動更新・統合の対象外です（`ema-rwe update-catalogue`で更新します）。医薬品辞書は`refresh_drug_dictionary`で更新します。更新失敗時は元のカタログで起動します。
 
 `.mcp.json`（このリポジトリ直下、Git管理外）は各自の登録で、開発中は`uv run --directory /path/to/repo ema-rwe-mcp`によりチェックアウトを直接起動できます（作業ツリーの未コミット変更もそのまま反映されます）。公開版を確かめるときは`.mcp.json.sample`と同じ`uvx`の形にします。`.mcp.json.sample`（Git管理対象）はエンドユーザー向けで、`uvx --from git+https://...`によりcloneなしでリモートのコードを取得・起動します。両者は起動対象（ローカル作業ツリー vs. リモートのgit ref）が異なる点に注意してください。
 
@@ -125,7 +128,7 @@ wheelにはカタログDB、EMA医薬品辞書、呼出元手順書を同梱し�
 
 1. `.gitignore`を再確認する（現状は`data/`配下のうちカタログDB・医薬品辞書・辞書の記入例・関連語の判定記録の4ファイルと`imports/`の空フォルダだけを追跡し、他はすべて除外。PDF・DB・キャッシュ・`.env`・`docs/agent_brief/`・`docs/agent_report/`も除外済み）。
 2. リリースタグ（`v<pyproject.tomlの版>`）を打つ。手順は[docs/release.md](docs/release.md)。
-3. 月ごとのカタログは、アプリとは別に`data-<YYYYMMDD>`のリリースとして公開する（`scripts/build_catalogue_snapshot.py`、手順は同じ文書）。サーバーはまだスナップショットを取得しないので、利用者の同梱DBの更新はアプリのリリースで行う。
+3. 月ごとのカタログは、アプリとは別に`data-<YYYYMMDD>`のリリースとして公開する（`scripts/build_catalogue_snapshot.py`、手順は同じ文書）。利用者のデータフォルダのDBは、サーバーが起動時に公開スナップショットを取り込む（spec v1.18）。同梱DBは、アプリのリリースのときに最新のスナップショットで置き換える（spec v1.19）。
 
 PyPI公開やGitHub Releaseへのwheel添付など他の配布経路の比較検討は[docs/research/202609160750_mcp_distribution.md](docs/research/202609160750_mcp_distribution.md)を参照してください。
 
@@ -149,19 +152,21 @@ PyPI公開やGitHub Releaseへのwheel添付など他の配布経路の比較検
 
 **読む範囲の決め方（`pdf.py`）**: PDFにしおり（ブックマーク）があれば、それを一次の目次として使います。各ページに「そのページを含む最も深いしおり」と「その最上位の章」を付け、本文の見出し検出で役割が決まらない章にはしおりの題名から役割を与えます（`apply_bookmarks`）。抽出で読む節は`reading_order`が決め、しおりがある場合はページ順に、本文の章と、付録のうち本文が参照しているもの（「Annex 3」「Appendix V」）とコードリスト・変数定義の題名を持つものだけを読みます（履歴書・ENCePPチェックリスト等は読みません）。しおりのないPDFでは、印字ページのずれを確かめた目次で節の始まりを決め、目次も無ければ本文より大きいか太字で章番号が続く行を章見出しとし、関連セクションをすべて読みます（spec v1.5）。節の役割は、読むか、引用を受理するか、抽出の指示の三つに別々に使います。質問別探索（`search_sections`）はしおりの章名に一致した語を最優先で採点します。実測では242頁のプロトコル（19786）の読取量が、しおりを使わない場合の44.8万字に対して11.1万字です（parser `structural-v24`、2026-10-06）。
 
-**英語以外のプロトコル（spec v1.6）**: 役割の語は英語なので、本文が英語でない文書（英語の機能語が全語の8%未満）は、見出しとしおりの題名（`pdf.heading_texts`）の英訳から役割を判定します。`analyze_protocol`はPDFごとに一度だけ（parserの版が変わったら再び）言語を判定し（`service._check_heading_language`）、内部LLMがあれば`llm.translate_headings`で英訳し、無ければ`status=needs_heading_translation`と見出しの一覧を返します。呼出元は`cache_heading_translations`で英訳を保存します（`{}`なら英訳なしで読む）。判定結果と英訳は利用者のDBの`protocol_readings`表にparserの版とともに置き（`Explorer.reading_record`。以前の版がPDFの隣に置いた`<protocol_id>.headings`は一度だけ取り込む）、`extract_pages(translations=...)`が各`Page.heading_translations`に渡すので、`sections`を呼ぶ全経路（抽出・引用検証・探索ツール）が同じ役割を使います。英訳は節の役割の判定（読むか、引用を受理するか、抽出の指示）だけに使い、本文の読解には使いません。本文の手がかり語（英語）は英語でない本文を読めないので、英訳でも役割の分からない節は読みます。英訳はfingerprintに入れません（比較表が翻訳前にfingerprintを記録するため）。英訳を別の内容で保存し直すと、同じトランザクションでそのPDFの保存済み解析を失効させ、途中のバッチと実行中の抽出も取り消します。解析は抽出時の読み方（英訳のハッシュ、`source.reading`）を記録し、保存はDBの今の読み方と一致するときだけ行う（`Repository.save_analysis(reading=...)`、不一致は`READING_CONTEXT_CHANGED`）ので、DBを共有する別のサーバープロセスが英訳を変えても古い解析は保存されません（spec v1.8）。質問別回答のキャッシュの鍵には英訳を含めるので、英訳の前に保存した回答は英訳の後に再利用しません。質問別の探索は、全文の回答、最初の検索、内部LLMの`search`／`outline`／`read`、引用の検証、鍵のすべてを開始時の英訳で行います。探索ツールの応答の`source.reading`はその応答を作った読み方で、呼出元は`research_protocol`の`reading`と違えば探索をやり直します（各ツールに読み方を渡して拒否する仕組みは無いので、呼出元が見落とした探索中のA→B→Aは保存時の照合をすり抜けます。spec v1.10）。
+**英語以外のプロトコル（spec v1.6）**: 役割の語は英語なので、本文が英語でない文書（英語の機能語が全語の8%未満）は、見出しとしおりの題名（`pdf.heading_texts`）の英訳から役割を判定します。`analyze_protocol`はPDFごとに一度だけ（parserの版が変わったら再び）言語を判定し（`extraction.py`の`_check_heading_language`）、内部LLMがあれば`llm.translate_headings`で英訳し、無ければ`status=needs_heading_translation`と見出しの一覧を返します。呼出元は`cache_heading_translations`で英訳を保存します（`{}`なら英訳なしで読む）。判定結果と英訳は利用者のDBの`protocol_readings`表にparserの版とともに置き（`Explorer.reading_record`。以前の版がPDFの隣に置いた`<protocol_id>.headings`は一度だけ取り込む）、`extract_pages(translations=...)`が各`Page.heading_translations`に渡すので、`sections`を呼ぶ全経路（抽出・引用検証・探索ツール）が同じ役割を使います。英訳は節の役割の判定（読むか、引用を受理するか、抽出の指示）だけに使い、本文の読解には使いません。本文の手がかり語（英語）は英語でない本文を読めないので、英訳でも役割の分からない節は読みます。英訳はfingerprintに入れません（比較表が翻訳前にfingerprintを記録するため）。英訳を別の内容で保存し直すと、同じトランザクションでそのPDFの保存済み解析を失効させ、途中のバッチと実行中の抽出も取り消します。解析は抽出時の読み方（英訳のハッシュ、`source.reading`）を記録し、保存はDBの今の読み方と一致するときだけ行う（`Repository.save_analysis(reading=...)`、不一致は`READING_CONTEXT_CHANGED`）ので、DBを共有する別のサーバープロセスが英訳を変えても古い解析は保存されません（spec v1.8）。質問別回答のキャッシュの鍵には英訳を含めるので、英訳の前に保存した回答は英訳の後に再利用しません。質問別の探索は、全文の回答、最初の検索、内部LLMの`search`／`outline`／`read`、引用の検証、鍵のすべてを開始時の英訳で行います。探索ツールの応答の`source.reading`はその応答を作った読み方で、呼出元は`research_protocol`の`reading`と違えば探索をやり直します（各ツールに読み方を渡して拒否する仕組みは無いので、呼出元が見落とした探索中のA→B→Aは保存時の照合をすり抜けます。spec v1.10）。
 
 **抽出スキーマ v0.3（`domain.py`）**: `cohort`ブロックを追加しました。`inclusion_criteria[]`・`exclusion_criteria[]`（各基準を1事実として根拠付き）、`index_date`、`baseline_period`（連続加入・ルックバック）、`follow_up`（開始・終了・打ち切り）、`design_schema`（設計図の物理ページ`figure_pages`と、本文にある対応する時間窓の記述`time_windows[]`）です。図そのものは画像のため読みません。fingerprintに`schema: 0.3`が入るため、既存の保存済み抽出は次回`analyze_protocol`で再抽出されます。比較表には「コホート定義」「設計図（ページ・時間窓）」の行が加わります。
 
-`analyze_protocol`は2つの経路を持ちます。どちらの経路でも、同じPDFは1プロセスで1回だけ解析し（`pdf.extract_pages`が新しい順に8件をメモリに保ち、同時の要求は1回にまとめます）、読み手に渡す節の本文は3つ以上続く空白を2つに詰めます（spec v1.12。節の分け方と引用の照合は変わりません）。MCPサーバーはツール呼び出しごとに所要時間・応答の文字数・PDF解析の有無をstderrに記録します（`tool=... ms=... chars=... pdf_parsed=...`）。`uv run python scripts/time_tools.py <研究ID>...`で、LLMなしのツール呼び出しの所要時間を測れます。
+`analyze_protocol`は2つの経路を持ちます。どちらの経路でも、同じPDFは1プロセスで1回だけ解析し（`pdf.extract_pages`が新しい順に8件をメモリに保ち、同時の要求は1回にまとめます）、読み手に渡す節の本文は3つ以上続く空白を2つに詰めます（spec v1.12。節の分け方と引用の照合は変わりません）。MCPサーバーはツール呼び出しごとに所要時間・応答の文字数・PDF解析の有無をstderrに記録します（`tool=... ms=... chars=... pdf_parsed=...`。例外で終わった呼び出しも、`status`に例外の型名、`chars=0`で記録します。spec v1.26）。`uv run scripts/time_tools.py <研究ID>...`で、LLMなしのツール呼び出しの所要時間を測れます。
 
-**呼出元抽出**（`LLM_MODEL`が未設定、または`LLM_BACKEND=compatible`で`LLM_BASE_URL`が未設定のとき）: 英語以外のプロトコルで英訳が無ければ、先に`needs_heading_translation`を返します。それ以外は`needs_client_extraction`と関連セクション・物理PDFページ・抽出JSON Schema・fingerprintを返します。呼出元は`offset`を進めながら`analyze_protocol(offset=next_offset)`で全バッチを読み、バッチごとに`cache_protocol_analysis(batch_offset=offset)`で途中保存します（サーバーは保存済みoffsetを`cached_batch_offsets`で返すので、コンテキスト圧縮後も既読分を再読しません。途中保存は利用者側の表`extraction_batches`に入るので、サーバーの再起動や別プロセス（CLIは呼び出しごとに別プロセス）でも失われません。サーバー側抽出も、終わったバッチを同じ表に保存します。進行中のタスクはメモリにあるだけですが、1バッチの失敗や再起動の後の`analyze_protocol`は、足りないバッチだけをプロバイダへ送ります（spec v1.14））。最後のバッチも`batch_offset`付きで保存してから`coverage_complete=true`を呼ぶと、サーバーが全バッチを統合して保存します。読んでいないバッチがあれば`INCOMPLETE_EXTRACTION`で読むべきoffsetを返し、`analyze_protocol`が返していないoffsetのバッチは受け付けません（spec v1.11）。`analyze_protocol(question=...)`のときは、抽出の指示に質問と`answer_schema`が加わります。呼出元は各バッチの`cache_protocol_analysis`に`question`とそのバッチの`answer`を渡し、最後の呼び出しが回答を結合して`research_protocol`と同じ鍵で保存します（`answer_saved`。空なら保存せず、`research_protocol`で探索します）。質問を渡しても、抽出はスキーマの全項目を埋めます。
+**呼出元抽出**（`LLM_MODEL`が未設定、または`LLM_BACKEND=compatible`で`LLM_BASE_URL`が未設定のとき）: 英語以外のプロトコルで英訳が無ければ、先に`needs_heading_translation`を返します。それ以外は`needs_client_extraction`と関連セクション・物理PDFページ・抽出JSON Schema・fingerprintを返します。呼出元は`offset`を進めながら`analyze_protocol(offset=next_offset)`で全バッチを読み、バッチごとに`cache_protocol_analysis(batch_offset=offset)`で途中保存します（サーバーは保存済みoffsetを`cached_batch_offsets`で返すので、コンテキスト圧縮後も既読分を再読しません。途中保存は利用者側の表`extraction_batches`に入るので、サーバーの再起動や別プロセス（CLIは呼び出しごとに別プロセス）でも失われません。サーバー側抽出も、終わったバッチを同じ表に保存します。進行中のタスクはメモリにあるだけですが、1バッチの失敗や再起動の後の`analyze_protocol`は、足りないバッチだけをプロバイダへ送ります（spec v1.14））。最後のバッチも`batch_offset`付きで保存してから`coverage_complete=true`を呼ぶと、サーバーが全バッチを統合して保存します。読んでいないバッチがあれば`INCOMPLETE_EXTRACTION`で読むべきoffsetを返し、`analyze_protocol`が返していないoffsetのバッチは受け付けません（spec v1.11）。読み残しの判定は、各バッチを保存した時点でそのoffsetに配信した範囲（`extraction_batches`のkind `read`）をたどるので、同じoffsetを別の`max_chars`で取り直しても、バッチが実際に読んだ範囲で判定します（spec v1.26）。`analyze_protocol(question=...)`のときは、抽出の指示に質問と`answer_schema`が加わります。呼出元は各バッチの`cache_protocol_analysis`に`question`とそのバッチの`answer`を渡し、最後の呼び出しが回答を結合して`research_protocol`と同じ鍵で保存します（`answer_saved`。空なら保存せず、`research_protocol`で探索します）。バッチに回答があるのに最後の呼び出しが同じ`question`を渡さないときは、何も保存せず`INVALID_INPUT`で断ります。最後の呼び出しは解析を保存してから回答を保存します（spec v1.26）。質問を渡しても、抽出はスキーマの全項目を埋めます。`analyze_protocol(force_refresh=true, offset=0)`は、その研究の途中バッチ（呼出元とサーバー側抽出の両方）をすべて消します（spec v1.26）。
 
 **サーバー側抽出**（`LLM_MODEL`があり、かつ`LLM_BACKEND=litellm`または`LLM_BASE_URL`があるとき）: 関連セクションを`LLM_BATCH_CHARS`（既定300,000文字）以下のバッチに分割し、`LLM_CONCURRENCY`（既定4）並列でプロバイダに投げて統合します（`llm.py`の`split_batches`/`merge_extractions`）。抽出が`LLM_WAIT_SECONDS`（既定120秒）を超えるときは`status=extracting`を返すので、呼出元は同じ`analyze_protocol`をポーリングします。保存前に`extraction.py`が`pdf.finalize_extraction`を呼び、その中の`prune_unverifiable`が証拠を検証します。隣のページに引用があればページを直し、データソース名が引用に無ければ名前を含む引用を加え、それでも原文と一致しない証拠だけを落として、件数と監査メモを`missing_information`に記録します。プロンプトはLLMに`evidence.section`を`null`のまま返すよう指示し（`llm.py`）、サーバーが引用の位置から節ラベルを導出します（`pdf.py`の`with_section`）。抽出プロンプトは節ラベル省略・電報体の`value`/`definition`・JSON最小化を指示しつつ「事実・コード・条件の省略禁止」も明示しており、出力トークンを削減しながら証拠件数を落とさない設計です（実測は[docs/validation.md](docs/validation.md)の2026-09-24節を参照）。
 
-`research_protocol`（内部LLM設定時）は、まず`exploration.py`の`answer_from_full_text`（全関連セクションを`LLM_BATCH_CHARS`バッチへ分割し、並列で1回ずつ問い合わせて統合・pruneする「全文一括回答」）を試みます。これが回答を得られなかった場合のみ、`search`/`outline`/`read`/`finish`アクションを1手ずつ選ばせるステップ制限探索ループにフォールバックします（`LLM_MAX_STEPS`既定8・上限20。到達すると`exploration_limit_reached`を返し、未完了の回答は保存しません）。全文一括回答は2026-09-24に、旧来のステップ制限ループだけの構成（12,000字の読み取りでステップ予算を使い切っていた）を置き換える形で追加されました。
+**バッチの統合**（`llm.py`の`merge_into`、`spread`、`cap_lists`、`merge_answers`。呼出元抽出の`coverage_complete`とサーバー側抽出の両方）: 値が同じ項目（大文字と小文字、空白、記号の違いを除く）は、根拠を合わせて1つにします（8件まで。同じデータソースが「計画」と「使用」の両方で書かれていれば「計画」を残します）。まとめた後もスキーマの上限を超えるリストは、最初のバッチから詰めるのではなく、各バッチから順に1件ずつ採ります。どの深さのリストの項目にも、最初に現れたバッチを記録します（spec v1.23、v1.26）。質問別回答も同じ規則で、上限は60件です（spec v1.25）。上限で落とした件数と採り方は`missing_information`に書きます（例：`... only 20 are kept (schema limit), 6 omitted, taken in turn from the 5 batches.`）。
 
-引用検証の規則: 各事実には短い原文引用・PDFの物理ページ番号・セクションを付けます。引用の存在、ページ、指定セクションはコードで検証します（`pdf.py`の`validate_evidence`、`EVIDENCE_INVALID`/`EVIDENCE_WRONG_SECTION`）。研究方法・データソース欄の引用が背景・参考文献・目次・ENCePPチェックリストにしか存在しない場合は`EVIDENCE_WRONG_SECTION`で保存を拒否します（補足事項・質問別回答はその章自体への質問もあるため許容）。データソース名は引用中に存在する名前に限定します。引用が存在することは、要約や使用区分の意味が正しいことの保証ではありません。
+`research_protocol`（内部LLM設定時）は、まず`exploration.py`の`answer_from_full_text`（全関連セクションを`LLM_BATCH_CHARS`バッチへ分割し、並列で1回ずつ問い合わせて統合・pruneする「全文一括回答」）を試みます。これが回答を得られなかった場合のみ、`search`/`outline`/`read`/`finish`アクションを1手ずつ選ばせるステップ制限探索ループにフォールバックします（`LLM_MAX_STEPS`既定8・上限20。到達すると`exploration_limit_reached`を返し、未完了の回答は保存しません）。全文一括回答は2026-09-24に、旧来のステップ制限ループだけの構成（12,000字の読み取りでステップ予算を使い切っていた）を置き換える形で追加されました。探索はサーバーのタスクとして動き、`LLM_WAIT_SECONDS`を超えると`status=answering`を返します。同じ質問の呼び出しは動いている探索に合流し、探索が終わった後の最初の呼び出しが、`force`の有無に関係なくその結果を受け取ります。`force=true`が新しい探索を始めるのは、探索が動いておらず受け取られていない結果も無いときだけです。探索の中のPDFの解析・検索・検証・保存はスレッドで行い、イベントループを止めません。CLIの`ask`は終わるまで待ちます（spec v1.15、v1.26）。
+
+引用検証の規則: 各事実には短い原文引用・PDFの物理ページ番号・セクションを付けます。引用の存在、ページ、指定セクションはコードで検証します（`pdf.py`の`validate_evidence`、`EVIDENCE_INVALID`/`EVIDENCE_WRONG_SECTION`）。研究方法・データソース欄の引用が背景・参考文献・目次・ENCePPチェックリストにしか存在しない場合は`EVIDENCE_WRONG_SECTION`で保存を拒否します（補足事項・質問別回答はその章自体への質問もあるため許容）。データソース名は、名前の語がその順に引用のどれかに書かれていれば通します（大文字と小文字、記号の違いは無視し、語の間に他の語が3つまで入ってよい。ただし`;`、文末、名前自身の語をまたぐ並びは通しません）。名前が引用に無く方法の本文にあれば、サーバーが名前の箇所を引用に足します（引用が8件ある事実と、切り出しが1,000字を超えるときは足しません）。この規則は呼出元抽出・サーバー側抽出・質問別回答のすべてに当てはまります（spec v1.12、v1.26）。逐語の引用が示したページに無く別のページにあれば、最も近いページに直します（等距離の2ページにあるときは拒否します）。ページの訂正も、呼出元抽出と質問別回答の両方に当てはまります（spec v1.13）。引用が存在することは、要約や使用区分の意味が正しいことの保証ではありません。
 
 ## CSVは直接取得せず、PDFは保存できる理由
 
@@ -271,11 +276,11 @@ stdioで18ツールを公開します。引数・範囲・既定値の正本は[
 - `source_preference`はPDFの定義用途に対する優先条件です。既定は`prefer`、明示的な限定依頼だけ`only`を使い、未評価・不明の候補を優先条件だけで除外しません。
 - 英語以外のPDFでは、抽出・探索の応答の`reading`を保存へ渡します。途中で読み方が変わった場合はやり直します。
 - `compare_protocols`の`pending_tools`は、解析も回答も無い研究には質問付きの`analyze_protocol`を1つだけ出します（内部LLM設定時は`analyze_protocol`と`research_protocol`の2つ）。
-- 全ツールに題名と注釈（読み取り専用・破壊的・冪等・外部通信）があります（`mcp/server.py`の`ANNOTATIONS`、割り当ては[spec v1.16](docs/spec/v1.16.md)）。ツールを足すときは、この表にも足します（無いと起動時に`KeyError`になります）。`compare_protocols`と、サーバー側抽出の`analyze_protocol`は、クライアントが求めたときに進捗を通知します。
+- 全ツールに題名と注釈（読み取り専用・破壊的・冪等・外部通信）があります（`mcp/server.py`の`ANNOTATIONS`、割り当ては[spec v1.16](docs/spec/v1.16.md)。`cache_heading_translations`は[spec v1.26](docs/spec/v1.26.md)で破壊的に改めた）。ツールを足すときは、この表にも足します（無いと起動時に`KeyError`になります）。`compare_protocols`と、サーバー側抽出の`analyze_protocol`は、クライアントが求めたときに進捗を通知します（`compare_protocols`は最後に`(n, n)`を送ります）。通知の送信に失敗しても、stderrにwarningを記録してツールは続けます。
 - 解析の`source`、質問別回答と比較の`versions`には、作成時のアプリの版・カタログのスナップショットの日付・parserの版が入ります（spec v1.19）。保存済みの結果を返すときも、作成時の値のままです。`catalogue_status`の`app_update_available`は、動いている版より新しいリリースがあるときだけ現れます。
-- 引用の`server`はサーバーが付ける印です（spec v1.13）。`source_name`はデータソース名の書かれた箇所としてサーバーが足した引用（使い方や定義を支える引用ではありません）、`page`はサーバーがページを直した引用です。印の無い引用は、呼出元か内部LLMが渡したままです。
+- 引用の`server`はサーバーが付ける印です（spec v1.13）。`source_name`はデータソース名の書かれた箇所としてサーバーが足した引用（使い方や定義を支える引用ではありません）、`page`はサーバーがページを直した引用です。印の無い引用は、呼出元か内部LLMが渡したままです。呼出元や内部LLMが書いた`server`は、サーバーの処理の前に消します（`pdf.without_server_marks`、spec v1.26）。
 - 検索の条件（DARWIN EU、状態、類義語、コード、絞り込み、役割、範囲など）は、`storage.SearchRequest`の1つの値で受け渡します。条件を変えた検索は`dataclasses.replace(request, role=...)`のように名前で作ります。`search_studies`と`compare_protocols`の任意の引数は名前でしか渡せず、MCPとCLIのアダプタはサービスを名前付きの引数で呼びます。
-- 完了済み解析を`coverage_complete=true`で修正するときは全項目を渡します。一部だけの再保存は解析全体を置き換えます。
+- 完了済み解析を`coverage_complete=true`で修正するときは全項目を渡します。一部だけの再保存は解析全体を置き換えます。統合の後にバッチの無いまま空の解析（`missing_information`だけのものを含む）で呼び直すと、保存済みの解析を残して`INCOMPLETE_EXTRACTION`で断ります（spec v1.22、v1.26）。
 
 CLIのサブコマンドは、MCPのツールと1対1で対応し、同じ引数を持ちます（spec v1.17）。
 
@@ -299,7 +304,7 @@ CLIは`uv run ema-rwe <サブコマンド> --help`で確認できます（例：
 
 | ファイル | 内容 |
 |---|---|
-| [docs/spec/v0.1.md](docs/spec/v0.1.md)〜[v1.25.md](docs/spec/v1.25.md) | 段階的な追加要件の正本。対象変更の関連仕様を読む |
+| [docs/spec/v0.1.md](docs/spec/v0.1.md)〜[v1.26.md](docs/spec/v1.26.md) | 段階的な追加要件の正本。対象変更の関連仕様を読む |
 | [docs/mcp-workflow.md](docs/mcp-workflow.md) | 呼出元エージェント向けの完全な手順（英語） |
 | [docs/search-logic.md](docs/search-logic.md) | 検索語の展開・医薬品照合・順位付け |
 | [docs/benchmarks/20261009-codex-app.md](docs/benchmarks/20261009-codex-app.md) | Codex Appの4例とMCP実行時間の定義 |
@@ -313,4 +318,4 @@ CLIは`uv run ema-rwe <サブコマンド> --help`で確認できます（例：
 | [docs/validation.md](docs/validation.md) | 実サイト検証・自動検証・実測コスト・未検証事項 |
 | [docs/research/](docs/research/) | 個別調査記録（用語マイニング、配布方式比較、PDF読解コスト、医療用語体系の比較等） |
 
-実サイト検証と既知の制限は[docs/validation.md](docs/validation.md)を参照してください。仕様の10〜20プロトコルによる人手精度評価は未実施です。
+実サイト検証と既知の制限は[docs/validation.md](docs/validation.md)を参照してください。抽出の精度は、4つのプロトコルの人手で読んだ正解データ（組入れ・除外基準60項目、アウトカム定義40項目。spec v1.20〜v1.24）で採点しています（`scripts/extraction_eval.py grade`／`run`）。仕様の10〜20プロトコルによる人手精度評価は未実施で、プロトコルの数、題材（組入れ・除外基準とアウトカム以外）、読み手の種類の広がりは確かめていません。

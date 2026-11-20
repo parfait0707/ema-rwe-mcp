@@ -343,3 +343,122 @@ async def test_cli_style_call_waits_for_the_provider_and_a_failure_starts_afresh
     fail[0] = False
     done = await service.research_protocol(pid, question, poll=False)
     assert done["status"] == "answered"
+
+
+def section_chunks(*rows):
+    return [
+        {
+            "section_id": f"s{i:04}",
+            "page": page,
+            "section": section,
+            "text": text,
+            "role": role,
+            "chapter": None,
+        }
+        for i, (page, section, text, role) in enumerate(rows, 1)
+    ]
+
+
+def raised(chunks):
+    return {r["section"] for r in search_sections(chunks, "outcome", 30)["results"] if r.get("beside")}
+
+
+def test_a_section_short_only_on_its_matching_page_does_not_raise_its_neighbours():
+    """spec v1.23: the length of the section named for the question counts all its pages."""
+    exposure = (
+        5,
+        "9.3.1 Exposure definition",
+        "Exposure codes; the outcome uses the same window.",
+        "methods",
+    )
+    outcomes = (6, "9.3.2 Outcomes", "The outcome is listed here.", "methods")
+    assert raised(section_chunks(exposure, outcomes)) == {"9.3.1 Exposure definition"}
+    more = [(page, "9.3.2 Outcomes", "Further rules of the section. " * 30, "methods") for page in (7, 8)]
+    assert raised(section_chunks(exposure, outcomes, *more)) == set()
+
+
+def test_only_sibling_sections_of_a_method_role_are_raised():
+    chunks = section_chunks(
+        (4, "9.3 Variables", "All variables, the outcome among them.", "methods"),
+        (5, "9.3.1 Prior studies", "Earlier studies of the outcome.", "background"),
+        (6, "9.3.2 Outcomes", "The outcome is listed here.", "methods"),
+        (7, "9.3.2.1 Codes", "Codes of the outcome.", "methods"),
+        (8, "9.3.3 Exposure definition", "Exposure codes; the outcome uses the same window.", "methods"),
+    )
+    assert raised(chunks) == {"9.3.3 Exposure definition"}
+
+
+async def provider_waiting_for(service, monkeypatch, release, asked):
+    pid = (await service.get_protocol("123"))["protocol"]["protocol_id"]
+    service.settings.llm_backend, service.settings.llm_model = "litellm", "anthropic/test"
+    service.settings.llm_wait_seconds = 0.02
+
+    async def respond(settings, messages):
+        asked.append(1)
+        await release.wait()
+        return answer().model_dump()
+
+    monkeypatch.setattr("ema_rwe.exploration.complete_json", respond)
+    return pid
+
+
+async def test_a_forced_call_after_the_exploration_ended_collects_its_answer(service, monkeypatch):
+    """spec v1.15 3 and 5: calling again with the same arguments (force=true) receives the answer."""
+    release, asked = asyncio.Event(), []
+    pid = await provider_waiting_for(service, monkeypatch, release, asked)
+    question = "Which adjustment method is planned?"
+    assert (await service.research_protocol(pid, question, force=True))["status"] == "answering"
+    release.set()
+    await asyncio.gather(*service.explorer._running.values())
+    calls = len(asked)
+    result = await service.research_protocol(pid, question, force=True)
+    assert result["status"] == "answered" and len(asked) == calls
+    assert not service.explorer._running
+
+
+async def test_a_call_during_a_forced_exploration_joins_it_instead_of_the_old_answer(service, monkeypatch):
+    release, asked = asyncio.Event(), []
+    pid = await provider_waiting_for(service, monkeypatch, release, asked)
+    question = "Which adjustment method is planned?"
+    release.set()
+    assert (await service.research_protocol(pid, question, poll=False))["status"] == "answered"
+    release.clear()
+    assert (await service.research_protocol(pid, question, force=True))["status"] == "answering"
+    joined = await service.research_protocol(pid, question)
+    assert joined["status"] == "answering" and not joined["cached"]
+    release.set()
+    await asyncio.gather(*service.explorer._running.values())
+
+
+async def test_a_slow_pdf_read_does_not_hold_the_waiting_call(service, monkeypatch):
+    import time
+
+    release, asked = asyncio.Event(), []
+    pid = await provider_waiting_for(service, monkeypatch, release, asked)
+    context = service.explorer.context
+
+    def slow_context(*args, **kwargs):
+        time.sleep(1.0)
+        return context(*args, **kwargs)
+
+    monkeypatch.setattr(service.explorer, "context", slow_context)
+    started = time.monotonic()
+    first = await service.research_protocol(pid, "Which adjustment method is planned?")
+    assert first["status"] == "answering" and time.monotonic() - started < 0.5
+    release.set()
+    await asyncio.gather(*service.explorer._running.values())
+
+
+async def test_provider_server_marks_are_not_kept(service, monkeypatch):
+    pid = (await service.get_protocol("123"))["protocol"]["protocol_id"]
+    service.settings.llm_backend, service.settings.llm_model = "litellm", "anthropic/test"
+    marked = answer().model_dump()
+    marked["answers"][0]["evidence"][0]["server"] = "source_name"
+    decisions = iter([{"answers": [], "source_assessments": []}, {"action": "finish", "answer": marked}])
+
+    async def respond(settings, messages):
+        return next(decisions)
+
+    monkeypatch.setattr("ema_rwe.exploration.complete_json", respond)
+    result = await service.research_protocol(pid, "Which adjustment method?", poll=False)
+    assert result["answer"]["answers"][0]["evidence"][0]["server"] is None

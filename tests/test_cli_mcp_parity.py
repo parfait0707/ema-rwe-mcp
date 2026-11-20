@@ -1,6 +1,8 @@
 """The CLI and the MCP tools take the same arguments (AGENTS.md: keep CLI, MCP schemas and documentation
 consistent). The tables below say how the two name things; a parameter added to one side without the other,
-a different default or choice list, or a bound the core does not enforce fails here."""
+a different default or choice list, or a bound of a top-level parameter the core does not enforce fails here.
+Bounds inside structured parameters (filters, blocks, analysis) are not compared: both routes build those
+with the same pydantic models."""
 
 import argparse
 
@@ -152,8 +154,10 @@ def test_defaults_agree(commands, tools):
             expected = schema.get("default")
             if (command, dest) in NEGATED:
                 expected = not expected
-            # A repeatable flag that was not given and an absent list are both 'nothing'.
-            assert (action.default or None) == (expected or None), (command, dest)
+            # A repeatable flag that was not given and an absent list are both 'nothing'; False, 0 and None
+            # stay apart (type too, since False == 0).
+            cli, mcp = (None if v == [] else v for v in (action.default, expected))
+            assert (type(cli), cli) == (type(mcp), mcp), (command, dest)
 
 
 def test_choices_agree(commands, tools):
@@ -178,37 +182,50 @@ def test_choices_agree(commands, tools):
 # One call per bound of the MCP schemas, just outside it. The CLI has no bounds of its own: the core
 # refuses these, so both routes behave alike.
 OUT_OF_RANGE = [
-    ("search_studies", "limit", lambda s, p: s.search_studies("opioid", limit=0)),
-    ("search_studies", "limit", lambda s, p: s.search_studies("opioid", limit=21)),
-    ("search_studies", "query", lambda s, p: s.search_studies("x" * 2001)),
-    ("compare_protocols", "question", lambda s, p: s.compare_protocols("x" * 2001, ["opioid"])),
+    ("search_studies", "limit", "minimum", lambda s, p: s.search_studies("opioid", limit=0)),
+    ("search_studies", "limit", "maximum", lambda s, p: s.search_studies("opioid", limit=21)),
+    ("search_studies", "query", "maxLength", lambda s, p: s.search_studies("x" * 2001)),
+    ("compare_protocols", "question", "maxLength", lambda s, p: s.compare_protocols("x" * 2001, ["opioid"])),
     (
         "compare_protocols",
         "check_protocols",
+        "minimum",
         lambda s, p: s.compare_protocols("q", ["opioid"], check_protocols=-1),
     ),
     (
         "compare_protocols",
         "check_protocols",
+        "maximum",
         lambda s, p: s.compare_protocols("q", ["opioid"], check_protocols=21),
     ),
-    ("get_protocol_outline", "offset", lambda s, p: s.get_protocol_outline(p, offset=-1)),
-    ("get_protocol_outline", "limit", lambda s, p: s.get_protocol_outline(p, limit=0)),
-    ("get_protocol_outline", "limit", lambda s, p: s.get_protocol_outline(p, limit=201)),
-    ("search_protocol_text", "limit", lambda s, p: s.search_protocol_text(p, "design", limit=0)),
-    ("search_protocol_text", "limit", lambda s, p: s.search_protocol_text(p, "design", limit=31)),
-    ("search_protocol_text", "max_chars", lambda s, p: s.search_protocol_text(p, "design", max_chars=999)),
-    ("read_protocol_text", "offset", lambda s, p: s.read_protocol_text(p, offset=-1)),
-    ("read_protocol_text", "max_chars", lambda s, p: s.read_protocol_text(p, max_chars=999)),
-    ("read_protocol_text", "max_chars", lambda s, p: s.read_protocol_text(p, max_chars=20001)),
-    ("analyze_protocol", "offset", lambda s, p: s.analyze_protocol("123", offset=-1)),
-    ("analyze_protocol", "max_chars", lambda s, p: s.analyze_protocol("123", max_chars=5999)),
-    ("analyze_protocol", "max_chars", lambda s, p: s.analyze_protocol("123", max_chars=150001)),
-    ("analyze_protocol", "question", lambda s, p: s.analyze_protocol("123", question="x" * 2001)),
-    ("research_protocol", "question", lambda s, p: s.research_protocol(p, "x" * 2001)),
+    ("get_protocol_outline", "offset", "minimum", lambda s, p: s.get_protocol_outline(p, offset=-1)),
+    ("get_protocol_outline", "limit", "minimum", lambda s, p: s.get_protocol_outline(p, limit=0)),
+    ("get_protocol_outline", "limit", "maximum", lambda s, p: s.get_protocol_outline(p, limit=201)),
+    ("search_protocol_text", "limit", "minimum", lambda s, p: s.search_protocol_text(p, "design", limit=0)),
+    ("search_protocol_text", "limit", "maximum", lambda s, p: s.search_protocol_text(p, "design", limit=31)),
+    (
+        "search_protocol_text",
+        "max_chars",
+        "minimum",
+        lambda s, p: s.search_protocol_text(p, "design", max_chars=999),
+    ),
+    ("read_protocol_text", "offset", "minimum", lambda s, p: s.read_protocol_text(p, offset=-1)),
+    ("read_protocol_text", "max_chars", "minimum", lambda s, p: s.read_protocol_text(p, max_chars=999)),
+    ("read_protocol_text", "max_chars", "maximum", lambda s, p: s.read_protocol_text(p, max_chars=20001)),
+    ("analyze_protocol", "offset", "minimum", lambda s, p: s.analyze_protocol("123", offset=-1)),
+    ("analyze_protocol", "max_chars", "minimum", lambda s, p: s.analyze_protocol("123", max_chars=5999)),
+    ("analyze_protocol", "max_chars", "maximum", lambda s, p: s.analyze_protocol("123", max_chars=150001)),
+    (
+        "analyze_protocol",
+        "question",
+        "maxLength",
+        lambda s, p: s.analyze_protocol("123", question="x" * 2001),
+    ),
+    ("research_protocol", "question", "maxLength", lambda s, p: s.research_protocol(p, "x" * 2001)),
     (
         "cache_protocol_answer",
         "question",
+        "maxLength",
         lambda s, p: s.cache_protocol_answer(
             p, "x" * 2001, ProtocolAnswer(answers=sample_analysis().key_notes)
         ),
@@ -216,6 +233,7 @@ OUT_OF_RANGE = [
     (
         "cache_protocol_analysis",
         "question",
+        "maxLength",
         lambda s, p: s.cache_protocol_analysis(
             "123", "fingerprint", Extraction(), batch_offset=0, answer=ProtocolAnswer(), question="x" * 2001
         ),
@@ -223,19 +241,32 @@ OUT_OF_RANGE = [
 ]
 
 
+# Every kind of bound JSON Schema puts on a number, a string or a list.
+BOUNDS = {
+    "minimum",
+    "maximum",
+    "exclusiveMinimum",
+    "exclusiveMaximum",
+    "minLength",
+    "maxLength",
+    "minItems",
+    "maxItems",
+}
+
+
 async def test_the_core_refuses_what_the_schemas_bound(service, tools):
     protocol = (await service.get_protocol("123"))["protocol"]["protocol_id"]
-    for tool, parameter, call in OUT_OF_RANGE:
+    for tool, parameter, bound, call in OUT_OF_RANGE:
         with pytest.raises(RWEError) as error:
             result = call(service, protocol)
             if hasattr(result, "__await__"):
                 await result
-        assert error.value.code == "INVALID_INPUT", (tool, parameter, error.value.code)
-    # Every numeric or length bound in a tool schema is covered above
+        assert error.value.code == "INVALID_INPUT", (tool, parameter, bound, error.value.code)
+    # Every bound of every top-level parameter is covered above, each kind on its own
     bounded = {
-        (tool, name)
+        (tool, name, bound)
         for tool, schema in tools.items()
         for name, prop in schema["properties"].items()
-        if {"minimum", "maximum", "maxLength"} & set(resolve(prop, schema))
+        for bound in BOUNDS & set(resolve(prop, schema))
     }
-    assert bounded == {(tool, parameter) for tool, parameter, _ in OUT_OF_RANGE}
+    assert bounded == {(tool, parameter, bound) for tool, parameter, bound, _ in OUT_OF_RANGE}

@@ -1,6 +1,6 @@
 """Time the tool calls of one caller extraction per study, without an LLM.
 
-    uv run python scripts/time_tools.py <study_id> [<study_id> ...]
+    uv run scripts/time_tools.py <study_id> [<study_id> ...]
 
 For each study it reads every batch of analyze_protocol, caches an empty batch at each offset (as a caller
 does between batches), then calls the outline, search, read and research tools once. It works on a temporary

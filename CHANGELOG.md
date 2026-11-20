@@ -2,6 +2,39 @@
 
 ## Unreleased
 
+- Fixes from a review of the changes of PRs #81 to #98 (spec v1.26):
+  - Caller-assisted extraction: a batch counts as far as it was served when it was cached, so serving an
+    offset again with another `max_chars` no longer lets the merge pass with unread sections (or report
+    read ones as missing). A `coverage_complete` call without the `question` whose answers the cached
+    batches hold is refused (`INVALID_INPUT`) instead of dropping those answers. The analysis is saved
+    before the answer, so a refused analysis leaves no answer behind. A repeated final call that carries
+    only `missing_information` no longer replaces a saved analysis.
+  - `analyze_protocol(force_refresh=true)` at offset 0 discards the study's unfinished batches, the
+    provider's too: a server-side extraction that failed after its last batch no longer repeats the same
+    error from the same batches.
+  - Data source names no longer match across a `;`, a sentence end or another word of the name. The
+    naming passage the server adds is looked for near any cited page, never exceeds a quote's 1000
+    characters, and a fact with 8 quotes that leave the name out is told so.
+  - `evidence[].server` marks written by a caller or a provider are dropped; only the server's own remain.
+  - `research_protocol`: the first call after an exploration ended receives its result, also with
+    `force=true` (a forced repeat used to discard it and start again); a call without `force` during a
+    forced exploration joins it instead of returning the old answer. PDF work of an exploration no longer
+    holds the event loop.
+  - Questions that name a short section raise only its sibling sections (not its parent, its own
+    subsections or background sections), and a section's length counts all its pages.
+  - `cache_heading_translations` is marked destructive. `compare_protocols` sends a last progress
+    notification when every protocol is retrieved, and a failed notification no longer stops the tool. A
+    tool call that raises is logged on stderr too.
+  - Catalogue updates: closing the server no longer waits for an update in progress; work folders an
+    interrupted update left behind are removed by a later one; redirects are checked before they are
+    followed; a CSV imported after the snapshot was built is kept without downloading it; a manifest must
+    name the snapshot it holds; unpacking stops at the size the manifest gives; a failed catalogue
+    replacement is logged. `EMA_CATALOGUE_UPDATE=off` also hides `app_update_available`.
+  - Development: the pre-push hook skips a push that only deletes a branch (it ran the checks for every
+    push); scripts are run as `uv run scripts/<name>.py`; `scripts/check.py` names the failed step when a
+    command is missing or no wheel was built; the extraction reference check uses the configured research
+    budget and counts it as `research_protocol` does; a required value is a whole number or a code with
+    its subcodes (`3` is not stated by `13`); `grade` closes its service.
 - An answer to a question holds up to 60 facts (was 30), and the answers found batch by batch while a
   protocol is read are merged like the analysis: the same answer once, and over the limit taken in turn
   from every batch (spec v1.25). With `analyze_protocol(question=...)` readers found 34 to 57 answers in

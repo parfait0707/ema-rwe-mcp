@@ -93,12 +93,15 @@ def quote_length(quote: str) -> int:
     return len(" ".join(quote.replace("\u00ad", "").split()))
 
 
+QUOTE_LIMIT = 1000
+
+
 class Evidence(Model):
     page: int = Field(ge=1)
     section: str | None = None
     quote: str = Field(
         min_length=8,
-        max_length=1000,
+        max_length=QUOTE_LIMIT,
         description="Verbatim; at least 8 characters, so quote the whole line around a bare code or word",
     )
     # What the server did to this item, if anything (spec v1.13): 'source_name' = a passage it added because

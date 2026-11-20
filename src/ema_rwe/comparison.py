@@ -244,6 +244,8 @@ class Comparisons:
                     error={"code": "CACHE_ERROR", "message": "PDF filesystem operation failed."},
                 )
             self.write(result)
+        if on_progress:
+            await on_progress(len(result["rows"]), len(result["rows"]), "Retrieved every protocol")
         return self.collect(cid)
 
     def write(self, result):

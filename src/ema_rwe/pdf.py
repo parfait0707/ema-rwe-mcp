@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 
 import pymupdf
 
-from .domain import Extraction, RWEError, with_notes
+from .domain import QUOTE_LIMIT, Extraction, RWEError, with_notes
 from .terminology import search_units
 from .vocabulary import canonical, contains, expand
 
@@ -1027,30 +1027,38 @@ def mentions(text: str, term: str) -> bool:
 SHORT_SECTION_CHARS = 1000
 
 
-def raise_neighbours(hits: list[dict], terms: list[str]) -> None:
+def raise_neighbours(hits: list[dict], terms: list[str], chunks: list[dict] | None = None) -> None:
     """A short section named for the question's concept often only lists what its neighbours define
     ('9.3.2 Outcomes definition' in four lines, the definitions under '9.3.1 Exposure definition'). The
     sections beside it under the same numbered heading that matched the question themselves are ranked
     right after it, in place (spec v1.23). Only for a section numbered three levels deep or more, so that
-    the neighbours are a subsection's, never a whole chapter's."""
-    length: dict[str, int] = {}
-    for hit in hits:
-        length[hit["section"]] = length.get(hit["section"], 0) + len(hit["text"])
+    the neighbours are a subsection's, never a whole chapter's. A section's length is that of all its pages
+    in chunks (default: the hits are all the text), not only of the pages that matched."""
+    section_of, length, previous = {}, {}, None
+    for chunk in hits if chunks is None else chunks:
+        if previous is None or chunk["section"] != previous["section"]:
+            first = chunk["section_id"]  # the same heading further on is another section
+        section_of[chunk["section_id"]], previous = first, chunk
+        length[first] = length.get(first, 0) + len(chunk["text"])
     named = [
         h
         for h in hits
         if len(section_number(h["section"])) >= 3
-        and length[h["section"]] <= SHORT_SECTION_CHARS
+        and length[section_of[h["section_id"]]] <= SHORT_SECTION_CHARS
         and h["role"] not in NON_METHOD_ROLES
         and any(mentions(h["section"], t) for t in terms)
     ]
     for hit in hits:
         number = section_number(hit["section"])
         for anchor in named:
-            parent = section_number(anchor["section"])[:-1]
+            own = section_number(anchor["section"])
+            parent = own[:-1]
             if (
                 hit["section"] != anchor["section"]
+                and len(number) > len(parent)
                 and number[: len(parent)] == parent
+                and number[: len(own)] != own  # the anchor's own subsections are not beside it
+                and hit["role"] not in NON_METHOD_ROLES
                 and hit["score"] < anchor["score"] - 0.5
             ):
                 hit["score"], hit["beside"] = anchor["score"] - 0.5, anchor["section_id"]
@@ -1074,7 +1082,7 @@ def search_sections(
             if chunk["role"] in NON_METHOD_ROLES:
                 score *= 0.15
             hits.append(dict(chunk, score=score, matched_terms=matched))
-    raise_neighbours(hits, terms)
+    raise_neighbours(hits, terms, chunks)
     hits.sort(key=lambda c: (-c["score"], c["page"], c["section_id"]))
     return {
         "query_expansion": expansion,
@@ -1090,21 +1098,29 @@ def normalize_quote(text: str) -> str:
 
 WORD = re.compile(r"[^\W_]+")
 NAME_GAP = 3
+SENTENCE_END = re.compile(r"[.!?](?:\s|$)")
 
 
 def _words(text: str) -> list[tuple[str, int, int]]:
     return [(m.group().casefold(), m.start(), m.end()) for m in WORD.finditer(text)]
 
 
-def _span(wanted: list[str], words: list[tuple[str, int, int]]) -> tuple[int, int] | None:
+def _span(wanted: list[str], words: list[tuple[str, int, int]], text: str) -> tuple[int, int] | None:
+    names = set(wanted)
     for first, (word, start, _) in enumerate(words):
         if word != wanted[0]:
             continue
         at, end = first, words[first][2]
         for target in wanted[1:]:
-            following = next(
-                (i for i in range(at + 1, min(at + 2 + NAME_GAP, len(words))) if words[i][0] == target), None
-            )
+            following = None
+            for i in range(at + 1, min(at + 2 + NAME_GAP, len(words))):
+                gap = text[words[at][2] : words[i][1]]
+                # A clause break, or a word of the name itself in the gap, means the text names other things
+                if ";" in gap or (i > at + 1 and (SENTENCE_END.search(gap) or words[i - 1][0] in names)):
+                    break
+                if words[i][0] == target:
+                    following = i
+                    break
             if following is None:
                 break
             at, end = following, words[following][2]
@@ -1120,7 +1136,7 @@ def name_span(name: str, text: str) -> tuple[int, int] | None:
     stand between two words of the name: a table breaks a name over lines with other cells in between
     ('Income and education registries from   -' / 'Statistics Denmark')."""
     wanted = [w.casefold() for w in WORD.findall(name)]
-    return _span(wanted, _words(text)) if wanted else None
+    return _span(wanted, _words(text), text) if wanted else None
 
 
 def _window(text: str, span: tuple[int, int]) -> str:
@@ -1136,7 +1152,8 @@ def _window(text: str, span: tuple[int, int]) -> str:
 def name_window(name: str, text: str) -> str | None:
     """A short verbatim passage of text around the place it writes name (see name_span), or None."""
     span = name_span(name, text)
-    return _window(text, span) if span else None
+    window = _window(text, span) if span else None
+    return window if window and len(window) <= QUOTE_LIMIT else None
 
 
 def with_source_name_quotes(facts: list, pages: list[Page], chunks: list[dict] | None = None) -> list:
@@ -1157,8 +1174,8 @@ def with_source_name_quotes(facts: list, pages: list[Page], chunks: list[dict] |
         for text, words in usable.get(page, []):
             if not words:
                 words.extend(_words(text))
-            span = _span(wanted, words)
-            if span and len(normalize_quote(quote := _window(text, span))) >= 8:
+            span = _span(wanted, words, text)
+            if span and len(normalize_quote(quote := _window(text, span))) >= 8 and len(quote) <= QUOTE_LIMIT:
                 return quote
         return None
 
@@ -1171,7 +1188,9 @@ def with_source_name_quotes(facts: list, pages: list[Page], chunks: list[dict] |
             and not any(name_span(fact.value, e.quote) for e in fact.evidence)
         ):
             cited = list(dict.fromkeys(e.page for e in fact.evidence))
-            others = sorted((p for p in usable if p not in cited), key=lambda p: (abs(p - cited[0]), p))
+            others = sorted(
+                (p for p in usable if p not in cited), key=lambda p: (min(abs(p - c) for c in cited), p)
+            )
             for page in [*cited, *others]:
                 if quote := naming_quote(wanted, page):
                     added = type(fact.evidence[0])(page=page, section=None, quote=quote, server="source_name")
@@ -1179,6 +1198,27 @@ def with_source_name_quotes(facts: list, pages: list[Page], chunks: list[dict] |
                     break
         result.append(fact)
     return result
+
+
+def _map_evidence(model, change):
+    """model (an extraction or an answer) with change applied to each evidence item's dict."""
+
+    def walk(node):
+        if isinstance(node, list):
+            return [walk(item) for item in node]
+        if not isinstance(node, dict):
+            return node
+        if "quote" in node and "page" in node:
+            return change(node)
+        return {key: walk(value) for key, value in node.items()}
+
+    return type(model).model_validate(walk(model.model_dump()))
+
+
+def without_server_marks(model):
+    """model, received from a caller or a provider, without server marks: a mark records what this server did
+    to a quote (spec v1.13), so a mark written by anyone else is dropped before the server's own steps."""
+    return _map_evidence(model, lambda node: dict(node, server=None))
 
 
 def with_corrected_pages(model, pages: list[Page]):
@@ -1189,21 +1229,15 @@ def with_corrected_pages(model, pages: list[Page]):
     The section label of a moved quote is dropped: it named a section of the page given."""
     texts = {p.page: normalize_quote(p.text) for p in pages}
 
-    def walk(node):
-        if isinstance(node, list):
-            return [walk(item) for item in node]
-        if not isinstance(node, dict):
-            return node
-        if "quote" in node and "page" in node:
-            quote = normalize_quote(node["quote"])
-            if quote and quote not in texts.get(node["page"], ""):
-                holding = sorted((abs(p - node["page"]), p) for p, text in texts.items() if quote in text)
-                if holding and (len(holding) == 1 or holding[0][0] < holding[1][0]):
-                    return dict(node, page=holding[0][1], section=None, server="page")
-            return node
-        return {key: walk(value) for key, value in node.items()}
+    def correct(node):
+        quote = normalize_quote(node["quote"])
+        if quote and quote not in texts.get(node["page"], ""):
+            holding = sorted((abs(p - node["page"]), p) for p, text in texts.items() if quote in text)
+            if holding and (len(holding) == 1 or holding[0][0] < holding[1][0]):
+                return dict(node, page=holding[0][1], section=None, server="page")
+        return node
 
-    return type(model).model_validate(walk(model.model_dump()))
+    return _map_evidence(model, correct)
 
 
 def validate_evidence(extraction: Extraction, pages: list[Page], chunks: list[dict] | None = None):
@@ -1243,6 +1277,15 @@ def validate_evidence(extraction: Extraction, pages: list[Page], chunks: list[di
                         "use the returned section label or null.",
                     )
         if is_source and not any(name_span(fact.value, e.quote) for e in fact.evidence):
+            if len(fact.evidence) >= 8 and any(
+                c["role"] not in EVIDENCE_REJECT_ROLES and name_span(fact.value, c["text"]) for c in chunks
+            ):
+                raise RWEError(
+                    "EVIDENCE_INVALID",
+                    f"Data source name {fact.value[:80]!r} is not written in its 8 evidence quotes; the server adds "
+                    "the passage that names it only to a fact with fewer than 8 quotes: drop one quote, or cite "
+                    "the passage that names it.",
+                )
             raise RWEError(
                 "EVIDENCE_INVALID",
                 f"Data source name {fact.value[:80]!r} is not written in its evidence quotes, nor in the "
@@ -1372,7 +1415,8 @@ def prune_unverifiable(extraction: Extraction, pages: list[Page]) -> tuple[Extra
         """Replace the section label with the one derived from where the quote sits on the page.
 
         Provider labels are not trusted: a heading carried over from an earlier page passes the
-        containment check while naming the wrong section. No unique chunk -> null.
+        containment check while naming the wrong section. No unique chunk -> null. A server mark the provider
+        wrote is dropped too (see without_server_marks).
         """
         quote = normalize_quote(evidence["quote"])
         page_text = page_map.get(evidence["page"], "")
@@ -1385,7 +1429,7 @@ def prune_unverifiable(extraction: Extraction, pages: list[Page]) -> tuple[Extra
             # A heading carried over from an earlier page is not this page's section.
             and normalize_quote(c["section"]) in page_text
         }
-        return dict(evidence, section=labels.pop() if len(labels) == 1 else None)
+        return dict(evidence, section=labels.pop() if len(labels) == 1 else None, server=None)
 
     def prune_block(block: dict) -> None:
         nonlocal dropped

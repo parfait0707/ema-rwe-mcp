@@ -1,7 +1,7 @@
 """The checks a change must pass before it is pushed: one command, no hosted CI.
 
-    uv run python scripts/check.py            # every step
-    uv run python scripts/check.py --no-build # without the build and wheel steps (quicker while editing)
+    uv run scripts/check.py            # every step
+    uv run scripts/check.py --no-build # without the build and wheel steps (quicker while editing)
 
 Steps, in order; the first failure stops the run and is named in the last line:
 
@@ -12,7 +12,7 @@ Steps, in order; the first failure stops the run and is named in the last line:
     tests     pytest (includes the real stdio MCP tests)
     gold      scripts/extraction_eval.py check --require: every reference criterion of the four reference
               protocols is still found, served to the reader and accepted as evidence. The protocols are the
-              user's own copies (`uv run python scripts/extraction_eval.py fetch`, once per clone);
+              user's own copies (`uv run scripts/extraction_eval.py fetch`, once per clone);
               --allow-missing-gold checks only those that are there.
     build     uv build into a temporary folder
     wheel     the wheel holds every module and the bundled data the server reads at run time
@@ -49,7 +49,10 @@ VERSIONED = {
 
 
 def run(*command: str) -> None:
-    result = subprocess.run(command, cwd=ROOT, check=False)
+    try:
+        result = subprocess.run(command, cwd=ROOT, check=False)
+    except OSError as error:
+        raise SystemExit(f"{command[0]}: {error}") from None
     if result.returncode:
         raise SystemExit(result.returncode)
 
@@ -78,7 +81,9 @@ def versions() -> None:
 
 
 def wheel(folder: Path) -> None:
-    (built,) = folder.glob("*.whl")
+    built = next(folder.glob("*.whl"), None)
+    if built is None:
+        raise SystemExit("uv build wrote no wheel")
     names = set(zipfile.ZipFile(built).namelist())
     modules = {
         "ema_rwe/" + path.relative_to(ROOT / "src" / "ema_rwe").as_posix()
@@ -100,7 +105,7 @@ def main() -> None:
         help="pass when reference protocols of the extraction check are not in the archive (they are skipped)",
     )
     args = parser.parse_args()
-    gold = ["uv", "run", "python", "scripts/extraction_eval.py", "check"]
+    gold = ["uv", "run", "scripts/extraction_eval.py", "check"]
     steps = [
         ("versions", versions),
         ("lock", lambda: run("uv", "lock", "--check")),

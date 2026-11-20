@@ -11,8 +11,10 @@ import json
 import logging
 import os
 import re
+import shutil
 import sqlite3
 import tempfile
+import time
 from datetime import UTC, datetime, timedelta
 from importlib.metadata import version
 from pathlib import Path
@@ -35,8 +37,14 @@ EXPORT_DATE = re.compile(r"^(\d{8})_")
 CHECK_INTERVAL = timedelta(hours=24)
 MAX_MANIFEST_BYTES = 1 << 20
 MAX_ARCHIVE_BYTES = 300 << 20
+MAX_REDIRECTS = 5
 # Results that mean the catalogue is as good as it can be for now, and those that mean the attempt failed.
 FAILED = {"unreachable", "rate_limited", "invalid_snapshot", "not_applied"}
+KEPT_LOCAL_IMPORT = "A CSV imported into this database is newer than the snapshot; the catalogue was kept."
+# Work folders beside the database; one untouched this long was left by an update that was stopped (the
+# server's update thread is a daemon), not one another process is still downloading into.
+WORK_PREFIX = "ema-rwe-update-"
+STALE_WORK = timedelta(hours=6)
 
 
 def state_path(settings: Settings) -> Path:
@@ -100,7 +108,9 @@ def versions(db_path: Path) -> dict:
 def app_update(settings: Settings) -> dict | None:
     """A newer release of the application than the one running, as the last look at GitHub found it; None
     when this is the newest (or nothing is known). The application is never replaced by the server: the user
-    changes the version their MCP client starts."""
+    changes the version their MCP client starts. Off tells nothing, even from an earlier check (spec v1.19)."""
+    if settings.catalogue_update == "off":
+        return None
     latest, running = read_state(settings).get("latest_app_version"), version("ema-rwe-mcp")
     if not latest or _version_tuple(latest) <= _version_tuple(running):
         return None
@@ -120,30 +130,35 @@ def _version_tuple(text: str) -> tuple[int, ...]:
 
 
 def _get(client: httpx.Client, url: str, limit: int, target: Path | None = None) -> bytes:
-    """GET within a size limit; GitHub only, HTTPS only, also after redirects. With target, stream to it."""
-    with client.stream("GET", url, follow_redirects=True) as response:
-        for hop in [*response.history, response]:
-            parts = urlsplit(str(hop.url))
-            host = parts.hostname or ""
-            if parts.scheme != "https" or not (
-                host in ("github.com", "api.github.com") or host.endswith(".githubusercontent.com")
-            ):
-                raise RWEError("SNAPSHOT_INVALID", f"Snapshot request left GitHub ({host}).")
-        if response.status_code in (403, 429) and response.headers.get("x-ratelimit-remaining") == "0":
-            raise _Failure("rate_limited", "GitHub's request limit for this address is used up for now.")
-        if response.status_code >= 400:
-            raise _Failure("unreachable", f"GitHub answered HTTP {response.status_code}.")
-        received, parts_read, sink = 0, [], target.open("wb") if target else None
-        try:
-            for block in response.iter_bytes():
-                received += len(block)
-                if received > limit:
-                    raise RWEError("SNAPSHOT_INVALID", f"Response exceeds {limit} bytes.")
-                sink.write(block) if sink else parts_read.append(block)
-        finally:
-            if sink:
-                sink.close()
-        return b"".join(parts_read)
+    """GET within a size limit; GitHub only, HTTPS only, each redirect checked before it is followed. With
+    target, stream to it."""
+    for _ in range(MAX_REDIRECTS + 1):
+        parts = urlsplit(url)
+        host = parts.hostname or ""
+        if parts.scheme != "https" or not (
+            host in ("github.com", "api.github.com") or host.endswith(".githubusercontent.com")
+        ):
+            raise RWEError("SNAPSHOT_INVALID", f"Snapshot request left GitHub ({host}).")
+        with client.stream("GET", url, follow_redirects=False) as response:
+            if response.is_redirect:
+                url = str(response.next_request.url)
+                continue
+            if response.status_code in (403, 429) and response.headers.get("x-ratelimit-remaining") == "0":
+                raise _Failure("rate_limited", "GitHub's request limit for this address is used up for now.")
+            if response.status_code >= 400:
+                raise _Failure("unreachable", f"GitHub answered HTTP {response.status_code}.")
+            received, parts_read, sink = 0, [], target.open("wb") if target else None
+            try:
+                for block in response.iter_bytes():
+                    received += len(block)
+                    if received > limit:
+                        raise RWEError("SNAPSHOT_INVALID", f"Response exceeds {limit} bytes.")
+                    sink.write(block) if sink else parts_read.append(block)
+            finally:
+                if sink:
+                    sink.close()
+            return b"".join(parts_read)
+    raise _Failure("unreachable", f"More than {MAX_REDIRECTS} redirects.")
 
 
 class _Failure(Exception):
@@ -207,10 +222,15 @@ def update_catalogue(
         timeout=settings.timeout, headers={"User-Agent": settings.user_agent, "Accept": "application/json"}
     )
     try:
-        with tempfile.TemporaryDirectory(dir=settings.db_path.parent) as folder:
+        remove_stale_work(settings.db_path.parent)
+        with tempfile.TemporaryDirectory(prefix=WORK_PREFIX, dir=settings.db_path.parent) as folder:
             if archive:
                 described, packed = json.loads(manifest.read_text(encoding="utf-8")), archive
-                outcome["latest_snapshot"] = str(described.get("snapshot_id"))
+                if not re.fullmatch(r"\d{8}", str(described.get("snapshot_id"))):
+                    raise RWEError(
+                        "SNAPSHOT_INVALID", "The manifest names no snapshot (snapshot_id YYYYMMDD)."
+                    )
+                outcome["latest_snapshot"] = described["snapshot_id"]
             else:
                 releases = published(client, settings.catalogue_releases_url)
                 if newest := latest_app(releases):  # the same list also tells of a newer application
@@ -242,19 +262,23 @@ def update_catalogue(
                 )
             if not apply:
                 return _record(settings, outcome, "available", "A newer snapshot is published; not applied.")
+            # The snapshot's imports all precede its manifest, so a later CSV of the user's settles it without
+            # the download; one in between is still caught after it.
+            mine = latest_import(settings.db_path)
+            if mine and mine >= str(described.get("created_at") or "~"):
+                return _record(settings, outcome, "kept_local_import", KEPT_LOCAL_IMPORT)
             if not archive:
                 packed = Path(folder) / "snapshot.sqlite3.gz"
                 expected = int((described.get("compressed") or {}).get("size") or MAX_ARCHIVE_BYTES)
                 _get(client, release["archive_url"], min(expected, MAX_ARCHIVE_BYTES), packed)
             unpacked = verify_snapshot(described, packed, Path(folder) / "snapshot.sqlite3")
-            mine, theirs = latest_import(settings.db_path), latest_import(unpacked)
-            if mine and theirs and mine >= theirs:
-                return _record(
-                    settings,
-                    outcome,
-                    "kept_local_import",
-                    "A CSV imported into this database is newer than the snapshot; the catalogue was kept.",
+            if current_snapshot(unpacked) != outcome["latest_snapshot"]:
+                raise RWEError(
+                    "SNAPSHOT_INVALID", "The database holds another snapshot than its manifest names."
                 )
+            theirs = latest_import(unpacked)
+            if mine and theirs and mine >= theirs:
+                return _record(settings, outcome, "kept_local_import", KEPT_LOCAL_IMPORT)
             if not refresh_from_bundle(unpacked, settings.db_path):
                 return _record(
                     settings, outcome, "not_applied", "The catalogue tables could not be replaced."
@@ -277,6 +301,17 @@ def update_catalogue(
     finally:
         if own:
             client.close()
+
+
+def remove_stale_work(parent: Path) -> None:
+    """Remove the work folders of stopped updates in parent: those whose newest file is older than STALE_WORK."""
+    cutoff = time.time() - STALE_WORK.total_seconds()
+    for folder in parent.glob(WORK_PREFIX + "*"):
+        try:
+            if folder.is_dir() and max(p.stat().st_mtime for p in (folder, *folder.iterdir())) < cutoff:
+                shutil.rmtree(folder)
+        except OSError:
+            log.warning("Could not remove the stale catalogue work folder %s", folder, exc_info=True)
 
 
 def _record(settings: Settings, outcome: dict, result: str, reason: str | None = None) -> dict:

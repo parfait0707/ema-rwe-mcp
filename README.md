@@ -117,7 +117,9 @@ uvがあれば、cloneせずにMCPクライアントへ登録できます。カ�
 
 ## カタログの更新
 
-月ごとのカタログは、このプロジェクトの GitHub Releases（`data-YYYYMMDD`）にスナップショットとして公開されます。既定の保存先では、サーバーが起動時に新しいスナップショットを確かめ（1日に1回まで）、検証してから自動で取り込みます。設定の書き換えや再起動は要りません。保存済みの解析・回答・PDFは残ります。通信先は GitHub だけで、検索の途中では通信しません。`EMA_CATALOGUE_UPDATE=check`で通知だけ、`off`で確認なしにできます。`EMA_DB_PATH`で指定したDBは自動では更新しないので、`uvx --from git+https://github.com/parfait0707/ema-rwe-mcp ema-rwe update-catalogue`（checkout では`uv run ema-rwe update-catalogue`）を実行してください。状態は`catalogue_status`の`catalogue_snapshot`と`update`で確認できます。アプリ自体の新しい版は自動では入りません。新しい版が公開されると`catalogue_status`の`app_update_available`が知らせるので、MCPの設定の固定タグ（`@vX.Y.Z`）を書き換えて再起動してください。解析・回答・比較には、作成時のアプリの版・カタログの日付・parserの版が記録されます。
+月ごとのカタログは、このプロジェクトの GitHub Releases（`data-YYYYMMDD`）にスナップショットとして公開されます。既定の保存先では、サーバーが起動時に新しいスナップショットを確かめ（1日に1回まで）、検証してから自動で取り込みます。設定の書き換えや再起動は要りません。保存済みの解析・回答・PDFは残ります。通信先は GitHub だけで、検索の途中では通信しません。`EMA_CATALOGUE_UPDATE=check`で通知だけ、`off`で確認なしにできます。`EMA_DB_PATH`で指定したDBとcheckoutのDBは自動では更新しないので、`uvx --from git+https://github.com/parfait0707/ema-rwe-mcp ema-rwe update-catalogue`（checkout では`uv run ema-rwe update-catalogue`）を実行してください。状態は`catalogue_status`の`catalogue_snapshot`と`update`で確認できます。
+
+アプリ自体の新しい版は自動では入りません。新しい版が公開されると`catalogue_status`の`app_update_available`が知らせます。MCPの設定で版を固定している場合（`@vX.Y.Z`）は、そのタグを書き換えて再起動してください。上の推奨設定のように版を固定していない場合は、uvが前に取得した版を使い続けるので、`uvx --refresh --from git+https://github.com/parfait0707/ema-rwe-mcp ema-rwe-mcp`を1回実行してから再起動してください。この通知は起動時の確認で得た情報を使うので、`EMA_DB_PATH`を指定した場合、checkoutで動かす場合、`EMA_CATALOGUE_UPDATE=off`の場合は出ません。そのときは`ema-rwe update-catalogue --check`で確かめてください（`off`では、このコマンドの後も通知は出ません）。解析・回答・比較には、作成時のアプリの版・カタログの日付・parserの版が記録されます。
 
 同梱DBは**2026-11-02の公式CSV export**から作成した非介入研究3,343件です（claims 824件、ehr 926件、registry 575件、タグなし＝others 1,515件。種別は重複します）。新しい版がより新しいDBを同梱している場合、既定の保存先では起動時にカタログを更新し、保存済み解析・回答を保持します。`EMA_DB_PATH`で指定したDBは自動更新の対象外です。
 
@@ -141,6 +143,7 @@ uvがあれば、cloneせずにMCPクライアントへ登録できます。カ�
 - 研究の登録内容は製薬企業・研究者・機関が入力したもので、第三者が著作権を持つ場合があります。再利用には[カタログのLegal notice](https://catalogues.ema.europa.eu/legal-notice)と[EMAのLegal notice](https://www.ema.europa.eu/en/about-us/about-website/legal-notice)が適用されます。
 - 医薬品辞書はEMA公式の医薬品データです。独自の疾患・薬剤の言い換えは`data/dictionaries/`のJSON辞書で追加できます（書式は`data/terminology.example.json`）。
 - プロトコルPDFは選択した研究についてのみ、間隔制御・robots確認付きでEMAサイトから取得し、あなたのPCに保存されます。本文はLLM（呼出元のClaude Code/Codex、または設定したサーバー側プロバイダ）へ送信されます。
+- 既定の保存先では、サーバーが起動時（1日1回まで）にGitHubへこのプロジェクトのリリースの一覧を要求し、新しいカタログのスナップショットがあれば本体（約13 MB）を取得します。送るのは通常のHTTPSの要求だけで、質問・検索語・解析結果は送りません。`EMA_CATALOGUE_UPDATE=off`で止められます。
 - このツールは研究デザインの参考情報を出典付きで整理するもので、出典の確認なしに研究設計へ転用しないでください。
 
 ## 不具合報告

@@ -552,3 +552,151 @@ def test_answers_found_batch_by_batch_keep_the_last_batches():
     )
     one, note = merge_answers([[answer(f"definition {i}") for i in range(61)]])
     assert len(one) == 60 and note.endswith("1 omitted from the end.")
+
+
+def four_section_pdf() -> bytes:
+    """Four sections of about 5,000 characters: max_chars=6000 serves one per batch, 150000 all of them."""
+    import pymupdf
+
+    with pymupdf.open() as doc:
+        for number, title in enumerate(
+            ["Study design", "Data sources", "Disease definitions", "Analysis"], 1
+        ):
+            body = " ".join(f"The cohort study word{j} follows patients." for j in range(120))
+            doc.new_page().insert_textbox(
+                pymupdf.Rect(50, 50, 550, 800), f"8.{number} {title}\n{body}", fontsize=6
+            )
+        return doc.tobytes()
+
+
+async def test_a_batch_served_again_with_another_budget_keeps_the_sections_it_held(service, website):
+    """Review of PR #81: the merge followed the last served next_offset, not what the cached batch held."""
+    website["/system/files/protocol.pdf"] = four_section_pdf()
+    small = await service.analyze_protocol("123", max_chars=6000)
+    fingerprint = small["source"]["fingerprint"]
+    assert small["next_offset"] < small["total_sections"]
+    await service.cache_protocol_analysis("123", fingerprint, Extraction(), batch_offset=0)
+    whole = await service.analyze_protocol("123", max_chars=150000)
+    assert whole["next_offset"] is None
+    with pytest.raises(RWEError) as error:
+        await service.cache_protocol_analysis("123", fingerprint, Extraction(), coverage_complete=True)
+    assert error.value.code == "INCOMPLETE_EXTRACTION"
+    assert f"offset={small['next_offset']}" in error.value.message
+    # Cached after the whole read, the batch holds every section, whatever is served at offset 0 later
+    await service.cache_protocol_analysis("123", fingerprint, Extraction(), batch_offset=0)
+    await service.analyze_protocol("123", max_chars=6000)
+    done = await service.cache_protocol_analysis("123", fingerprint, Extraction(), coverage_complete=True)
+    assert done["status"] == "analyzed"
+
+
+async def test_a_final_call_without_offset_stands_only_for_the_batch_that_ends_the_protocol(service, website):
+    website["/system/files/protocol.pdf"] = four_section_pdf()
+    offset, served = 0, []
+    while offset is not None:
+        batch = await service.analyze_protocol("123", offset=offset, max_chars=6000)
+        served.append(offset)
+        offset = batch["next_offset"]
+    fingerprint = batch["source"]["fingerprint"]
+    assert len(served) > 3
+    for cached in (served[0], *served[2:-1]):
+        await service.cache_protocol_analysis("123", fingerprint, Extraction(), batch_offset=cached)
+    with pytest.raises(RWEError) as error:
+        await service.cache_protocol_analysis("123", fingerprint, Extraction(), coverage_complete=True)
+    assert error.value.code == "INCOMPLETE_EXTRACTION" and f"offset={served[1]}" in error.value.message
+    await service.cache_protocol_analysis("123", fingerprint, Extraction(), batch_offset=served[1])
+    done = await service.cache_protocol_analysis("123", fingerprint, Extraction(), coverage_complete=True)
+    assert done["status"] == "analyzed"
+
+
+async def test_batch_answers_are_not_dropped_by_a_final_call_without_their_question(service):
+    """Review of PR #81: the final call without the question cleared the cached answers silently."""
+    question = "How is diabetes defined?"
+    first = await service.analyze_protocol("123", question=question)
+    fingerprint = first["source"]["fingerprint"]
+    answer = ProtocolAnswer(answers=sample_analysis().disease_definitions)
+    await service.cache_protocol_analysis(
+        "123", fingerprint, sample_analysis(), batch_offset=0, answer=answer, question=question
+    )
+    for other in (None, question + " "):
+        with pytest.raises(RWEError) as error:
+            await service.cache_protocol_analysis(
+                "123", fingerprint, Extraction(), coverage_complete=True, question=other
+            )
+        assert error.value.code == "INVALID_INPUT" and "question" in error.value.message
+    assert service.repo.analysis("123") is None
+    done = await service.cache_protocol_analysis(
+        "123", fingerprint, Extraction(), coverage_complete=True, question=question
+    )
+    assert done["status"] == "analyzed" and done["answer_saved"] is True
+
+
+async def test_an_analysis_that_cannot_be_saved_leaves_no_answer_behind(service, monkeypatch):
+    question = "How is diabetes defined?"
+    first = await service.analyze_protocol("123", question=question)
+    fingerprint = first["source"]["fingerprint"]
+    answer = ProtocolAnswer(answers=sample_analysis().disease_definitions)
+    await service.cache_protocol_analysis(
+        "123", fingerprint, sample_analysis(), batch_offset=0, answer=answer, question=question
+    )
+
+    def refuse(*_args, **_kwargs):
+        raise RWEError("READING_CONTEXT_CHANGED", "Heading translations changed.")
+
+    monkeypatch.setattr(service.repo, "save_analysis", refuse)
+    with pytest.raises(RWEError):
+        await service.cache_protocol_analysis(
+            "123", fingerprint, Extraction(), coverage_complete=True, question=question
+        )
+    research = await service.research_protocol(first["source"]["protocol_id"], question)
+    assert research["status"] == "needs_client_exploration"
+
+
+async def test_force_refresh_asks_the_provider_again_for_saved_batches(service, monkeypatch):
+    """Review of PR #86: batches kept after a failed finish were reused even with force_refresh."""
+    service.settings.llm_base_url, service.settings.llm_model = "https://provider.example/v1", "test-model"
+    calls = []
+
+    async def fake_complete(_settings, _messages):
+        calls.append(1)
+        return Extraction().model_dump()
+
+    def refuse(*_args):
+        raise RWEError("EVIDENCE_INVALID", "Evidence check failed.")
+
+    monkeypatch.setattr("ema_rwe.llm.complete_json", fake_complete)
+    monkeypatch.setattr("ema_rwe.extraction.validate_evidence", refuse)
+    with pytest.raises(RWEError):
+        await service.analyze_protocol("123")
+    asked = len(calls)
+    with pytest.raises(RWEError):
+        await service.analyze_protocol("123")
+    assert asked and len(calls) == asked
+    with pytest.raises(RWEError):
+        await service.analyze_protocol("123", force_refresh=True)
+    assert len(calls) == 2 * asked
+
+
+async def test_a_final_call_with_only_notes_after_the_merge_keeps_the_saved_analysis(service):
+    """Review of PR #95: an analysis holding only missing_information is as empty as Extraction()."""
+    first = await service.analyze_protocol("123")
+    fingerprint = first["source"]["fingerprint"]
+    await service.cache_protocol_analysis("123", fingerprint, sample_analysis(), batch_offset=0)
+    await service.cache_protocol_analysis("123", fingerprint, Extraction(), coverage_complete=True)
+    with pytest.raises(RWEError) as error:
+        await service.cache_protocol_analysis(
+            "123", fingerprint, Extraction(missing_information=["nothing new"]), coverage_complete=True
+        )
+    assert error.value.code == "INCOMPLETE_EXTRACTION"
+    assert service.repo.analysis("123")["analysis"]["study_design"]
+
+
+def test_merge_records_the_batch_of_every_list_entry_of_a_new_nested_block():
+    """origins names the batch of each entry, in design_schema too, when cohort first arrives (R5 #96-4)."""
+    from ema_rwe.llm import merge_into
+
+    window = Fact(value="365 days", evidence=[Evidence(page=1, quote="A 365-day baseline period.")])
+    output = Extraction.model_validate({"cohort": {"design_schema": {"time_windows": [window.model_dump()]}}})
+    merged, origins = Extraction(), {}
+    merge_into(merged, output, 3, origins)
+    (kept,) = merged.cohort.design_schema.time_windows
+    assert kept == window and origins[id(kept)] == 3

@@ -2,6 +2,7 @@ import csv
 import hashlib
 import io
 import json
+import logging
 import re
 import sqlite3
 from contextlib import contextmanager
@@ -14,6 +15,8 @@ from .medicines import catalogue_atc
 from .selection import SearchFilters, filter_rows
 from .terminology import analogous_phrases, labelled_phrases, term_source
 from .vocabulary import canonical, expand
+
+log = logging.getLogger(__name__)
 
 SCHEMA_VERSION = 6  # 5: Study.protocol_listed; 6: protocol_observations table
 FTS_COLUMNS = (
@@ -268,6 +271,15 @@ class Repository:
                 (study_id, fingerprint, reading, kind),
             ).fetchall()
         return {offset: json.loads(body) for offset, body in rows}
+
+    def batch_kinds(self, study_id: str, fingerprint: str, reading: str) -> set[str]:
+        with self.connection() as db:
+            db.execute(self.BATCHES)
+            rows = db.execute(
+                "SELECT DISTINCT kind FROM extraction_batches WHERE study_id=? AND fingerprint=? AND reading=?",
+                (study_id, fingerprint, reading),
+            ).fetchall()
+        return {row[0] for row in rows}
 
     def clear_batches(self, study_id: str) -> None:
         with self.connection() as db:
@@ -921,5 +933,6 @@ def refresh_from_bundle(bundled: Path, dest: Path) -> bool:
         finally:
             db.close()
         return True
-    except Exception:  # noqa: BLE001 - never block startup; the working catalogue stays as it was
+    except Exception:  # never block startup; the working catalogue stays as it was
+        log.warning("Refreshing the catalogue from the bundled database failed; it is kept.", exc_info=True)
         return False

@@ -1046,3 +1046,117 @@ PDF 取得先ディレクトリ名から X/Y が推測可能だった（P）、�
   - 60 件を超えると、落ちる回答は残る（各バッチの後半）。4 つの研究では最大 57 件だった。
   - 回答が増えるので、比較表や応答が長くなる。比較の出力での見え方は、確かめていない。
   - 同じ内容を別の言い方で書いた回答（要旨と方法の章の両方から）は、まとまらない。
+
+## 2026-11-20 PR #81〜#98 のレビューで見つかった問題の修正（spec v1.26）
+
+- マージ済みの PR #81〜#98 を main（881b45b）でレビューし、見つかった問題を 1 本の変更で直した。直した挙動は spec v1.26 に書いた。問題ごとに、直す前に落ちる再現テストを先に書いてから直した（下の対応表）。
+- 再現テスト（直す前の実行）：
+  - `uv run pytest -q tests/test_provider_extraction.py -k "budget or ends_the_protocol or without_their_question or leaves_no_answer or force_refresh_asks or only_notes"`：6 failed、1 passed。`ends_the_protocol` はテスト側の誤りで落ちていたので、直してから単独で実行し、直す前のコードで通ることを確かめた（既存の挙動を確かめるテスト）。
+  - `uv run pytest -q tests/test_parse_cache.py -k "matched_by_its_words or nearest_to_any or longer_than or eight_quotes or outside_the_server"`：6 failed（名前の照合の陰性 2 件、近いページ、1,000 字の上限、8 件のメッセージ、`server` の印）、11 passed。
+  - `uv run pytest -q tests/test_exploration.py -k "forced or slow_pdf or provider_server_marks"`：4 failed。遅い PDF の読み取りのテストは、直す前は 1.0 秒止まり、直した後は 0.5 秒未満。
+  - 短い節の隣の 2 件は直した後に書いたので、HEAD の `src` を作業フォルダに展開して実行した：2 failed。
+  - `uv run pytest -q tests/test_catalogue_update.py -k "hand_given or size_the or off_reports or stopping"` と `-k "stopping or leaves_github or imported_after"`：計 6 failed（GitHub の外への `/manifest` の要求、本体の取得、終了の待ちを含む）。`uv run pytest -q tests/test_annotations_progress.py`：2 failed（破壊的なツールの集合、`ConnectionResetError`）。
+  - CLI と MCP の照合テストは、`search_studies.limit` の上限の行を消した一時的な複製で、新しい比べ方が落ちることを確かめた（複製は消した）。
+  - `uv run pytest -q tests/test_extraction_eval.py -k "budget or closes or whole_number or pre_push"`：4 failed（予算の設定 1000 が無視された、`asyncio.run` に int、`13 patients` が `3` を満たした、削除だけの push で `uv` が呼ばれた）。
+  - 第 2 回（組をまたいで残った分）：`callers_server_marks`、`new_nested_block`（`origins` の KeyError）、`raises_is_timed`（計測の行が 0 行）、`reports_each_study`（`(2, 2)` が無い）、`fails_keeps`（warning が無い）、`left_behind`（古い作業フォルダが残った）の 6 件がそれぞれ落ちた。`missing_folder`（#92 の `--unpack-to`）は直す前から通る。
+- 直した後：
+  - `uv run ruff format src tests scripts`：66 files left unchanged。`uv run ruff check src tests scripts`：All checks passed。
+  - `uv run pytest -q tests/test_parse_cache.py tests/test_provider_extraction.py tests/test_extraction_eval.py tests/test_annotations_progress.py tests/test_distribution.py tests/test_snapshot.py tests/test_catalogue_update.py tests/test_exploration.py tests/test_comparison.py tests/test_mcp.py tests/test_cli_mcp_parity.py`：194 passed、1 skipped（実 stdio の MCP のテストを含む）。
+  - 組ごとの実行：`tests/test_core.py` ほか 9 ファイルで 211 passed、1 skipped。`tests/test_bookmarks_cohort.py`、`test_extraction_audit.py`、`test_structure.py`、`test_ranking.py`、`test_screening.py` で 127 passed。
+  - `uv run scripts/check.py --help` が動く（hook と `gold` の段階の起動の形を変えたため）。`check.py` の `run("no-such-tool-xyz")` と wheel の無いフォルダの `wheel()` は、`SystemExit` で終わる（手で確かめた）。
+  - 削除だけの push の hook は、`exec` の行を `echo RUN` に置き換えた写しで、削除だけの入力で RUN が出ず、通常の push と空の入力で RUN が出ることを確かめた。
+  - `ema-rwe update-catalogue --file x.gz`（manifest なし）は `INVALID_INPUT` を返す（CLI の名前付きの引数の対応）。
+  - `uv run scripts/extraction_eval.py check`（手元に PDF があるのは研究 105807 だけ）：組入れ・除外 12/12、アウトカム 15/15。値の照合に右の数の境界を一律に付けた版では、O14 の `GFEA` がページの `GFEA001` に当たらず 14/15 になったので、コードは下位コードにも当たる規則にした。
+  - `uv run scripts/extraction_eval.py fetch` で研究 49324・49276・49285 の PDF を取得した後、`uv run scripts/check.py` の全段階（versions、lock、lint、format、tests、gold、build、wheel）が通った。tests は 534 passed、1 skipped。gold は 4 つのプロトコルすべてで、組入れ・除外 17/17、16/16、15/15、12/12、アウトカム 9/9、8/8、8/8、15/15。
+- 訂正：2026-11-19 の `service.py` の分割の節の「`Service` は入口として残し（100 行）」は、分割の時点で 45 行だった。
+- 2026-11-20 の spec v1.25 の節の、研究 105807 の「新しい統合 14/13」は、O2（生存率の年数）の正解を直す前と後のどちらで数えたかが分からない。保存済みの回答が手元に無く、再計算していない。今回、O2 の値をさらに厳しくし（`\b1\b\D{0,12}\b2\b\D{0,12}\b3\b`）、値の照合全般に数の境界を付けたので、今の正解と照合規則で `grade` を数え直すと、数値は変わりうる。
+- 限界：
+  - 実 GitHub（転送の 1 回ずつのたどり、manifest の `created_at` での判断）、実 LLM（`force_refresh` の後の再抽出、探索の `force` の扱い、統合の由来）、実 MCP クライアント（`cache_heading_translations` の破壊的の表示、進捗の最後の通知、通知の失敗）は使っていない。すべて模擬の応答で確かめた。
+  - 終了時に止められた更新の作業フォルダは、6 時間より古くなってから始まった更新が消す。それより早く次の更新（手動の `update-catalogue` など）を始めても、その回は消さない。
+  - 直した後の版で、エージェントによる抽出と採点はやり直していない。
+
+対応表（直した問題）：
+
+| 元 PR | PR の内容 | 直さなければいけなかった問題 | 直し方 | 主な変更ファイル |
+|---|---|---|---|---|
+| #81 | 抽出と質問回答を 1 回で行い、途中バッチを DB に保存し、読み残しを検出する（spec v1.11） | 同じ offset を別の `max_chars` で取り直すと、配信の記録が上書きされ、読んでいない節があっても統合が通った（逆に、読んだ節を読み残しと報告した） | バッチを保存するとき、その時点の配信範囲を kind `read` の行として残し、統合のたどりはそれを使う | src/ema_rwe/extraction.py |
+| #81 | 同上 | 最終呼び出しで `question` を省く（または文字列が違う）と、バッチの回答が黙って消えた | 別の質問の回答が残っていれば、何も保存せず `INVALID_INPUT` で断る（`Repository.batch_kinds` を追加） | src/ema_rwe/extraction.py、src/ema_rwe/storage.py |
+| #81 | 同上 | 回答を保存した後に解析の保存が断られると、古い読み方の回答だけが残った | 解析を保存してから回答を保存する | src/ema_rwe/extraction.py |
+| #81 | 同上 | 上の 2 つの経路と、「offset なしの最終呼び出しは末尾まで届く 1 バッチの代わりだけ」の否定側にテストが無かった | 再現テスト 3 件と、中間のバッチを飛ばすと `INCOMPLETE_EXTRACTION` になるテストを足した | tests/test_provider_extraction.py |
+| #82 | service.py を 5 つのモジュールへ分ける | README_DEV が `_check_heading_language` を `service` の下に書いていた。検証記録の「`Service` は 100 行」は実際は 45 行 | README_DEV を `extraction.py` に直した。検証記録の数は、この節で訂正した | README_DEV.md、docs/validation.md |
+| #83 | 解析済み PDF の再利用、空白の圧縮、データソース名の語の照合、ツールの計測（spec v1.12） | 名前の照合が `;` や文末、名前自身の語をまたぎ、無関係な語の並びを名前として通した | `_span` に本文を渡し、`;`、文末、名前の語をまたぐつながりを切る | src/ema_rwe/pdf.py |
+| #83 | 同上 | 引用 8 件の事実では名前の引用を足さないのに、エラーが「本文にも無い」と述べた | 本文に名前があるときは、8 件では足さないので 1 件減らすか名前の箇所を引用せよ、と述べる | src/ema_rwe/pdf.py |
+| #83 | 同上 | 名前の周りの切り出しが 1,000 字を超えると、`RWEError` でない `ValidationError` で終わった | 上限を `domain.QUOTE_LIMIT` にし、超える切り出しは足さない | src/ema_rwe/domain.py、src/ema_rwe/pdf.py |
+| #83 | 同上 | 例外で終わったツール呼び出しは、計測の行が出なかった | `timed` を try/except/finally にし、例外の型名と `chars=0` で記録してから投げ直す | src/ema_rwe/mcp/server.py |
+| #83 | 同上 | 名前を探すページの近さを、最初に引用したページからしか測っていなかった | 引用したどのページからの距離も測り、最小を使う | src/ema_rwe/pdf.py |
+| #84 | 別のページにある引用のページの訂正、`evidence[].server` の印（spec v1.13） | 呼出元と内部 LLM が書いた `server` の印を、そのまま保存して配信した | `pdf.without_server_marks` を足し、両方の経路でサーバーの処理の前に消す | src/ema_rwe/pdf.py、src/ema_rwe/exploration.py、src/ema_rwe/extraction.py |
+| #84 | 同上 | 手順書が、等距離の 2 ページにある引用も拒否されることを書いていなかった | 手順書に書いた | docs/mcp-workflow.md |
+| #85 | `scripts/check.py` と pre-push hook | `while read` が EOF で変数を空にするので、削除だけの push でも検査が走った | ループ内でフラグを立てて判定する | .githooks/pre-push |
+| #85 | 同上 | `docs/exploration.md` の `uv sync --extra dev` は、`dev` が依存グループに移った後は失敗する | `uv sync --extra llm` にした | docs/exploration.md |
+| #85 | 同上 | `.claude/rules/package-management.md` に反して `uv run python scripts/...` と書いていた | scripts、hook、正解データの README、AGENTS.md、README_DEV.md、docs/release.md を `uv run scripts/...` に揃えた | scripts/、.githooks/pre-push、AGENTS.md、README_DEV.md、docs/release.md |
+| #85 | 同上 | `uv` が無いとき、wheel が 0 件のとき、`check.py` が traceback で終わった | `OSError` と wheel 無しを `SystemExit` にした | scripts/check.py |
+| #86 | サーバー側抽出の終わったバッチの保存と再開（spec v1.14） | `force_refresh=true` が途中バッチを消さず、仕上げで失敗した抽出が同じバッチで同じエラーを繰り返した | `force_refresh` かつ `offset=0` のとき `clear_batches` を呼ぶ | src/ema_rwe/extraction.py |
+| #86 | 同上 | 同期の SQLite 書き込み `checkpoint.save` をイベントループ上で呼んでいた | `asyncio.to_thread` で呼ぶ | src/ema_rwe/llm.py |
+| #87 | `research_protocol` を待たずに `status=answering` を返す（spec v1.15） | `status=answering` の後に `force=true` で呼び直すと、終わった探索の結果を捨てて新しい探索を始めた | 受け取られていない結果があれば、`force` の有無に関係なく最初の呼び出しに返す | src/ema_rwe/exploration.py |
+| #87 | 同上 | `force=true` の探索中に `force` なしで呼ぶと、古い保存済みの回答を返した | 保存済みの回答より先に動いている探索を調べ、合流する | src/ema_rwe/exploration.py |
+| #87 | 同上 | 背景の探索が PDF の解析・検索・保存を同期で行い、イベントループを止めた | `asyncio.to_thread` に移した | src/ema_rwe/exploration.py |
+| #88 | 全ツールの注釈と進捗通知（spec v1.16） | `cache_heading_translations` は英訳を写しなしで置き換え途中バッチを消すのに、破壊的でなかった | `destructiveHint=true` にし、手順書を合わせた | src/ema_rwe/mcp/server.py、docs/mcp-workflow.md |
+| #88 | 同上 | `compare_protocols` が最後の進捗 `(n, n)` を送らなかった | 取得ループの後に 1 回送る | src/ema_rwe/comparison.py |
+| #88 | 同上 | 進捗通知の送信の失敗がツール本体に伝わり、比較の準備が止まった | 送信を try で囲み、stderr に warning を記録して続ける | src/ema_rwe/mcp/server.py |
+| #89 | CLI と MCP の引数の照合テスト（spec v1.17） | 範囲の照合が引数単位で、上限を足してもコアの確認なしに通った。既定値の比較が `False`・`0`・`None` を同一視した。`minLength` などを見ていなかった。docstring が入れ子の範囲まで守ると言い過ぎていた | 範囲の種類ごとに比べ、既定値は型と値で比べ、範囲のキーワードを 8 つに広げ、docstring をトップレベルの引数に限った | tests/test_cli_mcp_parity.py |
+| #90 | カタログのスナップショットの取り込み（spec v1.18） | 更新中にクライアントが閉じても、取得と置き換えが終わるまでプロセスが残った | 更新をデーモンスレッドで動かし、終了時に待たない | src/ema_rwe/mcp/server.py |
+| #90 | 同上（上の修正で生じた問題） | 止まった更新の作業フォルダが DB のフォルダに残る | 作業フォルダに `ema-rwe-update-` を付け、6 時間より古いものを次の更新の開始時に消す | src/ema_rwe/catalogue_update.py |
+| #90 | 同上 | 手順書が、自動で取り込まない構成（`EMA_DB_PATH`、checkout、`check`）でも「何もしなくてよい」と書いていた | `automatic=false` か `result=available` なら `ema-rwe update-catalogue` を伝える、と書き分けた | docs/mcp-workflow.md |
+| #90 | 同上 | 利用者の CSV の方が新しくても、本体（約 13 MB）を毎回取得してから捨てた | 取得の前に manifest の `created_at` と比べる | src/ema_rwe/catalogue_update.py |
+| #90 | 同上 | 転送をたどった後に転送先を確かめるので、GitHub の外にも要求が届いた | 1 回ずつたどり、要求の前に確かめる（5 回まで） | src/ema_rwe/catalogue_update.py |
+| #90 | 同上 | 手で渡す manifest の `snapshot_id` の形式も DB の中身との一致も確かめず、`"None"` が状態に残った | `YYYYMMDD` でなければ、また展開した DB の日付と違えば `invalid_snapshot` | src/ema_rwe/catalogue_update.py |
+| #90 | 同上 | `refresh_from_bundle` が例外を握りつぶし、理由が残らなかった | stderr に warning（`exc_info`）を記録してから False を返す | src/ema_rwe/storage.py |
+| #90 | 同上 | 展開後のサイズに上限が無かった | manifest の `database.size`（上限 4 GiB）を超えたら止める | src/ema_rwe/snapshot.py |
+| #91 | 検索条件を `SearchRequest` にまとめる | CLI の `update_catalogue` 呼び出しだけが位置引数だった | 名前付きにした | src/ema_rwe/cli.py |
+| #92 | 結果への版の記録、新しい版の通知、同梱カタログの更新方法（spec v1.19） | `EMA_CATALOGUE_UPDATE=off` でも、残った状態ファイルや手動の更新から `app_update_available` が出た | `app_update()` の冒頭で off なら None を返す | src/ema_rwe/catalogue_update.py |
+| #92 | 同上 | `--unpack-to` が置き換え前に `-wal`／`-shm` を消すのに、手順書に注意が無かった | DB を開いているサーバーを先に止める、と書いた | docs/release.md |
+| #93 | 抽出の正解データによる検査（spec v1.20） | 検査が `research_protocol` の件数 30 と予算 40,000 を写し、予算の数え方も違い、空白を詰める前の本文を使っていた | `exploration.RESEARCH_LIMIT`・`within_budget`・設定の予算・`compact_spaces` 後の本文を使う | src/ema_rwe/exploration.py、scripts/extraction_eval.py |
+| #93 | 同上 | `grade()` が開いた `Service` を閉じなかった | async にして `finally` で閉じる | scripts/extraction_eval.py |
+| #95 | 節のラベルの空白、空の最終統合の呼び出し（spec v1.22） | 「空の解析」の判定が厳密一致で、`missing_information` だけの繰り返しの最終呼び出しが保存済みの解析を置き換えた | 渡された側も `missing_information` を除いて比べる | src/ema_rwe/extraction.py |
+| #96 | 統合での重複のまとめと上限、短い節の隣（spec v1.23） | 「短い節」の長さを一致したページだけで数え、同じ見出しの別の節の長さを合算した | 全チャンクで、同じ見出しが続く連続したチャンクを 1 つの節として数える | src/ema_rwe/pdf.py |
+| #96 | 同上 | 親の節とアンカーの下位の節も持ち上がった | 隣の節を親の下の兄弟とその下位に限る | src/ema_rwe/pdf.py |
+| #96 | 同上 | 背景などの役割の隣の節も持ち上がった | 隣の節にも `NON_METHOD_ROLES` の除外をかける | src/ema_rwe/pdf.py |
+| #96 | 同上 | 初めて受け取った入れ子のブロックで、2 段目のリストの由来が記録されなかった | 空のブロックを置いてから再帰的に統合する | src/ema_rwe/llm.py |
+| #97 | 採点での値の照合、取り違えの検出、難しい項目（spec v1.24） | 正解データの README の「範囲」が v1.24 と食い違い、表の括弧が崩れていた | 範囲と `values` の照合規則を書き直した | tests/fixtures/extraction_gold/README.md |
+| #97 | 同上 | テストが正解データの件数を直書きしていた | 構造条件（各プロトコルに 1 項目以上、ID が一意）にした | tests/test_extraction_eval.py |
+| #98 | 質問別回答の上限 60、バッチごとの回答の統合（spec v1.25） | 研究 105807 の O2 の値 `1\D{0,12}2\D{0,12}3` が `12 months and 3 years` にも一致した。値の照合全般が数の一部（`13` の `3`）に一致した | O2 に数の境界を付け、値の照合を `states()` にまとめた（数は前後に数字が続かない、コードは下位コードにも当たる） | tests/fixtures/extraction_gold/outcomes.json、scripts/extraction_eval.py |
+| #98 | 同上 | 検証記録の 105807「14/13」が、O2 の正解を直す前と後のどちらで数えたか分からない | 分からないこと、今回 O2 をさらに厳しくしたこと、`grade` を再計算していないことを、この節に書いた | docs/validation.md |
+| #81〜#98 | 文書の反映 | README_DEV がスナップショットの取り込みと逆のことを書き、アプリの更新の案内が版を固定しない設定で働かず、範囲表記・統合の規則・探索の待ち・データソース名の規則・GitHub への通信の記載が古いか無かった | 下の「文書の反映」に挙げた箇所を直した | README.md、README_DEV.md、AGENTS.md、docs/ |
+
+文書の反映（PR #81〜#98 による変化のうち、文書に無いか古かったもの）：
+
+- README.md：版を固定しない設定でのアプリの更新（`uvx --refresh`）、`EMA_DB_PATH`・checkout・`off` では新しい版の通知が出ないこと、起動時の GitHub への通信（データの出所とプライバシー）。
+- README_DEV.md：仕様の範囲（v1.26）、スナップショットの取り込みを「まだ取得しない」としていた箇所、既定 DB の 2 つの更新経路、統合の規則（v1.23、v1.25）、探索のタスクと `force`（v1.15）、データソース名の規則とページの訂正（v1.12、v1.13）、計測の行、`server` の印、注釈と進捗、空の最終呼び出し、正解データによる採点、スクリプトの起動の形。
+- AGENTS.md：仕様の範囲（v1.26）、スクリプトの起動の形。
+- docs/mcp-workflow.md：注釈と進捗、`catalogue_status` の `update.automatic=false` のときの案内、`question` の要る最終呼び出し、`force_refresh`、`INCOMPLETE_EXTRACTION` の 2 つの意味、データソース名の規則、等距離の引用、`server` の印、上限を超えたリストの注記、`research_protocol` の `force`。
+- docs/exploration.md：範囲の表記、`uv sync --extra llm`、検索の照合の規則と `continues`・`beside`（v1.21、v1.23）、探索の `force`。
+- docs/comparisons.md：比較表の末尾の版の行（v1.19）。
+- docs/release.md：スクリプトの起動の形、`--skip-gold`、`misplaced` での失敗、`--unpack-to` の前にサーバーを止めること。
+- CHANGELOG.md：Unreleased にこの修正を追記した。
+
+直さなかった指摘：
+
+| 元 PR | 指摘 | 直さなかった理由 |
+|---|---|---|
+| #84 | ページの訂正は最も近いページを選ぶので、繰り返す定型文は別のページに移りうる | PR の限界の節に書かれている |
+| #85 | hook は `--allow-missing-gold` なしで検査するので、正解のプロトコルを取得していない clone では push が `gold` で止まる | 後続の spec v1.20 の設計どおりで、README_DEV と検証記録に書かれている |
+| #86 | 呼出元の経路とプロバイダの経路を交互に使うと、互いの途中バッチを消し合う | どちらの経路を通るかは内部 LLM の設定で決まる。交互になるのは設定を変えたときだけで、そのときは fingerprint も変わるので、消すのが正しい |
+| #86 | 実プロバイダでの再開（タイムアウト、429）が未確認 | 検証記録に書かれている |
+| #87 | 回収されない完了タスクが `_running` に残る | spec v1.15 の 3 は、保存に至らなかった結果とエラーを終わった後の最初の呼び出しに渡すことを求めるので、回収まで残す必要がある。残るのは同じ質問で二度と呼ばれないときのメモリだけで、プロセスの寿命の範囲に収まる |
+| #88 | `search_studies`／`plan_study_search` は未一致語の記録を書くのに読み取り専用 | PR で明示した判断で、spec v1.16 の 3 と一致する |
+| #89 | `cache_protocol_analysis` は空の `question`（answer なし）を拒否しない | PR の範囲外の小さな不一致で、害は無い |
+| #91 | アダプタの引数名の対応を直接確かめるテストが無い | 捕まえるには 18 ツールの入力値とサービス引数名の表が要り、その表は server.py の呼び出しを写すだけになる。レビューの AST の bind 検査で現状の全件整合を確かめた |
+| #91 | `SearchRequest` は frozen だが list を持つので浅い不変にとどまる | request の list を変える箇所は無い |
+| #92 | `--unpack-to` の親フォルダが無いと traceback になる | 現在のコードでは起きない（`OSError` として捕まえ、`SNAPSHOT_INVALID` の JSON を出して終了コード 1）。回帰のテスト `test_unpacking_into_a_missing_folder_is_refused_as_json` を足した |
+| #92 | `versions()` が呼ぶたびに DB を開く | 件数が小さく、影響は小さい |
+| #92 | `app_update_available` の実際の出現は模擬だけで、月ごとの手順も通しでは実行していない | PR と検証記録に書かれている |
+| #94 | `mentions` の複数形の規則は語によって無意味な形を作り、`-es`／`-ies` に一致しない | 語の境界で照合するので誤一致は無く、spec v1.21 の「単純な」の範囲 |
+| #94 | `QUESTION_WORDS` に `not`／`no`／`all`／`any` を含む | spec v1.21 の 5 どおり |
+| #98 | `source_assessments` は先頭から 120 件のまま | spec v1.25 の 4 どおり |
+| 全体 | ホスト型の CI が無く、`gold` は pre-push でだけ走る | 設計どおりで、文書に書かれている |
+| 全体 | 配布サンプルと README が未作成のタグ `v0.5.7` を固定している | docs/release.md の手順（版を揃える PR、main で検査、タグ）の途中の状態なので、タグを作るまでこのまま |

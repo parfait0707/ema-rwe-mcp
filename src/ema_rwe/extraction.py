@@ -34,6 +34,7 @@ from .pdf import (
     validate_evidence,
     with_corrected_pages,
     with_source_name_quotes,
+    without_server_marks,
 )
 
 
@@ -57,6 +58,9 @@ class ExtractionMixin:
         if detail not in {"summary", "full"}:
             raise RWEError("INVALID_INPUT", "detail must be summary or full.")
         pdf, source = await self._context(study_id, force_refresh)
+        if force_refresh and offset == 0:
+            # A fresh read: batches kept from the previous one (a provider's too) are not merged or reused.
+            self.repo.clear_batches(study_id)
         old = self.repo.analysis(study_id)
         if old and force_refresh:
             # Subsequent client-extraction batches must not fall back to the old cached analysis.
@@ -246,7 +250,9 @@ class ExtractionMixin:
         """Cache a caller's answer under the reading research_protocol returned with the question."""
         source = {"protocol_id": protocol_id}
         translations = self._reading_snapshot(source, reading, "answer the question again")
-        return await asyncio.to_thread(self.explorer.save, protocol_id, question, answer, None, translations)
+        return await asyncio.to_thread(
+            self.explorer.save, protocol_id, question, without_server_marks(answer), None, translations
+        )
 
     async def cache_protocol_analysis(
         self,
@@ -280,9 +286,9 @@ class ExtractionMixin:
             raise RWEError("PROTOCOL_CHANGED", "Protocol/extractor changed; analyze current protocol again.")
         translations = self._reading_snapshot(source, reading, "reread the batches")
         pages = await asyncio.to_thread(extract_pages, pdf, True, translations)
-        analysis = with_corrected_pages(analysis, pages)
+        analysis = with_corrected_pages(without_server_marks(analysis), pages)
         if answer is not None:
-            answer = with_corrected_pages(answer, pages)
+            answer = with_corrected_pages(without_server_marks(answer), pages)
         analysis = analysis.model_copy(
             update={
                 "data_sources": with_source_name_quotes(analysis.data_sources, pages),
@@ -302,6 +308,14 @@ class ExtractionMixin:
                 f"No batch was read at offset {batch_offset}: batch_offset is the offset of an analyze_protocol "
                 "response for this protocol.",
             )
+        if coverage_complete:
+            answered = {k for k in self.repo.batch_kinds(*key) if k.startswith("answer:")}
+            if (answered - {answer_kind(question)}) if question else answered:
+                raise RWEError(
+                    "INVALID_INPUT",
+                    "Cached batches hold answers to a question: pass the same question with the "
+                    "coverage_complete call so they are merged and saved (nothing was saved).",
+                )
         if answer is not None:
             for start in range(0, len(answer.answers), 20):  # Extraction.key_notes holds 20 facts per check
                 validate_evidence(Extraction(key_notes=answer.answers[start : start + 20]), pages)
@@ -315,6 +329,8 @@ class ExtractionMixin:
             )
         if batch_offset is not None:
             self.repo.save_batch(*key, "analysis", batch_offset, analysis.model_dump())
+            # Where this batch ended: the offset may be served again later with another max_chars.
+            self.repo.save_batch(*key, "read", batch_offset, served[batch_offset])
         if not coverage_complete:
             return {
                 "status": "batch_cached",
@@ -322,7 +338,7 @@ class ExtractionMixin:
                 "cached_batch_offsets": sorted(self.repo.batches(*key, "analysis")),
             }
         cached = self.repo.batches(*key, "analysis")
-        if not cached and analysis == Extraction():
+        if not cached and analysis.model_copy(update={"missing_information": []}) == Extraction():
             # A repeated final call after the merge cleared the batches: nothing to merge, nothing given.
             before = self.repo.analysis(study_id)
             held = dict(before["analysis"], missing_information=[]) if before else None
@@ -335,9 +351,9 @@ class ExtractionMixin:
                 )
         # Batches cached one by one must hold every section between them. A final call that carries the last
         # batch without its offset stands for the one batch that ends the protocol, never for a skipped one.
-        total, position = len(reading_order(sections(pages))), 0
+        total, position, read = len(reading_order(sections(pages))), 0, self.repo.batches(*key, "read")
         while cached and position < total:
-            step = served.get(position)
+            step = read.get(position) or served.get(position)
             if position not in cached and not (step and step["next"] >= total and batch_offset is None):
                 raise RWEError(
                     "INCOMPLETE_EXTRACTION",
@@ -349,13 +365,14 @@ class ExtractionMixin:
         partials = [Extraction.model_validate(b) for o, b in cached.items() if o != batch_offset]
         if partials:
             analysis = merge_extractions([*partials, analysis])
-        answer_saved = None
-        if question:
-            answer_saved = await self._save_batch_answers(source, key, question, translations)
         notes = audit_extraction(analysis, pages, self.repo.get(study_id).catalogue_data_sources)
         if notes:
             analysis.missing_information = with_notes(analysis.missing_information, notes)
         saved = self._save(study_id, analysis, source, "client_assisted", detail="summary")
+        # After the analysis: an analysis refused under a changed reading leaves no answer read the old way.
+        answer_saved = (
+            await self._save_batch_answers(source, key, question, translations) if question else None
+        )
         self.repo.clear_batches(study_id)
         return saved if answer_saved is None else {**saved, "answer_saved": answer_saved}
 
