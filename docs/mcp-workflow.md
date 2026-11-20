@@ -174,6 +174,8 @@ filters. Never pick a subset yourself.
   changed: call `research_protocol` again and explore afresh.
 - A section returned by `search_protocol_text` or `research_protocol` with `continues` is the next (or
   previous) page of the hit it names: read them as one passage (a list of criteria often runs over a page).
+  A question's grammatical words (each, from, which, ...) are not searched, and one English word also
+  matches its plain plural or singular.
 - `analyze_protocol` may return `status=extracting` (server-side provider extraction running):
   call it again for the same study until it returns the analysis; do not extract client-side.
   Finished batches are kept (`progress.reused` counts those not asked again), so calling it again after

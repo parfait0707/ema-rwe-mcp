@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- The extraction reference gains outcome definitions (spec v1.21): `tests/fixtures/extraction_gold/outcomes.json`,
+  27 items of the same four protocols (the outcomes named, the registers and records they are identified
+  from, codes, alternative definitions, what is left to the SAP). The reference is one file per topic;
+  `scripts/extraction_eval.py`, the `gold` step of `scripts/check.py` and the monthly snapshot build read
+  them all. `minimum.cohort_found` of a reference file is now `analysis_found`.
+- Searching a protocol with a question (`research_protocol`, `search_protocol_text`) no longer counts the
+  question's grammatical words (each, from, which, ...), matches one English word in its plain plural or
+  singular too (outcome / Outcomes), weighs a word in a section title more, and returns a lower-ranked page
+  of a hit's section beside that hit. The outcome reference found the outcome sections of two protocols
+  outside the passages returned for an outcome question.
 - Extraction is checked against a hand-read reference (spec v1.20): the eligibility criteria of four
   protocols, 51 items, in `tests/fixtures/extraction_gold/` (descriptions, pages and short locating
   patterns; no protocol text). `scripts/check.py` gains a `gold` step, so every push checks that each item

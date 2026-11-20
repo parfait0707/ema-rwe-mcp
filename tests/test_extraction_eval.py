@@ -137,33 +137,65 @@ def test_grading_counts_found_and_supported_items():
     }
     graded = evaluation.grade_protocol(reference(), answer, analysis)
     assert graded["answer_found"] == 3 and graded["answer_supported"] == 2  # kidney cancer: named, not quoted
-    assert graded["cohort_found"] == 1 and graded["missing"] == ["E2"]
+    assert graded["analysis_found"] == 1 and graded["missing"] == ["E2"]
+    assert graded["missing_in_analysis"] == ["I2", "E1", "E2"]
+    # Another topic reads other blocks of the analysis
+    outcomes = {
+        "outcomes": [fact("dialysis", "Maintenance dialysis on or before")],
+        "disease_definitions": [],
+    }
+    other = evaluation.grade_protocol(reference(), None, outcomes, ("outcomes", "disease_definitions"))
+    assert other["analysis_found"] == 1 and other["missing_in_analysis"] == ["I1", "I2", "E1"]
     nothing = evaluation.grade_protocol(reference(), None, None)
     assert (nothing["answered"], nothing["analysed"], nothing["answer_found"]) == (False, False, 0)
 
 
-def test_the_reference_file_is_well_formed_and_holds_no_protocol_text():
-    gold = evaluation.load()
-    assert (
-        gold["question"] == QUESTION
-        and 0 < gold["minimum"]["cohort_found"] <= gold["minimum"]["answer_found"] <= 1
-    )
-    assert len(gold["protocols"]) == 4 and sum(len(p["items"]) for p in gold["protocols"]) == 51
-    for protocol in gold["protocols"]:
-        assert len(protocol["sha256"]) == 64 and protocol["document_url"].startswith(
-            "https://catalogues.ema.europa.eu/"
-        )
-        ids = [item["id"] for item in protocol["items"]]
-        assert len(ids) == len(set(ids))
-        for item in protocol["items"]:
-            assert set(item) - {"accept"} == {"id", "kind", "label", "page", "pattern"} and item["kind"] in (
-                "inclusion",
-                "exclusion",
+def test_the_reference_files_are_well_formed_and_hold_no_protocol_text():
+    golds = {gold["name"]: gold for gold in evaluation.load_all()}
+    assert set(golds) == {"eligibility", "outcomes"} and golds["eligibility"]["question"] == QUESTION
+    counts = {name: sum(len(p["items"]) for p in gold["protocols"]) for name, gold in golds.items()}
+    assert counts == {"eligibility": 51, "outcomes": 27}
+    for gold in golds.values():
+        assert 0 < gold["minimum"]["analysis_found"] <= gold["minimum"]["answer_found"] <= 1
+        assert gold["analysis_fields"] and len(gold["protocols"]) == 4
+        for protocol in gold["protocols"]:
+            assert len(protocol["sha256"]) == 64 and protocol["document_url"].startswith(
+                "https://catalogues.ema.europa.eu/"
             )
-            assert 1 <= item["page"] <= protocol["pages"]
-            # A locating pattern is a few key words, never a sentence of the protocol
-            assert len(item["pattern"]) <= 45 and len(item["pattern"].split()) <= 7
-    assert "quote" not in json.dumps(gold)
+            ids = [item["id"] for item in protocol["items"]]
+            assert len(ids) == len(set(ids))
+            for item in protocol["items"]:
+                assert set(item) - {"accept", "beyond_first_search"} == {
+                    "id",
+                    "kind",
+                    "label",
+                    "page",
+                    "pattern",
+                }
+                assert item["kind"] in gold["kinds"] and 1 <= item["page"] <= protocol["pages"]
+                # A locating pattern is a few key words, never a sentence of the protocol
+                assert len(item["pattern"]) <= 45 and len(item["pattern"].split()) <= 7
+        assert '"quote"' not in json.dumps(gold)
+    # The topics read the same documents: each is fetched and looked up once
+    assert len(evaluation.documents(list(golds.values()))["protocols"]) == 4
+
+
+def test_a_question_is_searched_by_its_content_words_and_plain_plurals():
+    """spec v1.21: 'from', 'which', 'each' rank nothing; 'outcome' finds the section 'Outcomes'; a
+    lower-ranked page of a hit's section moves up beside it instead of staying at its own rank."""
+    from ema_rwe.pdf import mentions
+
+    assert mentions("9.3 Outcomes definition", "outcome") and mentions("the outcome", "outcomes")
+    assert not mentions("class of medicines", "clas") and not mentions("I21 codes", "I2")
+    chunks = sections(extract_pages(protocol_pdf()))
+    found = search_sections(chunks, "From which criteria does each patient come?", 5)
+    assert all(set(c["matched_terms"]) <= {"criteria", "patient", "come"} for c in found["results"])
+    # Page 2 says 'kidney' only: a hit of its own, ranked below page 1, returned right after it
+    ranked = search_sections(chunks, "inclusion criteria kidney", 5)["results"]
+    pages = [c["page"] for c in ranked]
+    assert pages.index(2) == pages.index(1) + 1
+    moved = ranked[pages.index(2)]
+    assert moved["continues"] == ranked[pages.index(1)]["section_id"] and "kidney" in moved["matched_terms"]
 
 
 @pytest.mark.parametrize("command", ["check", "grade", "catalogue"])
@@ -171,6 +203,7 @@ def test_the_commands_run_on_an_empty_database(settings, command, monkeypatch, c
     import asyncio
 
     gold = evaluation.load()
+    assert gold["name"] == "eligibility"
     if command == "check":
         assert evaluation.check(settings, gold, require=False) == 0
     elif command == "grade":
