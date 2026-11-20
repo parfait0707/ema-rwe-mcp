@@ -394,7 +394,8 @@ def create_server(service: Service | None = None):
 
     @server.tool()
     async def research_protocol(protocol_id: str, question: str, force: bool = False) -> dict:
-        """Answer a question from one archived PDF: saved answer, bounded LLM run, or caller-driven hits."""
+        """Answer a question from one archived PDF: saved answer, provider run (status=answering means call again
+        later), or caller-driven hits."""
         return await call("research_protocol", protocol_id, question, force)
 
     @server.tool()

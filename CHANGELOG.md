@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- `research_protocol` with a configured provider no longer holds one tool call until the answer is ready
+  (about two minutes for a full-text answer, close to a client's tool timeout): after `LLM_WAIT_SECONDS` it
+  returns `status=answering`, the exploration goes on in the server, and calling again with the same
+  question joins it and collects the answer (spec v1.15). The CLI `ask` still waits to the end.
+
 - Server-side extraction keeps each finished provider batch in the database (spec v1.14). After a failed
   batch or a server restart, the next `analyze_protocol` asks the provider only for the batches still
   missing; before, every batch was sent again. A failing batch no longer discards the batches running

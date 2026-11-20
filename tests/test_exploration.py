@@ -1,3 +1,4 @@
+import asyncio
 import json
 import sys
 from types import SimpleNamespace
@@ -287,3 +288,58 @@ async def test_cli_saves_a_question_specific_answer(tmp_path, monkeypatch, pdf_b
         parser().parse_args(["cache-answer", pid, "Adjustment?", str(tmp_path / "answer.json")])
     )
     assert saved["status"] == "answered"
+
+
+async def test_provider_answer_that_outlasts_the_wait_is_collected_by_a_later_call(service, monkeypatch):
+    pid = (await service.get_protocol("123"))["protocol"]["protocol_id"]
+    service.settings.llm_backend, service.settings.llm_model = "litellm", "anthropic/test"
+    service.settings.llm_wait_seconds = 0.02
+    release, asked = asyncio.Event(), []
+
+    async def respond(settings, messages):
+        asked.append(1)
+        await release.wait()
+        return answer().model_dump()
+
+    monkeypatch.setattr("ema_rwe.exploration.complete_json", respond)
+    question = "Which adjustment method is planned?"
+    first = await service.research_protocol(pid, question)
+    assert first["status"] == "answering" and first["question"] == question and "reading" in first
+    # A second call joins the running exploration instead of starting another one, also with force
+    assert (await service.research_protocol(pid, question))["status"] == "answering"
+    assert (await service.research_protocol(pid, question, force=True))["status"] == "answering"
+    assert len(asked) == 1
+    release.set()
+    for _ in range(50):
+        result = await service.research_protocol(pid, question)
+        if result["status"] == "answered":
+            break
+        await asyncio.sleep(0.02)
+    assert (
+        result["status"] == "answered"
+        and result["answer"]["answers"][0]["value"] == answer().answers[0].value
+    )
+    assert (await service.research_protocol(pid, question))["cached"] and len(asked) == 1
+    assert not service.explorer._running
+
+
+async def test_cli_style_call_waits_for_the_provider_and_a_failure_starts_afresh(service, monkeypatch):
+    pid = (await service.get_protocol("123"))["protocol"]["protocol_id"]
+    service.settings.llm_backend, service.settings.llm_model = "litellm", "anthropic/test"
+    service.settings.llm_wait_seconds = 0.01
+    fail = [True]
+
+    async def respond(settings, messages):
+        await asyncio.sleep(0.05)  # longer than the polling wait
+        if fail[0]:
+            raise RWEError("LLM_EXTRACTION_FAILED", "Provider request or structured output failed.")
+        return answer().model_dump()
+
+    monkeypatch.setattr("ema_rwe.exploration.complete_json", respond)
+    question = "Which adjustment method is planned?"
+    with pytest.raises(RWEError) as error:  # poll=False: the error of the run itself, not status=answering
+        await service.research_protocol(pid, question, poll=False)
+    assert error.value.code == "LLM_EXTRACTION_FAILED" and not service.explorer._running
+    fail[0] = False
+    done = await service.research_protocol(pid, question, poll=False)
+    assert done["status"] == "answered"

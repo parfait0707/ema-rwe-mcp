@@ -49,7 +49,7 @@
 - `research_protocol`：質問別の追加探索。`needs_client_exploration` なら `get_protocol_outline`、`search_protocol_text`、`read_protocol_text` で方法・定義・隣接章・コード付録を確認し、`cache_protocol_answer` に保存する（`needs_client_exploration` が返す `reading` を渡す。英語以外のプロトコルでは必須）。
 - 最後に `get_protocol_comparison(comparison_id)`：保存済み解析と質問別回答を全件集約してJSON/Markdownを更新する。未処理が残れば繰り返す。
 
-内部LLM設定時も上記のツール順序は同じ。各解析・探索ツールが内部APIを呼んで検証・保存する。比較ツール1回が内部で全件分のLLM処理を連続実行する設計ではない。APIの長い探索がクライアントのツールタイムアウトを超える場合は上限・タイムアウト設定の調整が必要。
+内部LLM設定時も上記のツール順序は同じ。各解析・探索ツールが内部APIを呼んで検証・保存する。比較ツール1回が内部で全件分のLLM処理を連続実行する設計ではない。`analyze_protocol` の抽出と `research_protocol` の回答は、`LLM_WAIT_SECONDS`（既定120秒）を超えると `status=extracting`／`status=answering` を返し、処理はサーバー側で続く。呼出元は同じ引数でもう一度呼んで結果を受け取る（spec v1.15）。`LLM_WAIT_SECONDS` は、クライアントのツールタイムアウトより短くする。
 
 比較を始める前に読み直しを必要とする場合は `get_study(refresh=true)` や `get_protocol(refresh=true)` を使う。通常はTTL内のキャッシュを再利用する。
 

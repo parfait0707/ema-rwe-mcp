@@ -59,6 +59,8 @@ FULL_TEXT_PROMPT = (
 class Explorer:
     def __init__(self, settings, archive, repo):
         self.settings, self.archive, self.repo = settings, archive, repo
+        # Provider explorations of this process that are still running, by answer cache key (spec v1.15).
+        self._running: dict[str, asyncio.Task] = {}
         with repo.connection() as db:
             db.execute(
                 "CREATE TABLE IF NOT EXISTS protocol_answers (cache_key TEXT PRIMARY KEY, body TEXT NOT NULL)"
@@ -271,7 +273,12 @@ class Explorer:
             )
         return result
 
-    async def research(self, protocol_id, question, force=False):
+    async def research(self, protocol_id, question, force=False, poll=True):
+        """A saved answer, the caller's exploration material, or the configured provider's answer.
+
+        The provider's exploration runs as a task of this process. poll=True waits LLM_WAIT_SECONDS for it and
+        then returns status=answering; calling again with the same question joins the same task, so a client
+        with a tool timeout collects the answer on a later call. poll=False waits until it ends (the CLI)."""
         # One snapshot of the translations for the whole question: the answer is explored and cached under it.
         translations = self.translations(protocol_id)
         reading = reading_hash(translations)
@@ -281,6 +288,8 @@ class Explorer:
             with self.repo.connection() as db:
                 row = db.execute("SELECT body FROM protocol_answers WHERE cache_key=?", (key,)).fetchone()
             if row:
+                if key in self._running and self._running[key].done():
+                    self._running.pop(key)  # its answer is the saved one
                 return dict(json.loads(row[0]), cached=True)
         if not configured(self.settings):
             # Question-ranked section bundle within a budget, so the caller reads once instead of
@@ -313,6 +322,26 @@ class Explorer:
                 "data inputs, even if the question does not explicitly mention source type. Do not substitute "
                 "another outcome's or another cohort's data. Include all relevant types, not just the user's preferred type.",
             }
+        task = self._running.get(key)
+        if task is None or (force and task.done()):
+            task = self._running[key] = asyncio.create_task(
+                self._provider_research(protocol_id, question, translations, reading)
+            )
+        done, _ = await asyncio.wait({task}, timeout=self.settings.llm_wait_seconds if poll else None)
+        if task in done:
+            self._running.pop(key, None)
+            return task.result()
+        return {
+            "status": "answering",
+            "question": question,
+            "reading": reading,
+            "cached": False,
+            "instruction": "The configured provider is still answering; call research_protocol again with the "
+            "same protocol_id and question to collect the answer. Do not explore client-side meanwhile.",
+        }
+
+    async def _provider_research(self, protocol_id, question, translations, reading):
+        """The provider's answer from the relevant sections, else its bounded search/read exploration."""
         answer, trace_entry = await self.answer_from_full_text(protocol_id, question, translations)
         if answer.answers or answer.source_assessments:
             return self.save(protocol_id, question, answer, [trace_entry], translations)
