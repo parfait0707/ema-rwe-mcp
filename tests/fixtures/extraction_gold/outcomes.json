@@ -1,19 +1,21 @@
 {
- "about": "Outcome definitions of four EMA protocols, read by hand: the outcomes each protocol's outcome section names, how they are ascertained, and their codes. Same form as eligibility.json; no protocol text. An item marked beyond_first_search (a code list in an appendix) is not expected among the passages research_protocol returns first; the caller finds it by searching on.",
+ "about": "Outcome definitions of four EMA protocols, read by hand: the outcomes each protocol's outcome section names, how they are ascertained, and their codes. Same form as eligibility.json; no protocol text. An item marked beyond_first_search (a code list in an appendix, a row of the sensitivity-analysis table, a definition in another chapter) is not expected among the passages research_protocol returns first; the caller finds it by searching on. values: what the item's fact must also state (a number, a code), each found in an extracted fact that matches the item; a fact that matches without them is counted as found but not correct.",
  "question": "How is each study outcome (endpoint) defined, and from which records, registers or diagnosis codes is it identified?",
  "analysis_fields": [
   "outcomes",
   "disease_definitions"
  ],
  "kinds": [
-  "definition",
   "ascertainment",
-  "sensitivity",
+  "code",
   "deferred",
-  "code"
+  "definition",
+  "sensitivity",
+  "validation"
  ],
  "minimum": {
   "answer_found": 0.8,
+  "answer_correct": 0.7,
   "analysis_found": 0.6
  },
  "protocols": [
@@ -63,6 +65,51 @@
      "page": 96,
      "pattern": "Pancreatic cancer C25\\.x",
      "accept": "C25",
+     "beyond_first_search": true,
+     "values": [
+      "C25"
+     ]
+    },
+    {
+     "id": "O6",
+     "kind": "definition",
+     "label": "latency period: the first 12 months (365 days) from the index date",
+     "page": 22,
+     "pattern": "latency period for developing pancreatic",
+     "accept": "latency",
+     "values": [
+      "12 months|365"
+     ],
+     "beyond_first_search": true
+    },
+    {
+     "id": "O7",
+     "kind": "sensitivity",
+     "label": "sensitivity table: the analysis that uses cancer registers only (numbered 5a there)",
+     "page": 51,
+     "pattern": "5a Primary analysis conducted",
+     "accept": "5a|cancer regist\\w* (alone|only)|only cancer regist",
+     "beyond_first_search": true
+    },
+    {
+     "id": "O8",
+     "kind": "sensitivity",
+     "label": "sensitivity table: 7a, the association with negative-control outcomes",
+     "page": 52,
+     "pattern": "7a The association between",
+     "accept": "7a|negative",
+     "beyond_first_search": true
+    },
+    {
+     "id": "O9",
+     "kind": "code",
+     "label": "appendix code list: negative outcomes, lung (printed C23.x) and melanoma C43.x",
+     "page": 96,
+     "pattern": "Malignant melanoma of the skin C43",
+     "accept": "negative.{0,80}(outcome|control)|melanoma",
+     "values": [
+      "C43"
+     ],
      "beyond_first_search": true
     }
    ]
@@ -96,7 +143,10 @@
      "label": "ICD-10 C25 malignant neoplasm of pancreas",
      "page": 26,
      "pattern": "C25: Malignant neoplasm",
-     "accept": "C25"
+     "accept": "C25",
+     "values": [
+      "C25"
+     ]
     },
     {
      "id": "O4",
@@ -104,7 +154,11 @@
      "label": "ICD-10 subcodes C25.0 to C25.9",
      "page": 27,
      "pattern": "C25\\.9: Pancreas",
-     "accept": "C25\\.[0-9]"
+     "accept": "C25\\.[0-9]",
+     "values": [
+      "C25\\.1",
+      "C25\\.9"
+     ]
     },
     {
      "id": "O5",
@@ -112,7 +166,10 @@
      "label": "incident means none in the last 10 years of data or more",
      "page": 27,
      "pattern": "last 10 years of data",
-     "accept": "10 years"
+     "accept": "10 years",
+     "values": [
+      "10 years"
+     ]
     },
     {
      "id": "O6",
@@ -121,6 +178,24 @@
      "page": 27,
      "pattern": "MedDRA terms for the outcome",
      "accept": "meddra"
+    },
+    {
+     "id": "O7",
+     "kind": "validation",
+     "label": "validity: cancer-registry and patient-registry rates are compared in a cross tabulation",
+     "page": 33,
+     "pattern": "a cross tabulation is performed",
+     "accept": "cross.tabulation",
+     "beyond_first_search": true
+    },
+    {
+     "id": "O8",
+     "kind": "code",
+     "label": "Annex 1 lists the MedDRA terms, e.g. adenocarcinoma pancreas, pancreatic carcinoma",
+     "page": 58,
+     "pattern": "^Adenocarcinoma pancreas$",
+     "accept": "adenocarcinoma pancreas|pancreatic carcinoma",
+     "beyond_first_search": true
     }
    ]
   },
@@ -177,7 +252,10 @@
      "label": "current use runs to the end of supply plus a 30-day grace period",
      "page": 24,
      "pattern": "grace period of 30 days",
-     "accept": "grace|30.day|30 days"
+     "accept": "grace|30.day|30 days",
+     "values": [
+      "30"
+     ]
     },
     {
      "id": "O7",
@@ -193,7 +271,10 @@
      "label": "add-on or switch is classified from use in the 90 days before and after the index date",
      "page": 26,
      "pattern": "during the 90 days before the",
-     "accept": "90.days?"
+     "accept": "90.days?",
+     "values": [
+      "90"
+     ]
     }
    ]
   },
@@ -218,7 +299,12 @@
      "label": "survival rate at 1, 2 and 3 years",
      "page": 42,
      "pattern": "Survival rate at 1-year",
-     "accept": "survival rate|1.year"
+     "accept": "survival rate|1.year",
+     "values": [
+      "1.year",
+      "2.year",
+      "3.year"
+     ]
     },
     {
      "id": "O3",
@@ -298,9 +384,51 @@
      "label": "COPD severe exacerbation: emergency or overnight hospitalisation for COPD; two within 14 days count once",
      "page": 43,
      "pattern": "COPD severe exacerbation defined",
-     "accept": "14.day|severe exacerbation"
+     "accept": "14.day|severe exacerbation",
+     "values": [
+      "14"
+     ]
+    },
+    {
+     "id": "O13",
+     "kind": "code",
+     "label": "appendix: COPD is ICD-10 J44",
+     "page": 60,
+     "pattern": "J44 Other chronic obstructive",
+     "accept": "J44",
+     "values": [
+      "J44"
+     ],
+     "beyond_first_search": true
+    },
+    {
+     "id": "O14",
+     "kind": "code",
+     "label": "appendix Table 20: French CCAM codes for lung or heart-lung transplantation",
+     "page": 62,
+     "pattern": "Table 20: French nomenclature CCAM",
+     "accept": "CCAM|GFEA",
+     "values": [
+      "GFEA"
+     ],
+     "beyond_first_search": true
+    },
+    {
+     "id": "O15",
+     "kind": "code",
+     "label": "appendix Table 27: ICD-10 codes of cardiovascular diseases (cardiopulmonary hospitalisation)",
+     "page": 71,
+     "pattern": "Table 27: ICD-10 codes for diseases",
+     "accept": "table 27|I2[0-5]|I63",
+     "values": [
+      "I2[0-5]"
+     ],
+     "beyond_first_search": true
     }
    ]
   }
- ]
+ ],
+ "maximum": {
+  "misplaced": 0
+ }
 }

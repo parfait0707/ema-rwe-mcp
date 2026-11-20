@@ -1,11 +1,11 @@
 # 抽出の正解データ
 
-題材ごとに 1 ファイルです（spec v1.20、v1.21）。どれも同じ 4 つのプロトコルを、人が読んで列挙したもので、プロトコルの本文は入っていません。
+題材ごとに 1 ファイルです（spec v1.20、v1.21、v1.24）。どれも同じ 4 つのプロトコルを、人が読んで列挙したもので、プロトコルの本文は入っていません。
 
-| ファイル | 内容 | 採点で読む解析のブロック | 下限（回答、解析） |
+| ファイル | 内容 | 採点で読む解析のブロック | 下限（回答に触れている、回答が値も正しい、解析） |
 |---|---|---|---|
-| `eligibility.json` | 組入れ基準と除外基準、51 項目 | `cohort.inclusion_criteria`、`cohort.exclusion_criteria` | 90%、70% |
-| `outcomes.json` | アウトカムの定義（挙げられたアウトカム、同定に使う登録・記録、コード、感度分析での別定義、SAP に委ねる点、別の節に書かれた定義）、31 項目 | `outcomes`、`disease_definitions` | 80%、60% |
+| `eligibility.json` | 組入れ基準と除外基準、60 項目（付録と変数の定義のコード・閾値を含む） | `cohort.inclusion_criteria`、`cohort.exclusion_criteria` | 90%、80%、70% |
+| `outcomes.json` | アウトカムの定義（挙げられたアウトカム、同定に使う登録・記録、コード、感度分析での別定義、SAP に委ねる点、別の節に書かれた定義）、付録のコード、感度分析の表の行）、40 項目 | `outcomes`、`disease_definitions` | 80%、70%、60% |
 
 項目は、自分の言葉での説明、物理ページ、手元の PDF からその箇所を見つける短いパターン、採点で受け入れる鍵となる語だけを持ちます。
 
@@ -38,6 +38,23 @@ uv run python scripts/extraction_eval.py grade
 
 `grade` は、`EMA_DB_PATH` の DB に保存済みの質問別回答と解析を読みます。
 
+## 採点の見方
+
+```bash
+uv run python scripts/extraction_eval.py grade --verbose
+```
+
+研究ごとに 1 行です。
+
+| 列 | 意味 |
+|---|---|
+| answer found / supported / correct | 回答が、項目に触れている / その事実の引用自体が項目を含む / 項目の値（`values`。年齢、期間、コード）も述べている |
+| analysis found / correct | 解析のブロックについて同じ |
+| misplaced | 解析で、種類を取り違えた項目（除外基準を組入れ基準に書いた）。1 つでもあれば失敗 |
+| extra answer / analysis | 正解のどの項目にも一致しない事実の件数。誤りとは限らない（正解に無い正しい事実がある）。`--verbose` で内容を見る |
+
+値の照合は、読み手が書いた値を見ます。「16 歳以上」と書いて「18 years」を引用した事実は、found ですが correct ではありません。読み手の値が数字を含まないとき（「adults」）だけ、引用の中の値で足ります。
+
 ## 検査が失敗したとき
 
 - `check` の失敗：直前の変更（PDF の parser、節の役割、読む順序、検索、根拠の検証）が、その項目を失わせています。表示される項目の ID と理由から、変更を直します。正解の側を変えるのは、プロトコルを読み直して誤りを確かめたときだけにします。
@@ -47,7 +64,7 @@ uv run python scripts/extraction_eval.py grade
 
 ## 項目を足す、プロトコルを足す
 
-既存のファイルに項目を足すか、新しい題材のファイル（`question`、`analysis_fields`、`kinds`、`minimum`、`protocols`）を足します。フォルダの全ファイルが、検査と採点の対象になります。プロトコルを読み、基準ごと（アウトカムごと）に 1 項目を書きます。付録のコードリストのように、質問への最初の検索に入らなくてよい項目は、`beyond_first_search: true` とします。`pattern` は、そのページでその基準の行だけに当たる数語（45 文字以内。文を写さない）。`accept` は、読み手が別の言い方で書いても当たる鍵となる語。`uv run python scripts/extraction_eval.py check` が全項目で通ることを確かめます。
+既存のファイルに項目を足すか、新しい題材のファイル（`question`、`analysis_fields`、`kinds`、`minimum`、`protocols`）を足します。フォルダの全ファイルが、検査と採点の対象になります。プロトコルを読み、基準ごと（アウトカムごと）に 1 項目を書きます。付録のコードリストのように、質問への最初の検索に入らなくてよい項目は、`beyond_first_search: true` とします。`pattern` は、そのページでその基準の行だけに当たる数語（45 文字以内。文を写さない）。`values` は、その事実が述べるべき値（数、コード）の短いパターンで、`check` が正解のページにあることを確かめます。`accept` は、読み手が別の言い方で書いても当たる鍵となる語。`uv run python scripts/extraction_eval.py check` が全項目で通ることを確かめます。
 
 ## 範囲
 

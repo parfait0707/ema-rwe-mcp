@@ -1,5 +1,5 @@
 {
- "about": "Reference items for grading protocol extraction: the eligibility criteria of four protocols, read by hand. No protocol text is stored: each item has a description in our own words, the physical page, a short pattern that finds its passage in the user's own copy of the PDF and, where a reader may word or cite another of its lines, the key words accepted when an extraction is graded. See README.md.",
+ "about": "Reference items for grading protocol extraction: the eligibility criteria of four protocols, read by hand. No protocol text is stored: each item has a description in our own words, the physical page, a short pattern that finds its passage in the user's own copy of the PDF and, where a reader may word or cite another of its lines, the key words accepted when an extraction is graded. See README.md. values: what the item's fact must also state (a number, a code), each found in an extracted fact that matches the item; a fact that matches without them is counted as found but not correct.",
  "question": "What are the inclusion criteria and the exclusion criteria of the study population?",
  "analysis_fields": [
   "cohort.inclusion_criteria",
@@ -11,6 +11,7 @@
  ],
  "minimum": {
   "answer_found": 0.9,
+  "answer_correct": 0.8,
   "analysis_found": 0.7
  },
  "protocols": [
@@ -27,7 +28,10 @@
      "label": "age 18 or older at the index date",
      "page": 24,
      "pattern": "18 years or older",
-     "accept": "18 years|(>=|≥) ?18"
+     "accept": "18 years|(>=|≥) ?18",
+     "values": [
+      "18"
+     ]
     },
     {
      "id": "I2",
@@ -35,7 +39,10 @@
      "label": "individual-level prescription, diagnosis and history data for at least 12 months before the index date",
      "page": 24,
      "pattern": "12 months prior to the index",
-     "accept": "12 months (before|prior)|minimum of 12 months|(>=|≥) ?12 months"
+     "accept": "12 months (before|prior)|minimum of 12 months|(>=|≥) ?12 months",
+     "values": [
+      "12 months|365 days|1 year|one year"
+     ]
     },
     {
      "id": "I3",
@@ -98,7 +105,10 @@
      "label": "any cancer on or before the index date, except non-melanoma skin cancer",
      "page": 26,
      "pattern": "History of any cancer",
-     "accept": "any cancer|cancer history"
+     "accept": "any cancer|cancer history",
+     "values": [
+      "non\\W*melanoma"
+     ]
     },
     {
      "id": "E5",
@@ -123,6 +133,51 @@
      "page": 26,
      "pattern": "of DPP-4i",
      "accept": "dpp-4i"
+    },
+    {
+     "id": "A1",
+     "kind": "inclusion",
+     "label": "appendix code list: type 2 diabetes is ICD-10 E11.x",
+     "page": 95,
+     "pattern": "T2DM E11\\.x",
+     "accept": "E11",
+     "values": [
+      "E11"
+     ]
+    },
+    {
+     "id": "A2",
+     "kind": "exclusion",
+     "label": "appendix code list: type 1 diabetes is ICD-10 E10.x",
+     "page": 96,
+     "pattern": "T1DM E10\\.x",
+     "accept": "E10",
+     "values": [
+      "E10"
+     ]
+    },
+    {
+     "id": "A3",
+     "kind": "exclusion",
+     "label": "appendix code list: gestational diabetes is ICD-10 O24.4",
+     "page": 96,
+     "pattern": "^O24\\.4$",
+     "accept": "O24",
+     "values": [
+      "O24\\.4"
+     ]
+    },
+    {
+     "id": "A4",
+     "kind": "exclusion",
+     "label": "appendix code list: pancreatic disease is ICD-10 K85.x, K86.x, K87.1",
+     "page": 96,
+     "pattern": "^K85\\.x,$",
+     "accept": "K85",
+     "values": [
+      "K85",
+      "K86"
+     ]
     }
    ]
   },
@@ -147,7 +202,10 @@
      "label": "at least two prescriptions, the second within one year of the first",
      "page": 24,
      "pattern": "At least two prescriptions",
-     "accept": "two prescriptions|(>=|≥) ?2 prescriptions"
+     "accept": "two prescriptions|(>=|≥) ?2 prescriptions",
+     "values": [
+      "12 months|365 days|1 year|one year"
+     ]
     },
     {
      "id": "I3",
@@ -155,7 +213,10 @@
      "label": "age 18 or older at cohort entry",
      "page": 24,
      "pattern": "18 years old",
-     "accept": "18 years|(>=|≥) ?18"
+     "accept": "18 years|(>=|≥) ?18",
+     "values": [
+      "18"
+     ]
     },
     {
      "id": "I4",
@@ -163,7 +224,10 @@
      "label": "ten or more years of continuous residency before initiation",
      "page": 24,
      "pattern": "continuous residency",
-     "accept": "residency"
+     "accept": "residency",
+     "values": [
+      "10|ten"
+     ]
     },
     {
      "id": "E1",
@@ -171,7 +235,10 @@
      "label": "any cancer except non-melanoma skin cancer",
      "page": 24,
      "pattern": "any cancer except",
-     "accept": "any cancer"
+     "accept": "any cancer",
+     "values": [
+      "non\\W*melanoma"
+     ]
     },
     {
      "id": "E2",
@@ -230,7 +297,10 @@
      "label": "insulin as first-line treatment without a non-insulin drug within 3 months",
      "page": 25,
      "pattern": "insulin as first-line",
-     "accept": "insulin as first-line|first-line (antidiabetic|insulin)|insulin first"
+     "accept": "insulin as first-line|first-line (antidiabetic|insulin)|insulin first",
+     "values": [
+      "3 months|three months"
+     ]
     },
     {
      "id": "E10",
@@ -270,7 +340,10 @@
      "label": "active registration or continuous enrolment for at least 12 months before the index date",
      "page": 23,
      "pattern": "continuous enrolment for at least 12 months",
-     "accept": "continuous enrolment|active registration"
+     "accept": "continuous enrolment|active registration",
+     "values": [
+      "12 months|365 days|1 year|one year"
+     ]
     },
     {
      "id": "I2",
@@ -286,7 +359,10 @@
      "label": "age 18 or older at the index date",
      "page": 23,
      "pattern": "18 years or older",
-     "accept": "18 years|(>=|≥) ?18"
+     "accept": "18 years|(>=|≥) ?18",
+     "values": [
+      "18"
+     ]
     },
     {
      "id": "I4",
@@ -340,6 +416,61 @@
      "page": 23,
      "pattern": "Kidney transplantation",
      "accept": "transplant"
+    },
+    {
+     "id": "C1",
+     "kind": "exclusion",
+     "label": "variable definition: kidney failure by two eGFR results below 15",
+     "page": 31,
+     "pattern": "Two different eGFR test results",
+     "accept": "eGFR.{0,80}15|15 mL",
+     "values": [
+      "15"
+     ]
+    },
+    {
+     "id": "C2",
+     "kind": "exclusion",
+     "label": "variable definition: dependence on dialysis is at least 3 sessions in baseline",
+     "page": 31,
+     "pattern": "Dependence on dialysis",
+     "accept": "(3|three) sessions|dependence on dialysis",
+     "values": [
+      "3|three"
+     ]
+    },
+    {
+     "id": "C3",
+     "kind": "exclusion",
+     "label": "variable definition: kidney failure or CKD stage 5 is ICD-10 N18.5",
+     "page": 32,
+     "pattern": "CKD stage 5 \\(ICD-10 code N18\\.5\\)",
+     "accept": "N18\\.5",
+     "values": [
+      "N18\\.5"
+     ]
+    },
+    {
+     "id": "C4",
+     "kind": "exclusion",
+     "label": "variable definition: kidney transplant is ICD-10 Z94.0",
+     "page": 32,
+     "pattern": "Kidney transplant \\(ICD-10 code Z94\\.0\\)",
+     "accept": "Z94",
+     "values": [
+      "Z94\\.0"
+     ]
+    },
+    {
+     "id": "C5",
+     "kind": "exclusion",
+     "label": "variable definition: kidney cancer is ICD-10 C64",
+     "page": 32,
+     "pattern": "Kidney cancer \\(ICD-10 code C64\\)",
+     "accept": "C64",
+     "values": [
+      "C64"
+     ]
     }
    ]
   },
@@ -356,7 +487,10 @@
      "label": "Group 1 PAH cohort: age 18 or older at the index date",
      "page": 29,
      "pattern": "18 years at index date",
-     "accept": "18 years|(>=|≥) ?18"
+     "accept": "18 years|(>=|≥) ?18",
+     "values": [
+      "18"
+     ]
     },
     {
      "id": "G1-I2",
@@ -364,7 +498,11 @@
      "label": "Group 1 PAH cohort: recorded pulmonary hypertension diagnosis (I27.0 or I27.2) or a visit to a specialist centre in the inclusion period",
      "page": 29,
      "pattern": "recorded PH diagnosis \\(I27",
-     "accept": "i27\\.0|recorded ph diagnosis"
+     "accept": "i27\\.0|recorded ph diagnosis",
+     "values": [
+      "I27\\.0",
+      "I27\\.2"
+     ]
     },
     {
      "id": "G1-I3",
@@ -388,7 +526,10 @@
      "label": "Group 1 PAH cohort: less than 24 months of lookback",
      "page": 29,
      "pattern": "minimum of 24-month lookback",
-     "accept": "24-month look|24 month"
+     "accept": "24-month look|24 month",
+     "values": [
+      "24"
+     ]
     },
     {
      "id": "G1-E3",
@@ -396,7 +537,10 @@
      "label": "Group 1 PAH cohort: less than 12 months of follow-up (treatment, resource-use and outcome analyses)",
      "page": 29,
      "pattern": "12-months follow up",
-     "accept": "12-months? follow|12 months? (of )?follow"
+     "accept": "12-months? follow|12 months? (of )?follow",
+     "values": [
+      "12"
+     ]
     },
     {
      "id": "G3-I1",
@@ -404,7 +548,10 @@
      "label": "Group 3 PH cohort: age 18 or older",
      "page": 32,
      "pattern": "Patients aged . 18 years",
-     "accept": "18 years|(>=|≥) ?18"
+     "accept": "18 years|(>=|≥) ?18",
+     "values": [
+      "18"
+     ]
     },
     {
      "id": "G3-I2",
@@ -420,7 +567,11 @@
      "label": "Group 3 PH cohort: a lung disease diagnosis from 24 months before to 60 days after the index date",
      "page": 32,
      "pattern": "LD diagnosis \\(see Table 19\\)",
-     "accept": "ld diagnosis|lung disease"
+     "accept": "ld diagnosis|lung disease",
+     "values": [
+      "24 months",
+      "60 days"
+     ]
     },
     {
      "id": "G3-E1",
@@ -436,7 +587,10 @@
      "label": "Group 3 PH cohort: acute pulmonary thromboembolism more than 60 days before or after the index date",
      "page": 32,
      "pattern": "Acute Pulmonary thromboembolism",
-     "accept": "i26|acute pulmonary thromboembolism"
+     "accept": "i26|acute pulmonary thromboembolism",
+     "values": [
+      "60 days"
+     ]
     },
     {
      "id": "G3-E3",
@@ -444,9 +598,19 @@
      "label": "Group 3 PH cohort: less than 24 months of lookback",
      "page": 32,
      "pattern": "minimum of 24-month lookback",
-     "accept": "24-month look|24 month"
+     "accept": "24-month look|24 month",
+     "values": [
+      "24"
+     ]
     }
    ]
   }
- ]
+ ],
+ "kind_fields": {
+  "inclusion": "cohort.inclusion_criteria",
+  "exclusion": "cohort.exclusion_criteria"
+ },
+ "maximum": {
+  "misplaced": 0
+ }
 }
