@@ -229,3 +229,23 @@ def test_vacuum_compacts_the_bundle_without_losing_rows(tmp_path):
     sizes = repo.vacuum()
     assert sizes["bytes_after"] < sizes["bytes_before"]
     assert repo.get("1").title.startswith("Study 0")
+
+
+def test_a_refresh_that_fails_keeps_the_catalogue_and_says_why(tmp_path, monkeypatch, caplog):
+    import logging
+    import sqlite3
+
+    from ema_rwe import storage
+
+    bundled, user = tmp_path / "bundled.sqlite3", tmp_path / "user.sqlite3"
+    catalogue(bundled, "2026-10-01", "Bundled study", "Another")
+    repo = catalogue(user, "2026-09-13", "User study")
+
+    def failing(path):
+        raise sqlite3.OperationalError("disk I/O error")
+
+    monkeypatch.setattr(storage, "Repository", failing)
+    with caplog.at_level(logging.WARNING, logger="ema_rwe.storage"):
+        assert storage.refresh_from_bundle(bundled, user) is False
+    assert repo.study_count() == 1
+    assert any("disk I/O error" in (r.exc_text or "") for r in caplog.records)

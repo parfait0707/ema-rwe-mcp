@@ -267,7 +267,7 @@ async def extract_with_provider(
         except ValidationError as exc:
             raise RWEError("SCHEMA_VALIDATION_FAILED", "Invalid extraction schema.") from exc
         if checkpoint:
-            checkpoint.save(index, signatures[index], extraction)
+            await asyncio.to_thread(checkpoint.save, index, signatures[index], extraction)
         progress["done"] += 1
         return extraction
 
@@ -345,14 +345,10 @@ def merge_into(merged, output, origin: int = 0, origins: dict | None = None) -> 
         elif value is None:
             continue
         elif not hasattr(value, "evidence"):  # nested block
-            if existing is None:
-                setattr(merged, name, value)
-                if origins is not None:  # its list entries all come from this batch
-                    for field in type(value).model_fields:
-                        for item in getattr(value, field) if isinstance(getattr(value, field), list) else ():
-                            origins[id(item)] = origin
-            else:
-                merge_into(existing, value, origin, origins)
+            if existing is None:  # merged into an empty block, so entries at every depth get their origin
+                existing = type(value)()
+                setattr(merged, name, existing)
+            merge_into(existing, value, origin, origins)
         elif existing and existing.value != value.value:
             # Preserve evidence from multiple sections instead of silently taking the first,
             # within the Fact limits (value 4000 chars, 8 evidence items).
