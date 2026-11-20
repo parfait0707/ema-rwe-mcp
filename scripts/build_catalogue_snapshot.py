@@ -9,7 +9,9 @@ r"""Build a monthly catalogue snapshot for publication as a GitHub release (data
 Reads the four exports dated <id> under data/imports/{studies,source_type}/, imports them into a fresh
 database, merges the protocol observations of the committed database, compacts and checks it, then writes
 the database, its gzip and manifest.json to dist/snapshots/<id>/. --verify DIR checks a downloaded
-snapshot (manifest.json and the gzip in DIR) against its manifest.
+snapshot (manifest.json and the gzip in DIR) against its manifest; with --unpack-to FILE the verified
+database is kept there (for an application release: --unpack-to data/ema.sqlite3 makes the bundled
+catalogue the published snapshot itself).
 """
 
 import argparse
@@ -33,6 +35,9 @@ def main() -> int:
         "snapshot_id", nargs="?", help="Export date YYYYMMDD shared by the four CSV file names"
     )
     parser.add_argument("--verify", type=Path, help="Check a downloaded snapshot folder instead of building")
+    parser.add_argument(
+        "--unpack-to", type=Path, help="With --verify: keep the verified database at this path (replaces it)"
+    )
     parser.add_argument("--import-dir", type=Path, default=ROOT / "data" / "imports")
     parser.add_argument("--out", type=Path, help="Default: dist/snapshots/<snapshot_id>")
     parser.add_argument(
@@ -42,8 +47,10 @@ def main() -> int:
         help="Database whose protocol observations (medicine backfill) the snapshot keeps; 'none' to skip",
     )
     args = parser.parse_args()
+    if args.unpack_to and not args.verify:
+        parser.error("--unpack-to needs --verify")
     if args.verify:
-        return verify(args.verify)
+        return verify(args.verify, args.unpack_to)
     if not re.fullmatch(r"\d{8}", args.snapshot_id or ""):
         parser.error("snapshot_id must be YYYYMMDD")
     observations = None if str(args.observations_from) == "none" else args.observations_from
@@ -61,13 +68,22 @@ def main() -> int:
     return 0
 
 
-def verify(folder: Path) -> int:
-    """Check folder/manifest.json and the gzip it names; the unpacked database is discarded."""
+def verify(folder: Path, unpack_to: Path | None = None) -> int:
+    """Check folder/manifest.json and the gzip it names. The unpacked database is discarded, or moved to
+    unpack_to once it has passed every check (never a half-checked file)."""
     try:
         manifest = json.loads((folder / "manifest.json").read_text(encoding="utf-8"))
-        with tempfile.TemporaryDirectory() as work:
-            verify_snapshot(manifest, folder / manifest["compressed"]["name"], Path(work) / "check.sqlite3")
+        with tempfile.TemporaryDirectory(dir=unpack_to.parent if unpack_to else None) as work:
+            checked = verify_snapshot(
+                manifest, folder / manifest["compressed"]["name"], Path(work) / "check.sqlite3"
+            )
+            if unpack_to:
+                for leftover in (unpack_to.with_name(unpack_to.name + suffix) for suffix in ("-wal", "-shm")):
+                    leftover.unlink(missing_ok=True)  # of the database being replaced
+                checked.replace(unpack_to)
         summary = {"verified": manifest["snapshot_id"], "studies_total": manifest["studies_total"]}
+        if unpack_to:
+            summary["unpacked_to"] = str(unpack_to)
     except (OSError, ValueError, KeyError, TypeError) as exc:
         exc = RWEError("SNAPSHOT_INVALID", f"Cannot read the snapshot in {folder}: {exc}")
         print(json.dumps(exc.as_dict(), ensure_ascii=False), file=sys.stderr)

@@ -44,21 +44,26 @@ gh repo edit parfait0707/ema-rwe-mcp --visibility public --accept-visibility-cha
 ## 以降のリリース（vX.Y.Z）
 
 1. `pyproject.toml` の `version`、`uv.lock` のこのパッケージの版、`README.md`・`README_DEV.md` の版表記、`.mcp.json.sample`・`.codex/config.toml.sample` の固定タグ、`EMA_USER_AGENT` の既定値（`src/ema_rwe/config.py`、`.env.example`、`README_DEV.md` の 3 か所）、`CHANGELOG.md` の見出しを揃え、PR でマージする。
-   - 同梱のカタログを新しくするとき（任意）：新しいエクスポートを `data/imports/{studies,source_type}/` に置いて `uv run ema-rwe import-all` を実行し（補完の結果は残り、最後に `VACUUM`。README_DEV の「再構築」）、`data/ema.sqlite3` をコミットする。最新の `data-YYYYMMDD` スナップショットと同じエクスポートにそろえる。医薬品辞書は `uv run ema-rwe refresh-drugs --force` で `data/ema-medicines.json` を更新できる。
+   - 同梱のカタログは、最新の公開済みスナップショットそのものにする（spec v1.19）：`gh release download data-<YYYYMMDD> -D <一時フォルダ>` の後、`uv run scripts/build_catalogue_snapshot.py --verify <一時フォルダ> --unpack-to data/ema.sqlite3` を実行し、`data/ema.sqlite3` をコミットする（検証に通らなければ何も置き換わらない）。`NOTICE` と `README.md` のエクスポートの日付と件数を合わせる。最新のスナップショットが同梱済みの日付と同じなら、何もしない。医薬品辞書は `uv run ema-rwe refresh-drugs --force` で `data/ema-medicines.json` を更新できる。
 2. main で `uv run python scripts/check.py` が通ることを確認し（版の表記の一致、`uv.lock`、ruff、pytest、ビルド、wheel の中身を順に確かめる）、`git tag -a vX.Y.Z -m "..." && git push origin vX.Y.Z`。保守者の Claude Code の環境では、利用者レベルのフック（リポジトリには無い）が、タグとリリースの作成の前に整合性の監査を済ませ、コミットした状態に印を付けることを求める（スナップショットの公開も同じ）。
 3. `gh release create vX.Y.Z --title "vX.Y.Z" --notes-file <その版の CHANGELOG 節>`。
 4. 下記「公開後の確認」の 1 を新しいタグで行う。
 
 ## 月ごとのカタログのスナップショット
 
-カタログはアプリの版とは別に、月ごとのスナップショットとして GitHub Releases に公開する（[計画](research/202610081527_code_data_versioning_plan.md)の段階 1）。
+カタログはアプリの版とは別に、月ごとのスナップショットとして GitHub Releases に公開する（[計画](research/202610081527_code_data_versioning_plan.md)。段階 1〜5 は実装済み）。利用者のサーバーは、起動時に確かめて取り込む（spec v1.18）。`data/ema.sqlite3` は月ごとにはコミットしない（spec v1.19。アプリのリリースのときに、上の手順で最新のスナップショットに置き換える）。
 
-1. EMA の検索ページから、全研究と claims、ehr、registry の 4 つを同じ日にエクスポートし、`data/imports/studies/<YYYYMMDD>_all_export-data.csv` と `data/imports/source_type/<YYYYMMDD>_<種別>_export-data.csv` に置く。
-2. `uv run scripts/build_catalogue_snapshot.py <YYYYMMDD>` を実行する。その日付の 4 つだけを空の DB に取り込み、リポジトリの `data/ema.sqlite3` の補完の結果を移し、`VACUUM` と整合性の確認をして、`dist/snapshots/<YYYYMMDD>/` に DB、gzip、`manifest.json` を書き出す。4 つのどれかが無いか重複するとき、出力先に同じスナップショットが既にあるとき（作り直すなら先に消す）は止まる。
-3. `gh release create data-<YYYYMMDD> --target main --latest=false --title "Catalogue <YYYY-MM-DD>" --notes "Catalogue snapshot of the EMA exports dated <YYYY-MM-DD>; see manifest.json" dist/snapshots/<YYYYMMDD>/ema-catalogue-<YYYYMMDD>.sqlite3.gz dist/snapshots/<YYYYMMDD>/manifest.json`。`--latest=false` で、アプリの最新版の表示を変えない。保守者の Claude Code の環境では、利用者レベルのフック（リポジトリには無い）が、リリースの作成の前に整合性の監査を済ませ、コミットした状態に印を付けることを求める。
-4. 公開したファイルを取り直して照合する：`gh release download data-<YYYYMMDD> -D <一時フォルダ>` の後、`uv run scripts/build_catalogue_snapshot.py --verify <一時フォルダ>`。
+作業はリポジトリの外の作業用フォルダで行う（`<作業>` と書く）。`EMA_DB_PATH=<作業>/ema.sqlite3` と `EMA_IMPORT_DIR=<作業>/imports` を設定しておく。
 
-公開したスナップショットは、利用者のサーバーが起動時に確かめて取り込む（spec v1.18。計画の段階 2 と 3）。公開の後、`uv run ema-rwe update-catalogue --check` が新しい日付を `latest_snapshot` に示すことを確かめる。同梱 DB（オフラインでの最初の起動のため）は、従来どおりアプリのリリースで更新する。月ごとのコミットをやめるのは、計画の段階 4 である。
+1. 作業用の DB を、最新の公開済みスナップショットにする：`uv run ema-rwe update-catalogue`。前のスナップショットの補完の結果（プロトコルから補った医薬品）が、この DB に入る。
+2. EMA の検索ページから、全研究と claims、ehr、registry の 4 つを同じ日にエクスポートし、`<作業>/imports/studies/<YYYYMMDD>_all_export-data.csv` と `<作業>/imports/source_type/<YYYYMMDD>_<種別>_export-data.csv` に置く。
+3. `uv run ema-rwe import-all` で作業用の DB に取り込む。新しい研究の医薬品を補うなら、`uv run ema-rwe backfill-protocols` を実行する（1 件ずつ、間隔を空けて取得する。429 や障害で止まり、再開できる）。
+4. `uv run scripts/build_catalogue_snapshot.py <YYYYMMDD> --import-dir <作業>/imports --observations-from <作業>/ema.sqlite3` を実行する。その日付の 4 つだけを空の DB に取り込み、作業用の DB の補完の結果を移し、`VACUUM` と整合性の確認をして、`dist/snapshots/<YYYYMMDD>/` に DB、gzip、`manifest.json` を書き出す。4 つのどれかが無いか重複するとき、出力先に同じスナップショットが既にあるとき（作り直すなら先に消す）は止まる。
+5. `gh release create data-<YYYYMMDD> --target main --latest=false --title "Catalogue <YYYY-MM-DD>" --notes "Catalogue snapshot of the EMA exports dated <YYYY-MM-DD>; see manifest.json" dist/snapshots/<YYYYMMDD>/ema-catalogue-<YYYYMMDD>.sqlite3.gz dist/snapshots/<YYYYMMDD>/manifest.json`。`--latest=false` で、アプリの最新版の表示を変えない。保守者の Claude Code の環境では、利用者レベルのフック（リポジトリには無い）が、リリースの作成の前に整合性の監査を済ませ、コミットした状態に印を付けることを求める。
+6. 公開したファイルを取り直して照合する：`gh release download data-<YYYYMMDD> -D <一時フォルダ>` の後、`uv run scripts/build_catalogue_snapshot.py --verify <一時フォルダ>`。
+7. 利用者の側から見えることを確かめる：前の日付の DB（手順 1 の時点の複製など）で `uv run ema-rwe update-catalogue --check` が `available` と新しい日付の `latest_snapshot` を返し、`uv run ema-rwe update-catalogue` が `updated` を返す。
+
+スナップショットのスキーマの版がアプリと違うと、利用者のサーバーは取り込まず、`app_update_required` を記録する。スキーマを変えるアプリの版を出したら、その版でスナップショットを作り直して公開する。
 
 ## 公開後の確認
 

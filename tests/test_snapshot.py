@@ -106,3 +106,41 @@ def test_the_script_verifies_a_downloaded_snapshot_folder(exports, tmp_path):
         [sys.executable, script, "--verify", tmp_path / "out"], capture_output=True, text=True, check=False
     )
     assert bad.returncode == 1 and "SNAPSHOT_INVALID" in bad.stderr
+
+
+def test_the_script_keeps_the_verified_database_for_an_application_release(exports, tmp_path):
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    script = Path(__file__).resolve().parents[1] / "scripts" / "build_catalogue_snapshot.py"
+    manifest = build_snapshot(exports, "20261101", tmp_path / "out", None)
+    bundled = tmp_path / "data" / "ema.sqlite3"
+    bundled.parent.mkdir()
+    bundled.write_bytes(b"the previous bundled catalogue")
+    kept = subprocess.run(
+        [sys.executable, script, "--verify", tmp_path / "out", "--unpack-to", bundled],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert kept.returncode == 0 and json.loads(kept.stdout)["unpacked_to"] == str(bundled)
+    # The bundled catalogue is now the published snapshot itself, and nothing else is left beside it
+    assert sha256_file(bundled) == manifest["database"]["sha256"]
+    assert [p.name for p in bundled.parent.iterdir()] == ["ema.sqlite3"]
+    assert Repository(bundled).study_count() == manifest["studies_total"]
+    # A snapshot that fails verification replaces nothing
+    before = bundled.read_bytes()
+    packed = tmp_path / "out" / manifest["compressed"]["name"]
+    packed.write_bytes(packed.read_bytes()[:-50])
+    refused = subprocess.run(
+        [sys.executable, script, "--verify", tmp_path / "out", "--unpack-to", bundled],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert refused.returncode == 1 and bundled.read_bytes() == before
+    alone = subprocess.run(
+        [sys.executable, script, "--unpack-to", bundled], capture_output=True, text=True, check=False
+    )
+    assert alone.returncode == 2  # --unpack-to without --verify

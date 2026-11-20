@@ -24,7 +24,10 @@ notifications from `compare_protocols` (one per study while protocols are retrie
   what the server's own look for a newer published snapshot found (`result`: `updated`, `up_to_date`,
   `available`, `kept_local_import`, `app_update_required`, or a failure with its `reason`); the server takes
   newer snapshots by itself, so no action follows from it except telling the user about
-  `app_update_required`. `status=current` and `source_type_imports` containing
+  `app_update_required`. When `app_update_available` is present, tell the user once as its `instruction`
+  says (a newer application release exists; the server never replaces itself). Analyses (`source`), answers
+  and comparisons (`versions`) record the `app_version`, `catalogue_snapshot` and `parser_version` that
+  produced them: quote them when a result differs from an earlier one. `status=current` and `source_type_imports` containing
   `claims`, `ehr`, `registry` means the committed catalogue is usable (freshness is judged per export:
   `exports`, `snapshot_aligned` with `snapshot_note`, `missing_source_type_exports`). Only when no CSV was ever
   imported, or a stale snapshot yields no candidates, may a visible user-initiated browser export be
