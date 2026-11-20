@@ -589,6 +589,36 @@ async def test_a_batch_served_again_with_another_budget_keeps_the_sections_it_he
     assert done["status"] == "analyzed"
 
 
+async def test_a_final_call_with_no_batch_cached_is_refused_while_the_protocol_has_unread_batches(
+    service, website
+):
+    """The coverage check also holds when no batch at all was cached (found while releasing v0.5.8)."""
+    website["/system/files/protocol.pdf"] = four_section_pdf()
+    first = await service.analyze_protocol("123", max_chars=6000)
+    assert first["next_offset"] < first["total_sections"]
+    with pytest.raises(RWEError) as error:
+        await service.cache_protocol_analysis(
+            "123", first["source"]["fingerprint"], Extraction(), coverage_complete=True
+        )
+    assert error.value.code == "INCOMPLETE_EXTRACTION" and "offset=0" in error.value.message
+    assert service.repo.analysis("123") is None
+
+
+async def test_a_whole_analysis_in_one_final_call_is_still_accepted_without_cached_batches(service, website):
+    """spec v1.11 3 accepts the whole analysis in one call with no batch cached; v1.29 refuses only an empty one."""
+    website["/system/files/protocol.pdf"] = four_section_pdf()
+    offset = 0
+    while offset is not None:
+        batch = await service.analyze_protocol("123", offset=offset, max_chars=6000)
+        offset = batch["next_offset"]
+    quote = "The cohort study word0 follows patients."
+    whole = Extraction(study_design=Fact(value="cohort study", evidence=[Evidence(page=1, quote=quote)]))
+    done = await service.cache_protocol_analysis(
+        "123", batch["source"]["fingerprint"], whole, coverage_complete=True
+    )
+    assert done["status"] == "analyzed" and service.repo.analysis("123")["analysis"]["study_design"]
+
+
 async def test_a_final_call_without_offset_stands_only_for_the_batch_that_ends_the_protocol(service, website):
     website["/system/files/protocol.pdf"] = four_section_pdf()
     offset, served = 0, []
