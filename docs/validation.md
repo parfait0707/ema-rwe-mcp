@@ -1170,3 +1170,11 @@ PDF 取得先ディレクトリ名から X/Y が推測可能だった（P）、�
 - 案内文と help（`force_refresh`、`research_protocol` の `force`、`cache-analysis --question`、`analyze --refresh`、全バッチの後に繰り返すエラー、`SINGLE_PASS` の指示、比較の `instruction`）と文書（CHANGELOG の 0.5.7 への統合、`mcp-workflow.md`、README、README_DEV、`source-types.md`、`.gitignore`）を実装に合わせた。同梱 DB の補完の件数は `data/ema.sqlite3` を読み取り専用で数え直した：医薬品欄が空の研究 716 件のうち補完のあるもの 219 件（うち `protocol_pass_table` 83 件、`catalogue_text` 191 件）。
 - `uv run pytest -q tests/test_annotations_progress.py tests/test_heading_translation.py tests/test_provider_extraction.py tests/test_cli_mcp_parity.py tests/test_core.py tests/test_comparison.py tests/test_exploration.py tests/test_mcp.py`：176 passed、1 skipped。`ruff check`・`ruff format --check` green。全件と `scripts/check.py` は未実行（メインスレッドが実行する）。
 - 限界：`poll=False` の待機は模擬のプロバイダでだけ確かめた。`.env.example` の `EMA_CATALOGUE_UPDATE` の注記は権限設定で編集できず、手作業で足す。
+
+## 2026-11-20 呼出元が保存した引用の節のラベル（spec v1.27、Issue #101）
+
+- 先に再現テストを足し、修正前に落ちることを確かめてから直した。
+  - `uv run pytest -q tests/test_parse_cache.py tests/test_exploration.py -k derived`（修正前）：2 failed。`test_caller_analysis_and_batch_answer_are_saved_with_derived_sections`（`cache_protocol_analysis` の解析の `section` が `None`、期待は `8.1 Study design`）と `test_caller_answer_with_a_null_section_is_saved_with_the_derived_section`（`cache_protocol_answer`、期待は `8.4 Analysis`）。単体の `test_a_null_section_is_derived_only_when_one_section_of_the_page_holds_the_quote`（一意なら導く、2 つの節にある引用は null、呼出元のラベルは残す）は、関数が無いので修正前は読み込みで落ちる。
+  - 既存の `test_caller_batch_with_a_quote_on_the_wrong_page_is_saved_with_the_page_corrected` の期待を変えた。ページを直した引用は、直した先のページの節（`9 Data sources`）を受け取る。
+- 実 PDF：研究 105807 の手元の PDF（`data/protocols/` を読み取り専用）で、p28 の引用 "Currently, PAH patients are not directly identifiable in claims nor in EMR databases" を section=null で `with_derived_sections` に渡すと `3.1.3   Group 1 PAH Cohort` が入り、`validate_evidence` を通った。MCP サーバー経由の再実行はしていない。
+- `uv run pytest -q tests/test_parse_cache.py tests/test_exploration.py tests/test_provider_extraction.py tests/test_core.py tests/test_bookmarks_cohort.py tests/test_source_types.py tests/test_comparison.py tests/test_heading_translation.py tests/test_cli_mcp_parity.py tests/test_extraction_audit.py`：240 passed、1 skipped。`ruff check`・`ruff format --check` green。全件は未実行（メインスレッドが実行する）。

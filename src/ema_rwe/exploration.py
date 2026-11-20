@@ -25,6 +25,7 @@ from .pdf import (
     stored_translations,
     validate_evidence,
     with_corrected_pages,
+    with_derived_sections,
     with_source_name_quotes,
     without_server_marks,
 )
@@ -276,6 +277,7 @@ class Explorer:
         answer = answer.model_copy(
             update={"source_assessments": with_source_name_quotes(answer.source_assessments, pages)}
         )
+        answer = with_derived_sections(answer, pages)
         for start in range(0, len(answer.answers), 20):  # Extraction.key_notes holds 20 facts per check
             validate_evidence(Extraction(key_notes=answer.answers[start : start + 20]), pages)
         validate_evidence(Extraction(source_assessments=answer.source_assessments), pages)

@@ -1240,6 +1240,36 @@ def with_corrected_pages(model, pages: list[Page]):
     return _map_evidence(model, correct)
 
 
+def _derived_section(evidence: dict, chunks: list[dict], page_texts: dict[int, str]) -> str | None:
+    """The label of the one section of the cited page whose text holds the quote and whose heading is
+    written on that page; null when no section or several do."""
+    quote = normalize_quote(evidence["quote"])
+    labels = {
+        c["section"]
+        for c in chunks
+        if c["page"] == evidence["page"]
+        and c["section"]
+        and quote in normalize_quote(c["text"])
+        # A heading carried over from an earlier page is not this page's section.
+        and normalize_quote(c["section"]) in page_texts.get(evidence["page"], "")
+    }
+    return labels.pop() if len(labels) == 1 else None
+
+
+def with_derived_sections(model, pages: list[Page]):
+    """model (an extraction or an answer) with each null section label set to the one derived from where
+    the quote sits on its page, as for server-side extractions. A label already given was checked by
+    validate_evidence and is kept."""
+    chunks = sections(pages)
+    texts = {p.page: normalize_quote(p.text) for p in pages}
+    return _map_evidence(
+        model,
+        lambda node: (
+            node if node.get("section") else dict(node, section=_derived_section(node, chunks, texts))
+        ),
+    )
+
+
 def validate_evidence(extraction: Extraction, pages: list[Page], chunks: list[dict] | None = None):
     page_map = {p.page: normalize_quote(p.text) for p in pages}
     chunks = sections(pages) if chunks is None else chunks
@@ -1412,24 +1442,10 @@ def prune_unverifiable(extraction: Extraction, pages: list[Page]) -> tuple[Extra
         return []
 
     def with_section(evidence: dict) -> dict:
-        """Replace the section label with the one derived from where the quote sits on the page.
-
-        Provider labels are not trusted: a heading carried over from an earlier page passes the
-        containment check while naming the wrong section. No unique chunk -> null. A server mark the provider
-        wrote is dropped too (see without_server_marks).
-        """
-        quote = normalize_quote(evidence["quote"])
-        page_text = page_map.get(evidence["page"], "")
-        labels = {
-            c["section"]
-            for c in chunks
-            if c["page"] == evidence["page"]
-            and c["section"]
-            and quote in normalize_quote(c["text"])
-            # A heading carried over from an earlier page is not this page's section.
-            and normalize_quote(c["section"]) in page_text
-        }
-        return dict(evidence, section=labels.pop() if len(labels) == 1 else None, server=None)
+        """Provider labels are not trusted: a heading carried over from an earlier page passes the
+        containment check while naming the wrong section. A server mark the provider wrote is dropped too
+        (see without_server_marks)."""
+        return dict(evidence, section=_derived_section(evidence, chunks, page_map), server=None)
 
     def prune_block(block: dict) -> None:
         nonlocal dropped
