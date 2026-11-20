@@ -462,3 +462,11 @@ async def test_provider_server_marks_are_not_kept(service, monkeypatch):
     monkeypatch.setattr("ema_rwe.exploration.complete_json", respond)
     result = await service.research_protocol(pid, "Which adjustment method?", poll=False)
     assert result["answer"]["answers"][0]["evidence"][0]["server"] is None
+
+
+async def test_caller_answer_with_a_null_section_is_saved_with_the_derived_section(service):
+    pid = (await service.get_protocol("123"))["protocol"]["protocol_id"]
+    unlabelled = answer()
+    unlabelled.answers[0].evidence[0].section = None
+    saved = await service.cache_protocol_answer(pid, "Which adjustment method is used?", unlabelled)
+    assert saved["answer"]["answers"][0]["evidence"][0]["section"] == "8.4 Analysis"
