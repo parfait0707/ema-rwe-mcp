@@ -34,6 +34,7 @@ from .pdf import (
     stored_translations,
     validate_evidence,
     with_corrected_pages,
+    with_derived_sections,
     with_source_name_quotes,
     without_server_marks,
 )
@@ -312,6 +313,8 @@ class ExtractionMixin:
             answer = answer.model_copy(
                 update={"source_assessments": with_source_name_quotes(answer.source_assessments, pages)}
             )
+            answer = with_derived_sections(answer, pages)
+        analysis = with_derived_sections(analysis, pages)
         validate_evidence(analysis, pages)
         key = (study_id, fingerprint, source["reading"])
         served = self.repo.batches(*key, "served")

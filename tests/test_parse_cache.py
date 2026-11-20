@@ -326,7 +326,7 @@ async def test_caller_batch_with_a_quote_on_the_wrong_page_is_saved_with_the_pag
     saved = service.repo.analysis("123")["analysis"]
     assert saved["key_notes"][0]["evidence"][0] == {
         "page": 2,
-        "section": None,
+        "section": "9 Data sources",  # the moved quote's section, derived on the page that holds it
         "quote": QUOTE,
         "server": "page",
     }
@@ -441,3 +441,43 @@ async def test_a_tool_call_that_raises_is_timed_on_the_log(service, caplog, monk
     lines = [r.getMessage() for r in caplog.records if r.getMessage().startswith("tool=")]
     assert len(lines) == 1 and lines[0].startswith("tool=catalogue_status ms=")
     assert "status=ValueError" in lines[0]
+
+
+def test_a_null_section_is_derived_only_when_one_section_of_the_page_holds_the_quote():
+    from ema_rwe.pdf import with_derived_sections
+
+    shared = "Patients are followed until death or the end of the study period."
+    pages = extract_pages(
+        one_page(
+            f"9.1 Study design\nThis is a retrospective cohort study of adult patients.\n{shared}\n"
+            f"9.2 Follow-up\n{shared}"
+        )
+    )
+    unique = Evidence(page=1, quote="This is a retrospective cohort study of adult patients.")
+    ambiguous = Evidence(page=1, quote=shared)
+    labelled = Evidence(page=1, section="9.2 Follow-up", quote=shared)
+    derived = with_derived_sections(
+        Extraction(key_notes=[{"value": "design", "evidence": [unique, ambiguous, labelled]}]), pages
+    )
+    assert [e.section for e in derived.key_notes[0].evidence] == ["9.1 Study design", None, "9.2 Follow-up"]
+
+
+async def test_caller_analysis_and_batch_answer_are_saved_with_derived_sections(service):
+    from ema_rwe.domain import Fact, ProtocolAnswer
+
+    first = await service.analyze_protocol("123")
+    analysis = sample_analysis()
+    analysis.study_design.evidence[0].section = None
+    analysis.data_sources[0].evidence[0].section = None
+    quote = "We will use propensity score weighting and Cox regression."
+    answer = ProtocolAnswer(answers=[Fact(value="PS weighting", evidence=[Evidence(page=1, quote=quote)])])
+    question = "Which adjustment method is used?"
+    await service.cache_protocol_analysis(
+        "123", first["source"]["fingerprint"], analysis, True, answer=answer, question=question
+    )
+    saved = service.repo.analysis("123")["analysis"]
+    assert saved["study_design"]["evidence"][0]["section"] == "8.1 Study design"
+    assert saved["data_sources"][0]["evidence"][0]["section"] == "8.2 Data sources"
+    pid = first["source"]["protocol_id"]
+    cached = await service.research_protocol(pid, question)
+    assert cached["answer"]["answers"][0]["evidence"][0]["section"] == "8.4 Analysis"

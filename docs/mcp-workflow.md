@@ -244,6 +244,9 @@ filters. Never pick a subset yourself.
 - A quote has at least 8 characters (quote the whole line around a bare code or word) and a fact at most 8
   quotes (split the fact for more). A verbatim quote given on the wrong page is moved to the nearest page
   that holds it; a quote found on no page, or on two pages equally near, is refused.
+- Leave `evidence.section` null unless you copy the exact label: the server fills a null label with
+  the one section of the cited page that holds the quote and whose heading is on that page (null when
+  none or several do). A label you give is checked, not replaced.
 - In saved analyses and answers `evidence[].server` marks what the server did: `source_name` is a passage it
   added because it writes the data source's name (not support for the usage or definition; the comparison
   table lists its page apart), `page` a quote whose page it corrected. Leave `server` out of what you send: the server drops any `server`

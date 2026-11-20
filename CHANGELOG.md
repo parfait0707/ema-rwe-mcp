@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Quotes a caller saves (`cache_protocol_analysis` analysis and answer, `cache_protocol_answer`) with a null
+  `evidence.section` get the section label derived from where the quote sits on its page, as server-side
+  extractions already did; it stays null when no single section of the page holds the quote. A label the
+  caller gives is kept (spec v1.27, #101).
+
 ## 0.5.7 (2026-11-20)
 
 - Fixes from a review of the changes of PRs #81 to #98 (spec v1.26):
