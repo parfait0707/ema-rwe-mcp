@@ -8,6 +8,8 @@ from mcp.client.stdio import stdio_client
 
 from ema_rwe.archive import ProtocolArchive
 from ema_rwe.domain import Study
+from ema_rwe.evidence import quote_position
+from ema_rwe.pdf import page_texts
 from ema_rwe.storage import Repository, import_csv
 
 
@@ -34,6 +36,18 @@ async def test_stdio_discovery_validation_and_local_search(settings, csv_file, p
         pdf_bytes,
         {"document_url": "https://catalogues.ema.europa.eu/system/files/protocol.pdf", "version": "2"},
     )["protocol_id"]
+    # A distributed fact of study 123, whose PDF is kept here: find_facts restores its quote
+    quote = "We will use propensity score weighting and Cox regression."
+    position = quote_position(page_texts(pdf_bytes, {1})[1], quote)
+    sha = pid.rsplit("_", 1)[1]
+    repo.replace_prebuilt_facts(
+        {"123"},
+        [
+            {"pdf_sha256": sha, "study_id": "123", "protocol_id": pid, "item_kind": "statistical_analysis"}
+            | {"value": "Cox regression", "usage": None, "page": 1, "section": None, **position}
+            | {"extractor": "x", "parser_version": "x", "app_version": "x", "built_at": "x"}
+        ],
+    )
     env = dict(
         os.environ,
         EMA_DB_PATH=str(settings.db_path),
@@ -48,6 +62,7 @@ async def test_stdio_discovery_validation_and_local_search(settings, csv_file, p
         assert {t.name for t in tools.tools} == {
             "refresh_drug_dictionary",
             "search_studies",
+            "find_facts",
             "get_study",
             "get_protocol",
             "analyze_protocol",
@@ -71,6 +86,15 @@ async def test_stdio_discovery_validation_and_local_search(settings, csv_file, p
         assert [str(r.uri) for r in resources.resources] == ["ema-rwe://docs/mcp-workflow"]
         workflow = await session.read_resource("ema-rwe://docs/mcp-workflow")
         assert workflow.contents[0].text.startswith("# MCP workflow for callers")
+        facts = json.loads(
+            (await session.call_tool("find_facts", {"study_ids": ["123", "456"], "text": "cox"}))
+            .content[0]
+            .text
+        )
+        assert [(f["status"], f["evidence"][0]["quote"]) for f in facts["facts"]] == [
+            ("verified_local", quote)
+        ]
+        assert facts["origins"] == {"123": "prebuilt", "456": "none"} and facts["network_requests"] == 0
         catalogue = await session.call_tool("catalogue_status", {})
         assert json.loads(catalogue.content[0].text)["status"] == "current"
         assert json.loads(catalogue.content[0].text)["max_screening_studies"] == 5

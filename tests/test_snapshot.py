@@ -184,3 +184,18 @@ def test_unpacking_into_a_missing_folder_is_refused_as_json(exports, tmp_path):
     assert refused.returncode == 1 and "Traceback" not in refused.stderr
     assert json.loads(refused.stderr)["error"]["code"] == "SNAPSHOT_INVALID"
     assert not missing.parent.exists()
+
+
+def test_a_snapshot_carries_the_distributed_facts_of_its_studies(exports, tmp_path):
+    """--facts-from: the export-facts database's rows for the snapshot's studies travel; the count is recorded."""
+    from test_evidence_store import row
+
+    facts = Repository(tmp_path / "facts.sqlite3")
+    facts.replace_prebuilt_facts({"123", "999999"}, [row("a"), row("b"), row("c", study_id="999999")])
+    manifest = build_snapshot(exports, "20261101", tmp_path / "out", None, tmp_path / "facts.sqlite3")
+    database = Repository(tmp_path / "out" / manifest["database"]["name"])
+    assert manifest["prebuilt_facts"] == 2
+    assert [(r["study_id"], r["value"]) for r in database.prebuilt_facts()] == [("123", "a"), ("123", "b")]
+    assert build_snapshot(exports, "20261101", tmp_path / "plain", None)["prebuilt_facts"] == 0
+    with pytest.raises(RWEError, match="No facts database"):
+        build_snapshot(exports, "20261101", tmp_path / "missing", None, tmp_path / "nowhere.sqlite3")

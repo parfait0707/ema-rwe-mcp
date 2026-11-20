@@ -477,6 +477,16 @@ def _parse_pages(data: bytes, use_outline: bool, translations: dict[str, str] | 
     return pages
 
 
+def page_texts(data: bytes, numbers: set[int]) -> dict[int, str]:
+    """The text of some physical pages as extract_pages reads it (the same get_text call), without parsing
+    the rest: a PDF parse takes a second, a few pages a few milliseconds. Pages outside the PDF are left out."""
+    try:
+        with pymupdf.open(stream=data, filetype="pdf") as doc:
+            return {n: doc[n - 1].get_text(sort=True) for n in numbers if 1 <= n <= len(doc)}
+    except Exception as exc:
+        raise RWEError("PDF_PARSE_FAILED", "Native PDF extraction failed.") from exc
+
+
 def text_layer(data: bytes) -> str | None:
     """full, partial (half or more pages without text) or none (image-only, needs OCR); None if unparsable."""
     try:

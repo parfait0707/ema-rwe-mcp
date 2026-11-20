@@ -3,14 +3,16 @@ import asyncio
 import json
 import logging
 from pathlib import Path
+from typing import get_args
 
 from pydantic import ValidationError
 
 from .catalogue_update import FAILED, update_catalogue
 from .config import Settings
 from .domain import AnalogousTerm, CodeCandidate, Extraction, ProtocolAnswer, RWEError, SourcePreference
+from .evidence import ITEM_KINDS
 from .ranking import ScreeningBlock
-from .selection import SearchFilters
+from .selection import SearchFilters, SourceType
 from .service import Service, source_type_from_filename
 from .storage import Repository, import_csv
 
@@ -67,6 +69,24 @@ def parser():
     prefetch.add_argument("--source-type", required=True, choices=("claims", "ehr", "registry"))
     prefetch.add_argument("--interval", type=float, default=30.0, help="Seconds between studies (default 30)")
     prefetch.add_argument("--limit", type=int, help="At most this many studies in this run")
+    facts = commands.add_parser("facts", help="Saved facts of studies, one row per fact (no network)")
+    site = commands.add_parser(
+        "facts-site", help="Write the facts of `facts` as one self-contained, read-only HTML page"
+    )
+    for cmd in (facts, site):
+        cmd.add_argument("--study-id", action="append", dest="study_ids")
+        cmd.add_argument("--item-kind", action="append", dest="item_kinds", choices=ITEM_KINDS)
+        cmd.add_argument("--source-type", action="append", dest="source_types", choices=get_args(SourceType))
+        cmd.add_argument("--text", help="Case-insensitive part of a value or quote")
+    facts.add_argument("--limit", type=int, default=200)
+    site.add_argument("--limit", type=int, help="At most this many facts (default: all)")
+    site.add_argument("--output", type=Path, required=True, help="HTML file to write")
+    export = commands.add_parser(
+        "export-facts",
+        help="Write distributed facts (positions, no quotes) from local analyses and PDFs into a database",
+    )
+    export.add_argument("--output", type=Path, required=True, help="Database to write prebuilt_facts into")
+    export.add_argument("--source-type", choices=get_args(SourceType))
     merge = commands.add_parser(
         "merge-observations", help="Add another database's protocol observations (e.g. a backfill run) here"
     )
@@ -287,6 +307,19 @@ async def run(args):
                 return await service.prefetch_protocols(
                     source_type=args.source_type, interval=args.interval, limit=args.limit
                 )
+            case "facts" | "facts-site":
+                wanted = {
+                    "study_ids": args.study_ids,
+                    "item_kinds": args.item_kinds,
+                    "source_types": args.source_types,
+                    "text": args.text,
+                    "limit": args.limit,
+                }
+                if args.command == "facts":
+                    return service.find_facts(**wanted)
+                return service.write_facts_site(args.output, **wanted)
+            case "export-facts":
+                return service.export_facts(args.output, args.source_type)
             case "backfill-protocols":
                 return await service.backfill_protocols(
                     interval=args.interval,

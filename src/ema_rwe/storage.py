@@ -291,6 +291,59 @@ class Repository:
             row = db.execute("SELECT body FROM analyses WHERE study_id=?", (study_id,)).fetchone()
         return json.loads(row[0]) if row else None
 
+    def analyses(self, study_ids: list[str]) -> dict[str, dict]:
+        """The saved analyses of these studies, by study (one query for many studies)."""
+        with self.connection() as db:
+            rows = db.execute(
+                "SELECT study_id, body FROM analyses WHERE study_id IN (SELECT value FROM json_each(?))",
+                (json.dumps(study_ids),),
+            ).fetchall()
+        return {study_id: json.loads(body) for study_id, body in rows}
+
+    def analysed_studies(self) -> set[str]:
+        with self.connection() as db:
+            return {r[0] for r in db.execute("SELECT study_id FROM analyses")}
+
+    @staticmethod
+    def _prebuilt(db, sql: str, params=()) -> list[sqlite3.Row]:
+        try:
+            return db.execute(sql, params).fetchall()
+        except sqlite3.OperationalError as exc:
+            if "no such table" not in str(exc):
+                raise
+            return []  # no distributed facts were ever installed in this database
+
+    def prebuilt_studies(self) -> set[str]:
+        with self.connection() as db:
+            return {r[0] for r in self._prebuilt(db, "SELECT DISTINCT study_id FROM prebuilt_facts")}
+
+    def prebuilt_facts(self, study_ids: list[str] | None = None) -> list[dict]:
+        """Distributed fact rows (one per quote) in the order they were written; all of them without study_ids."""
+        where = "" if study_ids is None else " WHERE study_id IN (SELECT value FROM json_each(?))"
+        with self.connection() as db:
+            rows = self._prebuilt(
+                db,
+                f"SELECT * FROM prebuilt_facts{where} ORDER BY rowid",
+                () if study_ids is None else (json.dumps(study_ids),),
+            )
+        return [dict(row) for row in rows]
+
+    def replace_prebuilt_facts(self, study_ids: set[str], rows: list[dict]) -> None:
+        """Replace the distributed facts of these studies with rows (each row names every column): the rows of
+        the same PDF, and those of an older protocol of the study, which would otherwise mix with them."""
+        with self.connection() as db:
+            create_prebuilt_facts(db)
+            columns = [r[1] for r in db.execute("PRAGMA main.table_info(prebuilt_facts)")]
+            db.execute(
+                "DELETE FROM prebuilt_facts WHERE study_id IN (SELECT value FROM json_each(?))",
+                (json.dumps(sorted(study_ids)),),
+            )
+            db.executemany(
+                f"INSERT INTO prebuilt_facts ({', '.join(columns)}) "
+                f"VALUES ({', '.join(':' + c for c in columns)})",
+                rows,
+            )
+
     # The heading reading of each archived PDF (language, translations): the record and its hash are kept
     # here, beside the analyses, so a translation change and an analysis save serialise in one database.
     # The table is created on first write: a no-op DDL would dirty the committed catalogue.
@@ -769,6 +822,19 @@ def import_csv(
 CATALOGUE_TABLES = ("studies", "imports", "study_catalogue_search", "study_fts")
 
 
+def create_prebuilt_facts(db) -> None:
+    """Facts a maintainer built from analyses and PDFs, distributed without their quotes (spec v1.31): the
+    position and hash of each normalized quote instead. A catalogue table, but optional: created on first
+    write like protocol_readings, so the schema version (which snapshots must match) stays as it is."""
+    db.execute(
+        "CREATE TABLE IF NOT EXISTS main.prebuilt_facts (pdf_sha256 TEXT NOT NULL, study_id TEXT NOT NULL, "
+        "protocol_id TEXT NOT NULL, item_kind TEXT NOT NULL, value TEXT NOT NULL, usage TEXT, page INTEGER, "
+        "section TEXT, quote_start INTEGER, quote_end INTEGER, quote_sha256 TEXT, quote_length INTEGER, "
+        "extractor TEXT, parser_version TEXT, app_version TEXT, built_at TEXT NOT NULL)"
+    )
+    db.execute("CREATE INDEX IF NOT EXISTS main.prebuilt_facts_study ON prebuilt_facts (study_id)")
+
+
 def latest_import(path: Path, immutable: bool = False) -> str | None:
     """Timestamp of the database's newest catalogue import; None when it is unreadable or has none."""
     # immutable: the bundle may sit in a read-only site-packages where even a read would create -shm.
@@ -905,7 +971,12 @@ def refresh_from_bundle(bundled: Path, dest: Path) -> bool:
                 if current and current >= new:
                     db.rollback()
                     return False
-                for table in CATALOGUE_TABLES:
+                tables = list(CATALOGUE_TABLES)
+                # Distributed facts travel with the snapshot that has them; without them, the local ones stay.
+                if db.execute("SELECT 1 FROM bundle.sqlite_master WHERE name='prebuilt_facts'").fetchone():
+                    create_prebuilt_facts(db)
+                    tables.append("prebuilt_facts")
+                for table in tables:
                     columns = ", ".join(
                         r[1] for r in db.execute(f"PRAGMA main.table_info({table})").fetchall()
                     )

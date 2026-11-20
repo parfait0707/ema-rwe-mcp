@@ -69,13 +69,22 @@ def check_database(path: Path) -> None:
         db.close()
 
 
-def build_snapshot(import_dir: Path, snapshot_id: str, out_dir: Path, observations_from: Path | None) -> dict:
+def build_snapshot(
+    import_dir: Path,
+    snapshot_id: str,
+    out_dir: Path,
+    observations_from: Path | None,
+    facts_from: Path | None = None,
+) -> dict:
     """Build ema-catalogue-<id>.sqlite3 and .sqlite3.gz plus manifest.json in out_dir; return the manifest.
 
     Only the four exports of the refresh are imported (into a fresh database, so no earlier export
     leaks in). Observations (the backfill of medicines from protocols) come from observations_from,
-    usually the previous snapshot or the committed database."""
+    usually the previous snapshot or the committed database. Distributed facts (prebuilt_facts, made by
+    ema-rwe export-facts) come from facts_from, for the snapshot's studies only."""
     exports = snapshot_exports(import_dir, snapshot_id)
+    if facts_from and not facts_from.is_file():
+        raise RWEError("SNAPSHOT_INVALID", f"No facts database at {facts_from}.")
     out_dir.mkdir(parents=True, exist_ok=True)
     name = f"ema-catalogue-{snapshot_id}.sqlite3"
     database, packed = out_dir / name, out_dir / f"{name}.gz"
@@ -92,6 +101,11 @@ def build_snapshot(import_dir: Path, snapshot_id: str, out_dir: Path, observatio
         Service(settings).import_all()
         if observations_from:
             merge_bundle_observations(observations_from, building, strict=True)
+        if facts_from:
+            repo = Repository(building)
+            with repo.connection() as db:
+                ids = [r[0] for r in db.execute("SELECT id FROM studies")]
+            repo.replace_prebuilt_facts(set(ids), Repository(facts_from).prebuilt_facts(ids))
         Repository(building).vacuum()
         check_database(building)
         shutil.move(building, database)
@@ -125,6 +139,7 @@ def build_snapshot(import_dir: Path, snapshot_id: str, out_dir: Path, observatio
         "studies_total": studies,
         "observed_studies": observed,
         "backfilled_studies": backfilled or 0,
+        "prebuilt_facts": len(Repository(database).prebuilt_facts()),
     }
     (out_dir / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n")
     return manifest
