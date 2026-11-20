@@ -106,6 +106,7 @@ async def test_client_route_asks_for_translations_before_any_batch(service, webs
 
     saved = await service.cache_heading_translations(pid, {**TRANSLATIONS, "9. INVENTADO": "9. INVENTED"})
     assert saved["translated_headings"] == len(TRANSLATIONS) and saved["ignored_entries"] == 1
+    assert saved["reading_changed"] is True
 
     batch = await service.analyze_protocol("123")
     assert batch["status"] == "needs_client_extraction"
@@ -126,7 +127,8 @@ async def test_client_route_asks_for_translations_before_any_batch(service, webs
         "123", fingerprint, Extraction(), batch_offset=0, reading=old_reading
     )
     corrected = dict(TRANSLATIONS, **{"1. INTRODUCCIÓN": "1. STUDY DESIGN"})
-    await service.cache_heading_translations(pid, corrected)
+    changed = await service.cache_heading_translations(pid, corrected)
+    assert changed["reading_changed"] is True and "offset 0" in changed["instruction"]
     again = await service.analyze_protocol("123")
     assert again["cached_batch_offsets"] == [] and again["source"]["reading"] != old_reading
     assert "numerosos ingresos" in " ".join(c["text"] for c in again["sections"])
@@ -140,8 +142,9 @@ async def test_client_route_asks_for_translations_before_any_batch(service, webs
         "123", fingerprint, Extraction(), coverage_complete=True, reading=again["source"]["reading"]
     )
     assert service.repo.analysis("123")
-    await service.cache_heading_translations(pid, corrected)  # unchanged: the analysis is kept
-    assert service.repo.analysis("123")
+    unchanged = await service.cache_heading_translations(pid, corrected)  # the analysis is kept
+    assert service.repo.analysis("123") and unchanged["reading_changed"] is False
+    assert "offset 0" not in unchanged["instruction"]
     await service.cache_heading_translations(pid, TRANSLATIONS)
     assert service.repo.analysis("123") is None
 

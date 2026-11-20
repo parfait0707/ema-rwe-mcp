@@ -700,3 +700,34 @@ def test_merge_records_the_batch_of_every_list_entry_of_a_new_nested_block():
     merge_into(merged, output, 3, origins)
     (kept,) = merged.cohort.design_schema.time_windows
     assert kept == window and origins[id(kept)] == 3
+
+
+async def test_poll_false_waits_for_a_server_extraction_that_outlasts_the_wait(service, monkeypatch):
+    """The CLI ends with its process, so a returned status=extracting would stop the extraction (spec v1.26)."""
+    service.settings.llm_model = "mock-model"
+    service.settings.llm_base_url = "https://provider.invalid/v1"
+    service.settings.llm_wait_seconds = 0.02
+
+    async def slow_extract(_settings, _chunks, progress=None, checkpoint=None):
+        await asyncio.sleep(0.2)
+        return sample_analysis()
+
+    monkeypatch.setattr("ema_rwe.extraction.extract_with_provider", slow_extract)
+    done = await service.analyze_protocol("123", poll=False)
+    assert done["status"] == "analyzed" and done["extraction_method"] == "configured_provider"
+
+
+async def test_cli_analyze_waits_for_the_extraction(tmp_path, monkeypatch):
+    from ema_rwe.cli import parser, run
+
+    monkeypatch.setenv("EMA_DB_PATH", str(tmp_path / "db.sqlite3"))
+    monkeypatch.setenv("EMA_CACHE_DIR", str(tmp_path / "http"))
+    calls = []
+
+    async def analyze(self, **kwargs):
+        calls.append(kwargs)
+        return {"status": "analyzed"}
+
+    monkeypatch.setattr(Service, "analyze_protocol", analyze)
+    await run(parser().parse_args(["analyze", "123"]))
+    assert calls[0]["poll"] is False

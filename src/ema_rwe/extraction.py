@@ -2,6 +2,7 @@
 
 import asyncio
 import hashlib
+import math
 
 from .domain import (
     Extraction,
@@ -50,7 +51,9 @@ class ExtractionMixin:
         detail: str = "summary",
         question: str | None = None,
         on_progress=None,
+        poll: bool = True,
     ):
+        """poll=False waits for a server-side extraction however long it takes (the CLI ends with its process)."""
         if question is not None and (not question.strip() or len(question) > 2000):
             raise RWEError("INVALID_INPUT", "Question must be 1..2000 characters.")
         if offset < 0 or not 6000 <= max_chars <= 150000:
@@ -88,7 +91,9 @@ class ExtractionMixin:
                 return request
             source["reading"] = reading_hash(self._translations(source["protocol_id"]))
         if configured(self.settings):
-            return analysis_view(await self._provider_extraction(study_id, pdf, source, on_progress), detail)
+            return analysis_view(
+                await self._provider_extraction(study_id, pdf, source, on_progress, poll), detail
+            )
         # One snapshot of the translations: the batch is read under the reading it reports.
         translations = self._translations(source["protocol_id"])
         source["reading"] = reading_hash(translations)
@@ -222,7 +227,8 @@ class ExtractionMixin:
         # before any translation; instead the database retires this PDF's analysis in the same transaction
         # that saves a changed reading, and every later save is checked against the reading (also across
         # server processes sharing the database).
-        if self.repo.set_reading(protocol_id, record, reading_hash(kept), self.repo.get(study_id)):
+        changed = self.repo.set_reading(protocol_id, record, reading_hash(kept), self.repo.get(study_id))
+        if changed:
             # This process's held batches and server-side extractions (running or uncollected) read the
             # old way: drop them rather than let them fail at save time.
             self.repo.clear_batches(study_id)
@@ -235,7 +241,14 @@ class ExtractionMixin:
             "translated_headings": len(kept),
             "total_headings": len(headings),
             "ignored_entries": len(translations) - len(kept),
-            "instruction": "Call analyze_protocol again for this study.",
+            "reading_changed": changed,
+            "instruction": "Call analyze_protocol again for this study."
+            + (
+                " The translations changed, so its unfinished extraction batches and their answers (if any) were "
+                "dropped: read the batches again from offset 0."
+                if changed
+                else ""
+            ),
         }
 
     async def research_protocol(
@@ -314,7 +327,8 @@ class ExtractionMixin:
                 raise RWEError(
                     "INVALID_INPUT",
                     "Cached batches hold answers to a question: pass the same question with the "
-                    "coverage_complete call so they are merged and saved (nothing was saved).",
+                    "coverage_complete call so they are merged and saved (nothing was saved). If they answer two "
+                    "different questions, call analyze_protocol with force_refresh=true and read every batch again.",
                 )
         if answer is not None:
             for start in range(0, len(answer.answers), 20):  # Extraction.key_notes holds 20 facts per check
@@ -407,7 +421,9 @@ class ExtractionMixin:
         )
         return True
 
-    async def _provider_extraction(self, study_id: str, pdf: bytes, source: dict, on_progress=None) -> dict:
+    async def _provider_extraction(
+        self, study_id: str, pdf: bytes, source: dict, on_progress=None, poll: bool = True
+    ) -> dict:
         """Run (or keep running) the server-side extraction; return status=extracting when it outlasts the wait."""
         key = (study_id, source["fingerprint"], source["reading"])
         for stale in [k for k in self._extractions if k[0] == study_id and k != key]:
@@ -419,7 +435,8 @@ class ExtractionMixin:
             task = asyncio.create_task(self._extract_and_save(study_id, pdf, source, progress))
             entry = self._extractions[key] = (task, progress)
         task, progress = entry
-        deadline, reported = asyncio.get_running_loop().time() + self.settings.llm_wait_seconds, None
+        wait = self.settings.llm_wait_seconds if poll else math.inf
+        deadline, reported = asyncio.get_running_loop().time() + wait, None
         while True:
             left = deadline - asyncio.get_running_loop().time()
             # With a listener, wake up every second to pass on how many batches are done.
@@ -463,7 +480,15 @@ class ExtractionMixin:
         analysis = await extract_with_provider(self.settings, chunks, progress, checkpoint)
         catalogue_sources = self.repo.get(study_id).catalogue_data_sources
         analysis, _ = await asyncio.to_thread(finalize_extraction, analysis, pages, catalogue_sources)
-        validate_evidence(analysis, pages)
+        try:
+            validate_evidence(analysis, pages)
+        except RWEError as exc:
+            # The finished batches are kept, so calling again repeats this error from the same batches.
+            raise RWEError(
+                exc.code,
+                f"{exc.message} Every batch was read; call analyze_protocol with force_refresh=true to read "
+                "the protocol again.",
+            ) from exc
         saved = self._save(study_id, analysis, source, "configured_provider")
         self.repo.clear_batches(study_id)
         return saved
@@ -508,8 +533,9 @@ SINGLE_PASS_INSTRUCTION = (
     "holding what THIS batch states about the question (answers=[] when nothing), under the evidence rules of "
     "the analysis. Give each item its own fact with the quote that states it (one criterion, definition or "
     "condition per fact; do not gather a list into one fact). The question never narrows the extraction: fill "
-    "the analysis completely. The coverage_complete call (pass `question` again) merges the batch answers and "
-    "saves them as the answer; only if it reports answer_saved=false, call research_protocol afterwards."
+    "the analysis completely. The coverage_complete call (pass `question` again, the identical string) merges "
+    "the batch answers and saves them as the answer; only if it reports answer_saved=false, call "
+    "research_protocol afterwards."
 )
 
 
