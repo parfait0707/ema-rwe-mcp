@@ -1184,4 +1184,12 @@ PDF 取得先ディレクトリ名から X/Y が推測可能だった（P）、�
 - 再現（修正前）：checkout の MCP サーバーを stdio で起動し、研究 105807 の `read_protocol_text` を `page_start=31`、`page_end=31`（正しくは `start_page`、`end_page`）で呼ぶと、`isError=false` で 1 ページ目の本文が返った。原因は FastMCP の `ArgModelBase` が pydantic の既定（`extra="ignore"`）のままであること（`mcp/server/fastmcp/utilities/func_metadata.py`、mcp 1.30.0）。
 - 修正：`create_server` の各ツールの処理で、引数モデルを `extra="forbid"` にして再構築し、`inputSchema` に `additionalProperties: false` を付けた。
 - 修正後：同じ呼び出しは `isError=true`（`page_start`、`page_end` が `extra_forbidden`）。正しい名前の呼び出しは 31 ページを返す。
-- テスト：`tests/test_mcp.py`（実 stdio）に、綴りを間違えた `search_studies` の引数が断られることと、全ツールのスキーマが `additionalProperties: false` であることを足した。修正前に落ちることを確かめた。`uv run scripts/check.py` の全段階を実行した（結果は PR）。
+- テスト：`tests/test_mcp.py`（実 stdio）に、綴りを間違えた `search_studies` の引数が断られることと、全ツールのスキーマが `additionalProperties: false` であることを足した。修正前に落ちることを確かめた。`uv run scripts/check.py` の全段階（versions、lock、lint、format、tests、gold、build、wheel）が通った。tests は 539 passed、1 skipped。gold は 4 つのプロトコルの全項目が合格。
+
+## 2026-11-20 バッチを 1 つも保存していない最後の呼び出し（spec v1.29）
+
+- 見つけた経緯：v0.5.8 のリリース前の採点（研究 105807）で、読み手がバッチを配られた後、どれも保存せずに `coverage_complete=true, analysis={}` を送ると、空の解析が `status=analyzed` で保存された。
+- 再現（修正前）：checkout の MCP サーバーを stdio で起動し、研究 105807（110 節、最初のバッチは `next_offset=18`）で `analyze_protocol` の後、バッチを保存せずに `cache_protocol_analysis(coverage_complete=true, analysis={})` を呼ぶと `status=analyzed`。原因は、読み残しの検査（`extraction.py` の `while cached and position < total`）が、保存したバッチが無いと行われないこと。
+- 修正：検査の条件を「保存したバッチか、配信の記録があるとき」にした。配信の記録も保存したバッチも無いとき（統合の後に解析の全体で置き換えるとき。`tests/test_core.py` の `test_an_empty_final_call_after_the_merge_keeps_the_saved_analysis`）はこれまでどおり。
+- 修正後：同じ呼び出しは `INCOMPLETE_EXTRACTION`（offset 0 が読まれていない）で、何も保存しない。
+- テスト：`tests/test_provider_extraction.py` の `test_a_final_call_with_no_batch_cached_is_refused_while_the_protocol_has_unread_batches` は修正前に落ち、修正後に通る。全件 540 passed、1 skipped。

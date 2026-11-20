@@ -369,7 +369,7 @@ class ExtractionMixin:
         # Batches cached one by one must hold every section between them. A final call that carries the last
         # batch without its offset stands for the one batch that ends the protocol, never for a skipped one.
         total, position, read = len(reading_order(sections(pages))), 0, self.repo.batches(*key, "read")
-        while cached and position < total:
+        while (cached or served) and position < total:
             step = read.get(position) or served.get(position)
             if position not in cached and not (step and step["next"] >= total and batch_offset is None):
                 raise RWEError(

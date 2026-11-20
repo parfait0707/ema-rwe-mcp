@@ -344,7 +344,7 @@ class Explorer:
                 "Translate clinical concepts to English and search related disease/drug terms and medical codes. "
                 "Pass codes=[{system,code}] for code-only tables. Consider vocabulary/version and source database; "
                 "never equate retrieved codes with the requested outcome until you read the definition and algorithm. "
-                "Then call cache_protocol_answer with exact quotes, physical pages, section labels and reading; if a "
+                "Then call cache_protocol_answer with exact quotes, physical pages, section labels (or null: the server derives it) and reading; if a "
                 "later tool's source.reading differs from reading, call research_protocol again and start over. "
                 "No match is not proof that the information is absent. "
                 + SOURCE_ASSESSMENT_PROMPT

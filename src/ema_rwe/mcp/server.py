@@ -469,7 +469,7 @@ def create_server(service: Service | None = None):
             ),
         ] = None,
     ) -> dict:
-        """Validate and save a caller's question-specific answer with exact quotes/pages/sections."""
+        """Validate and save a caller's question-specific answer with exact quotes/pages (sections may be null)."""
         return await call(
             "cache_protocol_answer",
             protocol_id=protocol_id,

@@ -1,14 +1,19 @@
 # Changelog
 
-## Unreleased
+## 0.5.8 (2026-11-20)
 
 - Quotes a caller saves (`cache_protocol_analysis` analysis and answer, `cache_protocol_answer`) with a null
-  `evidence.section` get the section label derived from where the quote sits on its page, as server-side
-  extractions already did; it stays null when no single section of the page holds the quote. A label the
-  caller gives is kept (spec v1.27, #101).
+  `evidence.section` get the section label derived from where the quote sits on its page, by the rule
+  server-side extractions use; it stays null when no single section of the page holds the quote. A label the
+  caller gives is kept. A configured LLM's question answers (`research_protocol`) are saved the same way, so
+  their null labels (a quote moved to another page, a passage added for a data source name) are filled too
+  (spec v1.27, #101).
 - A tool call with an argument name the tool does not have (a misspelt `page_start` for `start_page`)
   is refused as a validation error instead of running with the default; every tool schema states
   `additionalProperties: false` (spec v1.28, #102).
+- A `coverage_complete` call made after batches were served but none was cached is refused as
+  `INCOMPLETE_EXTRACTION` (naming the first unread offset) when the protocol has more than one batch; it
+  used to save the analysis given, even an empty one (spec v1.29).
 
 ## 0.5.7 (2026-11-20)
 

@@ -2,7 +2,7 @@
 
 エンドユーザー（このMCPを使って研究を調べる人）向けの使い方は[README.md](README.md)を参照してください。本ファイルはこのMCPサーバー自体を開発・改修する人向けの内部仕様です。
 
-公開版は0.5.7（内部履歴では0.1〜1.28の仕様段階を経ている）。`docs/spec/v0.1.md`〜`v1.28.md`が仕様の正本、[docs/mcp-workflow.md](docs/mcp-workflow.md)が呼出元向け手順の正本、開発ルールは[AGENTS.md](AGENTS.md)です。
+公開版は0.5.8（内部履歴では0.1〜1.29の仕様段階を経ている）。`docs/spec/v0.1.md`〜`v1.29.md`が仕様の正本、[docs/mcp-workflow.md](docs/mcp-workflow.md)が呼出元向け手順の正本、開発ルールは[AGENTS.md](AGENTS.md)です。
 
 ## 開発用セットアップ（checkout）
 
@@ -166,7 +166,7 @@ PyPI公開やGitHub Releaseへのwheel添付など他の配布経路の比較検
 
 `research_protocol`（内部LLM設定時）は、まず`exploration.py`の`answer_from_full_text`（全関連セクションを`LLM_BATCH_CHARS`バッチへ分割し、並列で1回ずつ問い合わせて統合・pruneする「全文一括回答」）を試みます。これが回答を得られなかった場合のみ、`search`/`outline`/`read`/`finish`アクションを1手ずつ選ばせるステップ制限探索ループにフォールバックします（`LLM_MAX_STEPS`既定8・上限20。到達すると`exploration_limit_reached`を返し、未完了の回答は保存しません）。全文一括回答は2026-09-24に、旧来のステップ制限ループだけの構成（12,000字の読み取りでステップ予算を使い切っていた）を置き換える形で追加されました。探索はサーバーのタスクとして動き、`LLM_WAIT_SECONDS`を超えると`status=answering`を返します。同じ質問の呼び出しは動いている探索に合流し、探索が終わった後の最初の呼び出しが、`force`の有無に関係なくその結果を受け取ります。`force=true`が新しい探索を始めるのは、探索が動いておらず受け取られていない結果も無いときだけです。探索の中のPDFの解析・検索・検証・保存はスレッドで行い、イベントループを止めません。CLIの`ask`は終わるまで待ちます（spec v1.15、v1.26）。
 
-引用検証の規則: 各事実には短い原文引用・PDFの物理ページ番号・セクションを付けます。引用の存在、ページ、指定セクションはコードで検証します（`pdf.py`の`validate_evidence`、`EVIDENCE_INVALID`/`EVIDENCE_WRONG_SECTION`）。研究方法・データソース欄の引用が背景・参考文献・目次・ENCePPチェックリストにしか存在しない場合は`EVIDENCE_WRONG_SECTION`で保存を拒否します（補足事項・質問別回答はその章自体への質問もあるため許容）。データソース名は、名前の語がその順に引用のどれかに書かれていれば通します（大文字と小文字、記号の違いは無視し、語の間に他の語が3つまで入ってよい。ただし`;`、文末、名前自身の語をまたぐ並びは通しません）。名前が引用に無く方法の本文にあれば、サーバーが名前の箇所を引用に足します（引用が8件ある事実と、切り出しが1,000字を超えるときは足しません）。この規則は呼出元抽出・サーバー側抽出・質問別回答のすべてに当てはまります（spec v1.12、v1.26）。逐語の引用が示したページに無く別のページにあれば、最も近いページに直します（等距離の2ページにあるときは拒否します）。ページの訂正も、呼出元抽出と質問別回答の両方に当てはまります（spec v1.13）。引用が存在することは、要約や使用区分の意味が正しいことの保証ではありません。
+引用検証の規則: 各事実には短い原文引用・PDFの物理ページ番号・セクション（nullならサーバーが導く。spec v1.27）を付けます。引用の存在、ページ、指定セクションはコードで検証します（`pdf.py`の`validate_evidence`、`EVIDENCE_INVALID`/`EVIDENCE_WRONG_SECTION`）。研究方法・データソース欄の引用が背景・参考文献・目次・ENCePPチェックリストにしか存在しない場合は`EVIDENCE_WRONG_SECTION`で保存を拒否します（補足事項・質問別回答はその章自体への質問もあるため許容）。データソース名は、名前の語がその順に引用のどれかに書かれていれば通します（大文字と小文字、記号の違いは無視し、語の間に他の語が3つまで入ってよい。ただし`;`、文末、名前自身の語をまたぐ並びは通しません）。名前が引用に無く方法の本文にあれば、サーバーが名前の箇所を引用に足します（引用が8件ある事実と、切り出しが1,000字を超えるときは足しません）。この規則は呼出元抽出・サーバー側抽出・質問別回答のすべてに当てはまります（spec v1.12、v1.26）。逐語の引用が示したページに無く別のページにあれば、最も近いページに直します（等距離の2ページにあるときは拒否します）。ページの訂正も、呼出元抽出と質問別回答の両方に当てはまります（spec v1.13）。引用が存在することは、要約や使用区分の意味が正しいことの保証ではありません。
 
 ## CSVは直接取得せず、PDFは保存できる理由
 
@@ -219,7 +219,7 @@ uv run ema-rwe cleanup-cache
 | `EMA_MAX_SCREENING_STUDIES` | `5`（1〜1000） | 一次判定でPDF取得・全件解析へ進める最大研究数 |
 | `EMA_MAX_COMPARISON_STUDIES` | `5`（1〜1000） | 比較表へ掲載する最大研究数 |
 | `EMA_MAX_LISTED_CANDIDATES` | `50`（1〜1000） | `needs_narrowing`時に`candidates`一覧を返す最大件数 |
-| `EMA_USER_AGENT` | `ema-rwe-mcp/0.5.7` | EMAへのHTTPリクエストのUser-Agent |
+| `EMA_USER_AGENT` | `ema-rwe-mcp/0.5.8` | EMAへのHTTPリクエストのUser-Agent |
 | `EMA_RESEARCH_BUDGET_CHARS` | `40000` | 呼出元向けの追加探索応答の文字数予算 |
 | `EMA_SEARCH_BUDGET_CHARS` | `20000` | 呼出元向けのPDF全文検索応答の文字数予算 |
 | `EMA_PROTOCOL_DIR` | DBと同じ親フォルダ内の`protocols` | 保持するPDF/JSONの保存先（見出しの英訳はDBに置く。以前の版の`.headings`は取り込みにだけ使う） |
@@ -278,6 +278,7 @@ stdioで18ツールを公開します。引数・範囲・既定値の正本は[
 - `compare_protocols`の`pending_tools`は、解析も回答も無い研究には質問付きの`analyze_protocol`を1つだけ出します（内部LLM設定時は`analyze_protocol`と`research_protocol`の2つ）。
 - 全ツールに題名と注釈（読み取り専用・破壊的・冪等・外部通信）があります（`mcp/server.py`の`ANNOTATIONS`、割り当ては[spec v1.16](docs/spec/v1.16.md)。`cache_heading_translations`と`analyze_protocol`は[spec v1.26](docs/spec/v1.26.md)で破壊的に改めた）。ツールを足すときは、この表にも足します（無いと起動時に`KeyError`になります）。`compare_protocols`と、サーバー側抽出の`analyze_protocol`は、クライアントが求めたときに進捗を通知します（`compare_protocols`は最後に`(n, n)`を送ります）。通知の送信に失敗しても、stderrにwarningを記録してツールは続けます。
 - 解析の`source`、質問別回答と比較の`versions`には、作成時のアプリの版・カタログのスナップショットの日付・parserの版が入ります（spec v1.19）。保存済みの結果を返すときも、作成時の値のままです。`catalogue_status`の`app_update_available`は、動いている版より新しいリリースがあるときだけ現れます。
+- ツールのスキーマに無い引数名は検証エラーで断ります（`create_server`で引数モデルを`extra="forbid"`にし、`inputSchema`に`additionalProperties: false`を付けます。spec v1.28）。
 - 引用の`server`はサーバーが付ける印です（spec v1.13）。`source_name`はデータソース名の書かれた箇所としてサーバーが足した引用（使い方や定義を支える引用ではありません）、`page`はサーバーがページを直した引用です。印の無い引用は、呼出元か内部LLMが渡したままです。呼出元や内部LLMが書いた`server`は、サーバーの処理の前に消します（`pdf.without_server_marks`、spec v1.26）。
 - 検索の条件（DARWIN EU、状態、類義語、コード、絞り込み、役割、範囲など）は、`storage.SearchRequest`の1つの値で受け渡します。条件を変えた検索は`dataclasses.replace(request, role=...)`のように名前で作ります。`search_studies`と`compare_protocols`の任意の引数は名前でしか渡せず、MCPとCLIのアダプタはサービスを名前付きの引数で呼びます。
 - 完了済み解析を`coverage_complete=true`で修正するときは全項目を渡します。一部だけの再保存は解析全体を置き換えます。統合の後にバッチの無いまま空の解析（`missing_information`だけのものを含む）で呼び直すと、保存済みの解析を残して`INCOMPLETE_EXTRACTION`で断ります（spec v1.22、v1.26）。
@@ -304,7 +305,7 @@ CLIは`uv run ema-rwe <サブコマンド> --help`で確認できます（例：
 
 | ファイル | 内容 |
 |---|---|
-| [docs/spec/v0.1.md](docs/spec/v0.1.md)〜[v1.26.md](docs/spec/v1.26.md) | 段階的な追加要件の正本。対象変更の関連仕様を読む |
+| [docs/spec/v0.1.md](docs/spec/v0.1.md)〜[v1.29.md](docs/spec/v1.29.md) | 段階的な追加要件の正本。対象変更の関連仕様を読む |
 | [docs/mcp-workflow.md](docs/mcp-workflow.md) | 呼出元エージェント向けの完全な手順（英語） |
 | [docs/search-logic.md](docs/search-logic.md) | 検索語の展開・医薬品照合・順位付け |
 | [docs/benchmarks/20261009-codex-app.md](docs/benchmarks/20261009-codex-app.md) | Codex Appの4例とMCP実行時間の定義 |
