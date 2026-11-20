@@ -321,6 +321,17 @@ class ExtractionMixin:
                 "cached_batch_offsets": sorted(self.repo.batches(*key, "analysis")),
             }
         cached = self.repo.batches(*key, "analysis")
+        if not cached and analysis == Extraction():
+            # A repeated final call after the merge cleared the batches: nothing to merge, nothing given.
+            before = self.repo.analysis(study_id)
+            held = dict(before["analysis"], missing_information=[]) if before else None
+            if held and held != Extraction().model_dump():
+                raise RWEError(
+                    "INCOMPLETE_EXTRACTION",
+                    "No batch is cached and the analysis given is empty: the saved analysis is kept. It was "
+                    "merged by an earlier coverage_complete call, which cleared the batches. To redo the "
+                    "extraction, call analyze_protocol with force_refresh=true and cache every batch again.",
+                )
         # Batches cached one by one must hold every section between them. A final call that carries the last
         # batch without its offset stands for the one batch that ends the protocol, never for a skipped one.
         total, position = len(reading_order(sections(pages))), 0
