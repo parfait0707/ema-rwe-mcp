@@ -2,7 +2,7 @@
 
 エンドユーザー（このMCPを使って研究を調べる人）向けの使い方は[README.md](README.md)を参照してください。本ファイルはこのMCPサーバー自体を開発・改修する人向けの内部仕様です。
 
-公開版は0.5.8（内部履歴では0.1〜1.30の仕様段階を経ている）。`docs/spec/v0.1.md`〜`v1.30.md`が仕様の正本、[docs/mcp-workflow.md](docs/mcp-workflow.md)が呼出元向け手順の正本、開発ルールは[AGENTS.md](AGENTS.md)です。
+公開版は0.6.0（内部履歴では0.1〜1.31の仕様段階を経ている）。`docs/spec/v0.1.md`〜`v1.31.md`が仕様の正本、[docs/mcp-workflow.md](docs/mcp-workflow.md)が呼出元向け手順の正本、開発ルールは[AGENTS.md](AGENTS.md)です。
 
 ## 開発用セットアップ（checkout）
 
@@ -219,7 +219,7 @@ uv run ema-rwe cleanup-cache
 | `EMA_MAX_SCREENING_STUDIES` | `5`（1〜1000） | 一次判定でPDF取得・全件解析へ進める最大研究数 |
 | `EMA_MAX_COMPARISON_STUDIES` | `5`（1〜1000） | 比較表へ掲載する最大研究数 |
 | `EMA_MAX_LISTED_CANDIDATES` | `50`（1〜1000） | `needs_narrowing`時に`candidates`一覧を返す最大件数 |
-| `EMA_USER_AGENT` | `ema-rwe-mcp/0.5.8` | EMAへのHTTPリクエストのUser-Agent |
+| `EMA_USER_AGENT` | `ema-rwe-mcp/0.6.0` | EMAへのHTTPリクエストのUser-Agent |
 | `EMA_RESEARCH_BUDGET_CHARS` | `40000` | 呼出元向けの追加探索応答の文字数予算 |
 | `EMA_SEARCH_BUDGET_CHARS` | `20000` | 呼出元向けのPDF全文検索応答の文字数予算 |
 | `EMA_PROTOCOL_DIR` | DBと同じ親フォルダ内の`protocols` | 保持するPDF/JSONの保存先（見出しの英訳はDBに置く。以前の版の`.headings`は取り込みにだけ使う） |
@@ -305,7 +305,7 @@ CLIは`uv run ema-rwe <サブコマンド> --help`で確認できます（例：
 
 | ファイル | 内容 |
 |---|---|
-| [docs/spec/v0.1.md](docs/spec/v0.1.md)〜[v1.30.md](docs/spec/v1.30.md) | 段階的な追加要件の正本。対象変更の関連仕様を読む |
+| [docs/spec/v0.1.md](docs/spec/v0.1.md)〜[v1.31.md](docs/spec/v1.31.md) | 段階的な追加要件の正本。対象変更の関連仕様を読む |
 | [docs/mcp-workflow.md](docs/mcp-workflow.md) | 呼出元エージェント向けの完全な手順（英語） |
 | [docs/search-logic.md](docs/search-logic.md) | 検索語の展開・医薬品照合・順位付け |
 | [docs/benchmarks/20261009-codex-app.md](docs/benchmarks/20261009-codex-app.md) | Codex Appの4例とMCP実行時間の定義 |

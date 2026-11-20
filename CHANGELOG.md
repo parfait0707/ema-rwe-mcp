@@ -1,7 +1,22 @@
 # Changelog
 
-## Unreleased
+## 0.6.0 (2026-11-21)
 
+- Evidence store (spec v1.31): `find_facts` (MCP) and `facts` (CLI) read every saved analysis as one row per
+  fact (study design, eligibility, index date, outcomes, data sources with their usage, disease definitions,
+  missing information, ...) with page, section, quote and provenance, filtered by study, item kind, source
+  type and text, without network. Callers answer from these rows before reading any PDF; the pending tools
+  still run afterwards for the comparison export.
+- Distributed facts: `export-facts` writes `prebuilt_facts` (values and quote positions with a hash, no quote
+  text) and `scripts/build_catalogue_snapshot.py --facts-from` ships them in a snapshot. A user's own analysis
+  wins over them; with the PDF of the same SHA-256 kept locally the quote is restored and verified, otherwise
+  the row says the quote appears once the PDF is retrieved (`verified_at_build`). The database schema
+  version stays 6.
+- `prefetch-protocols --source-type <claims|ehr|registry>`: a user-run, resumable fetch of the latest
+  protocol of every study of one source type. A rate limit widens the gap between studies to 60 seconds; a
+  second one in a row pauses 15 minutes before retrying; three pauses in a row stop the run.
+- `facts-site`: one self-contained, read-only HTML page of the facts (escaped, nothing loaded from
+  elsewhere), generated locally and not published.
 - A quote that writes whole a word the PDF breaks after its hyphen at a line end (`ICD-O-` / `3` quoted
   as `ICD-O-3`) is accepted: the comparison ignores whitespace right after a hyphen, on both sides. The
   workflow now says what the comparison does instead of "ignores whitespace" (spec v1.30, #106).
