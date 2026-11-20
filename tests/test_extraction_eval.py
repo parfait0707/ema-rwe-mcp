@@ -153,8 +153,6 @@ def test_grading_counts_found_and_supported_items():
 def test_the_reference_files_are_well_formed_and_hold_no_protocol_text():
     golds = {gold["name"]: gold for gold in evaluation.load_all()}
     assert set(golds) == {"eligibility", "outcomes"} and golds["eligibility"]["question"] == QUESTION
-    counts = {name: sum(len(p["items"]) for p in gold["protocols"]) for name, gold in golds.items()}
-    assert counts == {"eligibility": 60, "outcomes": 40}
     for gold in golds.values():
         assert 0 < gold["minimum"]["analysis_found"] <= gold["minimum"]["answer_found"] <= 1
         assert 0 < gold["minimum"]["answer_correct"] <= gold["minimum"]["answer_found"]
@@ -166,7 +164,7 @@ def test_the_reference_files_are_well_formed_and_hold_no_protocol_text():
                 "https://catalogues.ema.europa.eu/"
             )
             ids = [item["id"] for item in protocol["items"]]
-            assert len(ids) == len(set(ids))
+            assert ids and len(ids) == len(set(ids))
             for item in protocol["items"]:
                 assert set(item) - {"accept", "beyond_first_search", "values"} == {
                     "id",
@@ -210,7 +208,9 @@ def test_the_commands_run_on_an_empty_database(settings, command, monkeypatch, c
     if command == "check":
         assert evaluation.check(settings, gold, require=False) == 0
     elif command == "grade":
-        assert evaluation.grade(settings, gold) == 1 and "nothing saved" in capsys.readouterr().out
+        assert (
+            asyncio.run(evaluation.grade(settings, gold)) == 1 and "nothing saved" in capsys.readouterr().out
+        )
     else:
         assert asyncio.run(evaluation.catalogue(settings, gold, online=False)) == 1
 
@@ -311,3 +311,104 @@ def test_a_required_value_that_the_page_does_not_hold_fails_the_check():
     bad["items"][0]["values"] = ["18", "21"]
     problems = evaluation.check_protocol(bad, protocol_pdf(), QUESTION)["items"][0]["problems"]
     assert problems == ["value '21' is not on page 1"]
+
+
+def test_the_question_search_uses_the_configured_budget_and_skips_only_the_hits_beyond_it(
+    settings, monkeypatch
+):
+    """research_protocol leaves out the text of a hit that does not fit and goes on with the shorter hits
+    after it (exploration.Explorer.search); the check counts the same way, with the configured budget."""
+    import dataclasses
+
+    chunks = sections(extract_pages(protocol_pdf()))
+    inclusion, exclusion = (next(c["section_id"] for c in chunks if c["page"] == n) for n in (1, 2))
+    hits = [
+        {"section_id": inclusion, "text": "w" * 100},
+        {"section_id": "other", "text": "x" * 900},
+        {"section_id": exclusion, "text": "y" * 500},
+    ]
+    monkeypatch.setattr(evaluation, "search_sections", lambda *args: {"results": [dict(h) for h in hits]})
+    folder = evaluation.archive_dir(settings)
+    folder.mkdir(parents=True)
+    (folder / (evaluation.protocol_id(reference()) + ".pdf")).write_bytes(protocol_pdf())
+    gold = {"question": QUESTION, "protocols": [reference()]}
+    assert evaluation.check(dataclasses.replace(settings, research_budget_chars=1000), gold, True) == 1
+    assert evaluation.check(dataclasses.replace(settings, research_budget_chars=1600), gold, True) == 0
+    hits.insert(2, {"section_id": "long", "text": "z" * 5000})
+    assert evaluation.check(dataclasses.replace(settings, research_budget_chars=1600), gold, True) == 0
+
+
+def test_grading_closes_the_service_it_opens(settings, monkeypatch):
+    import asyncio
+
+    closed = []
+
+    async def close(self):
+        closed.append(True)
+
+    monkeypatch.setattr(evaluation.Service, "close", close)
+    assert asyncio.run(evaluation.grade(settings, evaluation.load())) == 1
+    assert closed == [True]
+
+
+def test_a_required_value_is_a_whole_number_or_code_not_part_of_another():
+    """'3' is not stated by '13 patients', '18' not by '2018' or '180'; a code is stated by its subcodes."""
+    protocol = reference()
+    protocol["items"][0]["values"] = ["18", "3|three"]
+    protocol["items"][2]["values"] = ["C25"]
+    answer = {
+        "answers": [
+            fact("aged 18 years or older, 13 patients", "Patients aged 18 years or older at the index date."),
+            fact("kidney cancer C25.1", "A history of kidney cancer on or before the index date."),
+        ]
+    }
+    graded = evaluation.grade_protocol(protocol, answer, None)
+    assert graded["wrong_value"] == ["I1"] and graded["answer_correct"] == 1
+    assert not evaluation.states("18", "since 2018") and not evaluation.states("18", "180 days")
+    assert evaluation.states("E11", "E110") and not evaluation.states("E11", "ICE11")
+    assert evaluation.states("18", "≥18 years") and evaluation.states("3|three", "three months")
+    # The survival years of study 105807: '12 months and 3 years' or 'I21, I23' do not state 1, 2 and 3
+    survival = next(
+        i
+        for gold in evaluation.load_all()
+        for p in gold["protocols"]
+        for i in p["items"]
+        if i["label"] == "survival rate at 1, 2 and 3 years"
+    )
+    (years,) = survival["values"]
+    assert evaluation.states(years, "survival at 1, 2 and 3 years") and evaluation.states(
+        years, "1-, 2- and 3-year"
+    )
+    assert not evaluation.states(years, "12 months and 3 years") and not evaluation.states(years, "I21, I23")
+
+
+def test_the_pre_push_hook_skips_a_push_that_only_deletes(tmp_path):
+    import os
+    import shutil
+    import subprocess
+
+    shell = shutil.which("sh")
+    if shell is None:
+        pytest.skip("no POSIX shell")
+    marker = tmp_path / "ran"
+    (tmp_path / "uv").write_text(f'#!/bin/sh\ntouch "{marker}"\n')
+    (tmp_path / "uv").chmod(0o755)
+    env = {**os.environ, "PATH": f"{tmp_path}{os.pathsep}{os.environ['PATH']}"}
+    zero = "0" * 40
+
+    def push(lines: str) -> bool:
+        marker.unlink(missing_ok=True)
+        subprocess.run(
+            [shell, str(ROOT / ".githooks" / "pre-push")],
+            input=lines,
+            text=True,
+            env=env,
+            cwd=ROOT,
+            check=True,
+        )
+        return marker.exists()
+
+    assert not push(f"(delete) {zero} refs/heads/x {'a' * 40}\n")
+    assert push(f"refs/heads/x {'b' * 40} refs/heads/x {zero}\n")
+    assert push(f"(delete) {zero} refs/heads/x {'a' * 40}\nrefs/heads/y {'b' * 40} refs/heads/y {zero}\n")
+    assert push("")

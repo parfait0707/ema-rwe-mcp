@@ -1,10 +1,10 @@
 """Reference items for protocol extraction, and the checks made against them.
 
-    uv run python scripts/extraction_eval.py check [--require]   # no LLM, no network: run on every change
-    uv run python scripts/extraction_eval.py fetch               # get the reference protocols once (EMA)
-    uv run python scripts/extraction_eval.py catalogue [--online]  # after a catalogue update
-    uv run python scripts/extraction_eval.py grade               # grade the extractions saved in the database
-    uv run python scripts/extraction_eval.py run                 # extract with the configured LLM, then grade
+    uv run scripts/extraction_eval.py check [--require]   # no LLM, no network: run on every change
+    uv run scripts/extraction_eval.py fetch               # get the reference protocols once (EMA)
+    uv run scripts/extraction_eval.py catalogue [--online]  # after a catalogue update
+    uv run scripts/extraction_eval.py grade               # grade the extractions saved in the database
+    uv run scripts/extraction_eval.py run                 # extract with the configured LLM, then grade
 
 The reference (tests/fixtures/extraction_gold/*.json, one file per topic: eligibility criteria, outcome
 definitions) lists, for four protocols, every item as read by hand: a description in our own words, its
@@ -44,9 +44,11 @@ sys.path.insert(0, str(ROOT / "src"))
 from ema_rwe.config import Settings
 from ema_rwe.domain import Evidence, Extraction, Fact, RWEError
 from ema_rwe.ema import is_non_interventional
+from ema_rwe.exploration import RESEARCH_LIMIT, within_budget
 from ema_rwe.llm import configured
 from ema_rwe.pdf import (
     EVIDENCE_REJECT_ROLES,
+    compact_spaces,
     extract_pages,
     normalize_quote,
     reading_order,
@@ -100,19 +102,28 @@ def passage(pages: list, item: dict) -> str | None:
     return None
 
 
-def check_protocol(protocol: dict, data: bytes, question: str, budget: int = 40000) -> dict:
+def states(value: str, text: str) -> bool:
+    """The text carries the required value as a whole number, or a code with its subcodes: '18' is not
+    stated by '2018' or '180', '3' not by '13'; 'C25' is by 'C25.1' and 'C251', 'GFEA' by 'GFEA001'."""
+    text = re.sub(r"\s+", " ", text)
+    return any(
+        not found[0][:1].isdigit() or not text[found.end() : found.end() + 1].isdigit()
+        for found in re.finditer(rf"(?<![A-Za-z0-9])(?:{value})", text, re.IGNORECASE)
+    )
+
+
+def check_protocol(protocol: dict, data: bytes, question: str, budget: int | None = None) -> dict:
     """Every reference item against what the server would do with this PDF. Returns
-    {items: [{id, problems: [...]}], pages}; an item without problems passed."""
+    {items: [{id, problems: [...]}], pages}; an item without problems passed. budget defaults to the
+    configured research_budget_chars."""
+    budget = Settings().research_budget_chars if budget is None else budget
     pages = extract_pages(data)
-    chunks = sections(pages)
+    chunks = compact_spaces(sections(pages))  # the chunks Explorer.context serves
     served = {c["section_id"] for c in reading_order(chunks)}
     # research_protocol's first answer to the caller: question-ranked sections within the budget
-    ranked, used, offered = search_sections(chunks, question, 30)["results"], 0, set()
-    for hit in ranked:
-        if used and used + len(hit["text"]) > budget:
-            break
-        used += len(hit["text"])
-        offered.add(hit["section_id"])
+    ranked = search_sections(chunks, question, RESEARCH_LIMIT)["results"]
+    within_budget(ranked, budget)
+    offered = {hit["section_id"] for hit in ranked if hit["text"] is not None}
     results = []
     for item in protocol["items"]:
         problems = []
@@ -124,7 +135,7 @@ def check_protocol(protocol: dict, data: bytes, question: str, budget: int = 400
         problems += [
             f"value {value!r} is not on page {item['page']}"
             for value in item.get("values", [])
-            if not matches(value, page_text)
+            if not states(value, page_text)
         ]
         inside = normalize_quote(quote)
         holding = [c for c in chunks if c["page"] == item["page"] and inside in normalize_quote(c["text"])]
@@ -166,7 +177,7 @@ def check(settings: Settings, gold: dict, require: bool) -> int:
             missing += 1
             print(f"  study {protocol['study_id']}: protocol not in the archive ({path.name})")
             continue
-        result = check_protocol(protocol, path.read_bytes(), gold["question"])
+        result = check_protocol(protocol, path.read_bytes(), gold["question"], settings.research_budget_chars)
         bad = [i for i in result["items"] if i["problems"]]
         if result["pages"] != protocol["pages"]:
             bad.append(
@@ -184,7 +195,7 @@ def check(settings: Settings, gold: dict, require: bool) -> int:
     if missing:
         print(
             f"  {missing} reference protocol(s) are not in {archive_dir(settings)}: "
-            "run `uv run python scripts/extraction_eval.py fetch` once (EMA, a few minutes)."
+            "run `uv run scripts/extraction_eval.py fetch` once (EMA, a few minutes)."
         )
     return 1 if failed or (require and missing) else 0
 
@@ -296,7 +307,7 @@ def grade_protocol(
             # What the reader wrote must carry the value. A quote stands in only for a value that states no
             # number at all ('adults', quoting '18 years'): '16 years' beside a quote of '18 years' is wrong.
             return any(
-                matches(required, value) or (not re.search(r"\d", value) and matches(required, quotes))
+                states(required, value) or (not re.search(r"\d", value) and states(required, quotes))
                 for value, quotes in hits
             )
 
@@ -346,9 +357,16 @@ def grade_protocol(
     }
 
 
-def grade(settings: Settings, gold: dict, verbose: bool = False) -> int:
+async def grade(settings: Settings, gold: dict, verbose: bool = False) -> int:
     """Grade what the database holds for the reference protocols and question."""
     service = Service(settings)
+    try:
+        return grade_saved(service, gold, verbose)
+    finally:
+        await service.close()
+
+
+def grade_saved(service: Service, gold: dict, verbose: bool) -> int:
     minimum, maximum, status, graded = gold["minimum"], gold.get("maximum", {}), 0, 0
     fields = tuple(gold.get("analysis_fields", COHORT_FIELDS))
     print(f"{gold.get('name', 'reference')}: {gold['question']}")
@@ -432,7 +450,7 @@ async def run(settings: Settings, golds: list[dict]) -> int:
             print(f"  study {protocol['study_id']}: extracted and answered")
     finally:
         await service.close()
-    return max(grade(settings, gold) for gold in golds)
+    return max([await grade(settings, gold) for gold in golds])
 
 
 def main() -> int:
@@ -467,7 +485,7 @@ def main() -> int:
                     return asyncio.run(fetch(online, gold))
                 return asyncio.run(catalogue(online, gold, True))
         case "grade":
-            return max(grade(settings, one, args.verbose) for one in golds)
+            return max(asyncio.run(grade(settings, one, args.verbose)) for one in golds)
         case "run":
             return asyncio.run(run(settings, golds))
     return 2
