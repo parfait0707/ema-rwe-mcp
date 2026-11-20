@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- An evidence `section` label retyped with single spaces is accepted (PDF headings keep runs of spaces);
+  a repeated `coverage_complete` call with an empty analysis and no cached batch no longer replaces a saved
+  analysis with an empty one (spec v1.22). Both were met by readers while the extraction reference was
+  graded on this version.
 - The extraction reference gains outcome definitions (spec v1.21): `tests/fixtures/extraction_gold/outcomes.json`,
   27 items of the same four protocols (the outcomes named, the registers and records they are identified
   from, codes, alternative definitions, what is left to the SAP). The reference is one file per topic;

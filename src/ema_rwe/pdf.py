@@ -1199,7 +1199,8 @@ def validate_evidence(extraction: Extraction, pages: list[Page], chunks: list[di
                     c
                     for c in chunks
                     if c["page"] == evidence.page
-                    and c["section"] == evidence.section
+                    # A label retyped with single spaces is the same label (PDF headings keep layout runs)
+                    and " ".join((c["section"] or "").split()) == " ".join(evidence.section.split())
                     and quote in normalize_quote(c["text"])
                 ]
                 if not matching:

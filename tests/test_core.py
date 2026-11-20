@@ -449,6 +449,24 @@ async def test_force_refresh_allows_following_client_batches(service):
     assert following["status"] == "needs_client_extraction"
 
 
+async def test_an_empty_final_call_after_the_merge_keeps_the_saved_analysis(service):
+    """Two readers of the reference run repeated the coverage_complete call after the merge had cleared the
+    batches; the empty analysis replaced the saved one (validation 2026-11-20)."""
+    first = await service.analyze_protocol("123")
+    fingerprint = first["source"]["fingerprint"]
+    await service.cache_protocol_analysis("123", fingerprint, sample_analysis(), batch_offset=0)
+    await service.cache_protocol_analysis("123", fingerprint, Extraction(), coverage_complete=True)
+    with pytest.raises(RWEError) as error:
+        await service.cache_protocol_analysis("123", fingerprint, Extraction(), coverage_complete=True)
+    assert error.value.code == "INCOMPLETE_EXTRACTION" and "saved analysis is kept" in error.value.message
+    assert service.repo.analysis("123")["analysis"]["study_design"]
+    # A whole analysis given in one final call still replaces the saved one
+    again = await service.cache_protocol_analysis(
+        "123", fingerprint, sample_analysis(), coverage_complete=True
+    )
+    assert again["status"] == "analyzed"
+
+
 def test_catalogue_status_reports_total_studies_separately_from_export_counts(service):
     from test_source_types import seed
 
