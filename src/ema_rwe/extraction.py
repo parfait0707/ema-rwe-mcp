@@ -271,6 +271,9 @@ class ExtractionMixin:
             )
         if answer is not None and not (question or "").strip():
             raise RWEError("INVALID_INPUT", "answer needs the question it answers.")
+        if question is not None and len(question) > 2000:
+            # Refused with the batch that carries it, not only when the merged answer is saved at the end.
+            raise RWEError("INVALID_INPUT", "Question must be 1..2000 characters.")
         pdf, source = await self._context(study_id)
         if source["fingerprint"] != fingerprint:
             raise RWEError("PROTOCOL_CHANGED", "Protocol/extractor changed; analyze current protocol again.")

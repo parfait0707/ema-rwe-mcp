@@ -2,7 +2,7 @@
 
 エンドユーザー（このMCPを使って研究を調べる人）向けの使い方は[README.md](README.md)を参照してください。本ファイルはこのMCPサーバー自体を開発・改修する人向けの内部仕様です。
 
-公開版は0.5.7（内部履歴では0.1〜1.16の仕様段階を経ている）。`docs/spec/v0.1.md`〜`v1.16.md`が仕様の正本、[docs/mcp-workflow.md](docs/mcp-workflow.md)が呼出元向け手順の正本、開発ルールは[AGENTS.md](AGENTS.md)です。
+公開版は0.5.7（内部履歴では0.1〜1.17の仕様段階を経ている）。`docs/spec/v0.1.md`〜`v1.17.md`が仕様の正本、[docs/mcp-workflow.md](docs/mcp-workflow.md)が呼出元向け手順の正本、開発ルールは[AGENTS.md](AGENTS.md)です。
 
 ## 開発用セットアップ（checkout）
 
@@ -272,13 +272,29 @@ stdioで18ツールを公開します。引数・範囲・既定値の正本は[
 - 引用の`server`はサーバーが付ける印です（spec v1.13）。`source_name`はデータソース名の書かれた箇所としてサーバーが足した引用（使い方や定義を支える引用ではありません）、`page`はサーバーがページを直した引用です。印の無い引用は、呼出元か内部LLMが渡したままです。
 - 完了済み解析を`coverage_complete=true`で修正するときは全項目を渡します。一部だけの再保存は解析全体を置き換えます。
 
+CLIのサブコマンドは、MCPのツールと1対1で対応し、同じ引数を持ちます（spec v1.17）。
+
+| CLI | MCPツール | CLI | MCPツール |
+|---|---|---|---|
+| `catalogue-status` | `catalogue_status` | `local-protocols` | `list_local_protocols` |
+| `import-download` | `import_catalogue_csv` | `outline` | `get_protocol_outline` |
+| `refresh-drugs` | `refresh_drug_dictionary` | `pdf-search` | `search_protocol_text` |
+| `plan-search` | `plan_study_search` | `pdf-read` | `read_protocol_text` |
+| `search` | `search_studies` | `analyze` | `analyze_protocol` |
+| `compare` | `compare_protocols` | `cache-analysis` | `cache_protocol_analysis` |
+| `comparison` | `get_protocol_comparison` | `cache-headings` | `cache_heading_translations` |
+| `study` | `get_study` | `ask` | `research_protocol` |
+| `protocol` | `get_protocol` | `cache-answer` | `cache_protocol_answer` |
+
+名前の違いは決まった形だけです。繰り返す引数はCLIでは単数（`--synonym`と`synonyms`）、ファイルで渡す本体は`input`、`filters`は`--country`・`--source-type`・`--study-design`、`source_preference`は`--prefer-source-type`・`--source-role`・`--source-mode`です。`import-csv`、`import-all`、`backfill-protocols`、`merge-observations`、`cleanup-cache`はCLIだけの保守用です。対応の表と照合は`tests/test_cli_mcp_parity.py`にあり、引数・既定値・選択肢・範囲のどれかが片方だけ変わるとテストが落ちます。
+
 CLIは`uv run ema-rwe <サブコマンド> --help`で確認できます（例：`pdf-search`, `ask`, `cache-headings`, `cache-answer`）。入力範囲はCoreが検査し、MCPとCLIに共通で適用します。
 
 ## ドキュメント索引
 
 | ファイル | 内容 |
 |---|---|
-| [docs/spec/v0.1.md](docs/spec/v0.1.md)〜[v1.16.md](docs/spec/v1.16.md) | 段階的な追加要件の正本。対象変更の関連仕様を読む |
+| [docs/spec/v0.1.md](docs/spec/v0.1.md)〜[v1.17.md](docs/spec/v1.17.md) | 段階的な追加要件の正本。対象変更の関連仕様を読む |
 | [docs/mcp-workflow.md](docs/mcp-workflow.md) | 呼出元エージェント向けの完全な手順（英語） |
 | [docs/search-logic.md](docs/search-logic.md) | 検索語の展開・医薬品照合・順位付け |
 | [docs/benchmarks/20261009-codex-app.md](docs/benchmarks/20261009-codex-app.md) | Codex Appの4例とMCP実行時間の定義 |

@@ -2,7 +2,7 @@
 
 ## Purpose and scope
 
-Build an evidence-backed MCP for finding and analysing EMA RWD protocols. Read `docs/spec/v0.1.md` through `docs/spec/v1.16.md` and `docs/clinical-search.md` when changing the relevant behaviour. Communicate with this repository's user in Japanese.
+Build an evidence-backed MCP for finding and analysing EMA RWD protocols. Read `docs/spec/v0.1.md` through `docs/spec/v1.17.md` and `docs/clinical-search.md` when changing the relevant behaviour. Communicate with this repository's user in Japanese.
 
 - Include only explicitly labelled Non-interventional studies. Keep the DARWIN EU flag independent of study type.
 - Always return catalogue Data source types and protocol-derived data source names/status. Do not call planned sources actually used.
@@ -36,7 +36,7 @@ uv run python scripts/check.py   # versions, lock, ruff, pytest, build, wheel co
 
 That one command is the project's CI (no hosted CI is used): it must pass before a push, and `.githooks/pre-push` runs it once `git config core.hooksPath .githooks` is set for the clone. Its steps can be run alone: `uv run pytest -q`, `uv run ruff check src tests scripts`, `uv run ruff format --check src tests scripts`, `uv build`. Development tools live in the `dev` dependency group, which `uv run` installs by default.
 
-Run relevant tests for changed behaviour, including real stdio MCP tests when tool schemas change. Use mocked external responses for deterministic tests; do not require paid API credentials. Record actual validation and untested limits in `docs/validation.md`. Keep CLI, MCP schemas and documentation consistent. Keep MCP `instructions` and tool docstrings short; the caller procedure lives in `docs/mcp-workflow.md` (bundled in the wheel and served as the MCP resource `ema-rwe://docs/mcp-workflow`), and search responses default to compact rows.
+Run relevant tests for changed behaviour, including real stdio MCP tests when tool schemas change. Use mocked external responses for deterministic tests; do not require paid API credentials. Record actual validation and untested limits in `docs/validation.md`. Keep CLI, MCP schemas and documentation consistent: `tests/test_cli_mcp_parity.py` holds the table of how CLI arguments and tool parameters correspond and fails when they drift (names, required, defaults, choices, bounds); change both sides and the table together. Keep MCP `instructions` and tool docstrings short; the caller procedure lives in `docs/mcp-workflow.md` (bundled in the wheel and served as the MCP resource `ema-rwe://docs/mcp-workflow`), and search responses default to compact rows.
 
 Never commit API keys, `.env`, downloaded PDFs, local databases or HTTP/terminology caches. Use environment variables for credentials. `.env.example` is documentation, not an automatically loaded environment file. Preserve existing user data when updating caches; validate before atomic replacement. Keep MCP stdout reserved for protocol messages and log to stderr.
 
