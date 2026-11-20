@@ -921,14 +921,19 @@ CONTINUATION_PAGES = 3
 
 def with_continuations(hits: list[dict], chunks: list[dict]) -> list[dict]:
     """hits, each followed by the pages on which its section goes on (spec v1.20). A section that runs over
-    several pages is one passage to read, but its later pages often hold none of the query's words (the
-    second half of a list of criteria), so on their own they rank too low to be returned. At most
+    several pages is one passage to read, but its later pages often hold few or none of the query's words
+    (the second half of a list of criteria), so on their own they rank too low to be read. At most
     CONTINUATION_PAGES pages before and after a hit, of the same titled section, on consecutive pages; they
-    carry the hit's score, `continues` naming it, and do not count towards the limit."""
+    carry the hit's score and `continues` naming it, and those that were not hits do not count towards the
+    limit. A page that is a lower-ranked hit itself moves up beside the hit it continues (spec v1.21)."""
     position = {c["section_id"]: i for i, c in enumerate(chunks)}
-    seen = {h["section_id"] for h in hits}
+    own = {h["section_id"]: h for h in hits}
+    seen: set[str] = set()
     result = []
     for hit in hits:
+        if hit["section_id"] in seen:
+            continue  # already returned beside a higher-ranked page of its section
+        seen.add(hit["section_id"])
         at, before, after = position.get(hit["section_id"]), [], []
         for step, found in ((-1, before), (1, after)):
             j = at
@@ -940,11 +945,83 @@ def with_continuations(hits: list[dict], chunks: list[dict]) -> list[dict]:
                 if chunk["section"] != hit["section"] or abs(chunk["page"] - previous["page"]) > 1:
                     break
                 if chunk["section_id"] in seen:
-                    continue  # a hit of its own, returned at its own rank
+                    continue
                 seen.add(chunk["section_id"])
-                found.append(dict(chunk, score=hit["score"], matched_terms=[], continues=hit["section_id"]))
+                lower = own.get(chunk["section_id"])
+                found.append(
+                    dict(lower or chunk, score=hit["score"], continues=hit["section_id"])
+                    | ({} if lower else {"matched_terms": []})
+                )
         result += [*reversed(before), hit, *after]
     return result
+
+
+QUESTION_WORDS = frozenset(
+    [
+        "each",
+        "from",
+        "which",
+        "it",
+        "its",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "by",
+        "to",
+        "do",
+        "does",
+        "did",
+        "that",
+        "this",
+        "these",
+        "those",
+        "their",
+        "there",
+        "they",
+        "at",
+        "as",
+        "any",
+        "all",
+        "into",
+        "than",
+        "then",
+        "when",
+        "where",
+        "who",
+        "whom",
+        "whose",
+        "why",
+        "will",
+        "would",
+        "should",
+        "can",
+        "could",
+        "may",
+        "has",
+        "have",
+        "had",
+        "not",
+        "no",
+        "if",
+        "so",
+        "such",
+        "per",
+        "via",
+    ]
+)
+
+
+def mentions(text: str, term: str) -> bool:
+    """contains(), and for one English word also its plain plural or singular: a question about 'the
+    outcome' is answered by the section 'Outcomes', one about 'criteria' is not helped (irregular)."""
+    if contains(text, term):
+        return True
+    if not re.fullmatch(r"[A-Za-z]{4,}", term):
+        return False  # codes, phrases and short words are matched as written
+    other = term[:-1] if term[-1] in "sS" and term[-2] not in "sS" else term + "s"
+    return contains(text, other)
 
 
 def search_sections(
@@ -953,14 +1030,15 @@ def search_sections(
     if not isinstance(query, str) or not query.strip() or not isinstance(limit, int) or not 1 <= limit <= 30:
         raise RWEError("INVALID_INPUT", "Nonempty query and limit 1..30 required.")
     expansion = expand(query, synonyms, codes)
-    terms = search_units(query, expansion)
+    # A question's grammatical words say nothing of where its answer is (spec v1.21)
+    terms = [t for t in search_units(query, expansion) if t.casefold() not in QUESTION_WORDS]
     hits = []
     for chunk in chunks:
-        matched = [t for t in terms if contains(chunk["text"], t)]
+        matched = [t for t in terms if mentions(chunk["text"], t)]
         if matched:
-            score = len(matched) + 2 * sum(contains(chunk["section"] or "", t) for t in matched)
+            score = len(matched) + 4 * sum(mentions(chunk["section"] or "", t) for t in matched)
             # A bookmark chapter title naming the concept outranks a body mention.
-            score += 3 * sum(contains(chunk.get("chapter") or "", t) for t in matched)
+            score += 3 * sum(mentions(chunk.get("chapter") or "", t) for t in matched)
             if chunk["role"] in NON_METHOD_ROLES:
                 score *= 0.15
             hits.append(dict(chunk, score=score, matched_terms=matched))

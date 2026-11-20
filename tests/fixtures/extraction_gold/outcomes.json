@@ -1,0 +1,274 @@
+{
+ "about": "Outcome definitions of four EMA protocols, read by hand: the outcomes each protocol's outcome section names, how they are ascertained, and their codes. Same form as eligibility.json; no protocol text. An item marked beyond_first_search (a code list in an appendix) is not expected among the passages research_protocol returns first; the caller finds it by searching on.",
+ "question": "How is each study outcome (endpoint) defined, and from which records, registers or diagnosis codes is it identified?",
+ "analysis_fields": [
+  "outcomes",
+  "disease_definitions"
+ ],
+ "kinds": [
+  "definition",
+  "ascertainment",
+  "sensitivity",
+  "deferred",
+  "code"
+ ],
+ "minimum": {
+  "answer_found": 0.8,
+  "analysis_found": 0.6
+ },
+ "protocols": [
+  {
+   "study_id": "49324",
+   "document_url": "https://catalogues.ema.europa.eu/sites/default/files/document_files/EXCEED_PASS%20Protocol_V2.0_20%20Mar%202020_SIGNED_redacted.pdf",
+   "version": "2.0",
+   "sha256": "9c73993cb5df57745c184f309c35d7bd9b7fc678c0d0017129781115be82315c",
+   "pages": 108,
+   "items": [
+    {
+     "id": "O1",
+     "kind": "definition",
+     "label": "outcome: a primary diagnosis of pancreatic cancer in follow-up, after the latency period",
+     "page": 30,
+     "pattern": "primary diagnosis of pancreatic cancer",
+     "accept": "primary diagnosis"
+    },
+    {
+     "id": "O2",
+     "kind": "ascertainment",
+     "label": "ascertained from linked cancer registries, patient registers and cause-of-death registers",
+     "page": 30,
+     "pattern": "cancer registries, patient registers",
+     "accept": "patient regist|cause.of.death regist"
+    },
+    {
+     "id": "O3",
+     "kind": "sensitivity",
+     "label": "sensitivity analysis 5b: stricter definition from cancer registers alone",
+     "page": 30,
+     "pattern": "based on cancer registers alone",
+     "accept": "cancer regist\\w+ alone|restrictive|5b"
+    },
+    {
+     "id": "O4",
+     "kind": "deferred",
+     "label": "final outcome data sources per country are set in the data-source SAP or country protocol",
+     "page": 30,
+     "pattern": "defined in the data source specific",
+     "accept": "\\bSAP\\b|statistical analysis plan|country.specific"
+    },
+    {
+     "id": "O5",
+     "kind": "code",
+     "label": "code list: pancreatic cancer is ICD-10 C25.x",
+     "page": 96,
+     "pattern": "Pancreatic cancer C25\\.x",
+     "accept": "C25",
+     "beyond_first_search": true
+    }
+   ]
+  },
+  {
+   "study_id": "49276",
+   "document_url": "https://catalogues.ema.europa.eu/system/files/2025-10/_%20Public%20Registration%20of%20Results%20%204447%20protocol%20eu-pas-reg%20redacted.pdf",
+   "version": null,
+   "sha256": "bd18fe5fdd416268148c1bade8719f622166743569a9879362301a3b4a1cf760",
+   "pages": 70,
+   "items": [
+    {
+     "id": "O1",
+     "kind": "definition",
+     "label": "primary endpoint: first-time (incident) malignant neoplasm of pancreas by diagnostic codes",
+     "page": 23,
+     "pattern": "malignant neoplasm of pancreas as defined",
+     "accept": "incident|first.time"
+    },
+    {
+     "id": "O2",
+     "kind": "ascertainment",
+     "label": "incident pancreatic cancer diagnosis in the national cancer and/or patient registries",
+     "page": 26,
+     "pattern": "incident pancreatic cancer diagnosis",
+     "accept": "patient regist|cancer regist|cancer and/or patient"
+    },
+    {
+     "id": "O3",
+     "kind": "code",
+     "label": "ICD-10 C25 malignant neoplasm of pancreas",
+     "page": 26,
+     "pattern": "C25: Malignant neoplasm",
+     "accept": "C25"
+    },
+    {
+     "id": "O4",
+     "kind": "code",
+     "label": "ICD-10 subcodes C25.0 to C25.9",
+     "page": 27,
+     "pattern": "C25\\.9: Pancreas",
+     "accept": "C25\\.[0-9]"
+    },
+    {
+     "id": "O5",
+     "kind": "definition",
+     "label": "incident means none in the last 10 years of data or more",
+     "page": 27,
+     "pattern": "last 10 years of data",
+     "accept": "10 years"
+    },
+    {
+     "id": "O6",
+     "kind": "code",
+     "label": "MedDRA terms for the outcome are in Annex 1",
+     "page": 27,
+     "pattern": "MedDRA terms for the outcome",
+     "accept": "meddra"
+    }
+   ]
+  },
+  {
+   "study_id": "49285",
+   "document_url": "https://catalogues.ema.europa.eu/sites/default/files/document_files/21956_FINEGUST_Protocol_Redacted_v1.0_2022-05-30.pdf",
+   "version": "1.0",
+   "sha256": "24e3acaad3a7382f8d18910082e86aa165e57e88fbba79fedcba7d233cc47efc",
+   "pages": 69,
+   "items": [
+    {
+     "id": "O1",
+     "kind": "definition",
+     "label": "secondary-objective outcome: treatment discontinuation",
+     "page": 26,
+     "pattern": "treatment discontinuation,",
+     "accept": "discontinu"
+    },
+    {
+     "id": "O2",
+     "kind": "definition",
+     "label": "secondary-objective outcome: treatment switches",
+     "page": 26,
+     "pattern": "treatment switches, and add-on",
+     "accept": "switch"
+    },
+    {
+     "id": "O3",
+     "kind": "definition",
+     "label": "secondary-objective outcome: add-on treatments in each study period",
+     "page": 26,
+     "pattern": "add-on treatments during each",
+     "accept": "add.on"
+    },
+    {
+     "id": "O4",
+     "kind": "deferred",
+     "label": "detailed outcome definitions vary by data source and are left to the SAP",
+     "page": 26,
+     "pattern": "each outcome will vary by data source",
+     "accept": "\\bSAP\\b|statistical analysis plan|vary by data source"
+    }
+   ]
+  },
+  {
+   "study_id": "105807",
+   "document_url": "https://catalogues.ema.europa.eu/sites/default/files/document_files/20230517_Alira%20Health_Ferrer%20RWE%20Study%20Umbrella%20protocol_final_v2.0.pdf",
+   "version": "2.0",
+   "sha256": "14246890c76572847e3ffd7fe004236a9cc11d41b11b7030699061b44fce81bd",
+   "pages": 82,
+   "items": [
+    {
+     "id": "O1",
+     "kind": "definition",
+     "label": "overall survival, all-cause, if available",
+     "page": 42,
+     "pattern": "Overall survival, all-cause",
+     "accept": "overall survival"
+    },
+    {
+     "id": "O2",
+     "kind": "definition",
+     "label": "survival rate at 1, 2 and 3 years",
+     "page": 42,
+     "pattern": "Survival rate at 1-year",
+     "accept": "survival rate|1.year"
+    },
+    {
+     "id": "O3",
+     "kind": "definition",
+     "label": "overall survival at the hospital",
+     "page": 42,
+     "pattern": "Overall survival at the hospital",
+     "accept": "at the hospital|in.hospital"
+    },
+    {
+     "id": "O4",
+     "kind": "definition",
+     "label": "hospitalisation: PH-associated",
+     "page": 42,
+     "pattern": "o PH-associated$",
+     "accept": "PH.associated"
+    },
+    {
+     "id": "O5",
+     "kind": "definition",
+     "label": "hospitalisation: lung-disease associated",
+     "page": 42,
+     "pattern": "Lung-disease associated",
+     "accept": "lung.disease.associated"
+    },
+    {
+     "id": "O6",
+     "kind": "definition",
+     "label": "hospitalisation: cardiopulmonary (COPD or cardiovascular disease)",
+     "page": 42,
+     "pattern": "Cardiopulmonary hospitalization",
+     "accept": "cardiopulmonary"
+    },
+    {
+     "id": "O7",
+     "kind": "definition",
+     "label": "organ transplant procedure",
+     "page": 42,
+     "pattern": "Organ transplant procedure",
+     "accept": "transplant"
+    },
+    {
+     "id": "O8",
+     "kind": "definition",
+     "label": "mortality: all-cause",
+     "page": 42,
+     "pattern": "o All-cause$",
+     "accept": "all.cause mortality|mortality.{0,60}all.cause|all.cause death"
+    },
+    {
+     "id": "O9",
+     "kind": "definition",
+     "label": "mortality: PH-associated, if available",
+     "page": 42,
+     "pattern": "PH-associated, if available",
+     "accept": "mortality.{0,90}PH.associated|PH.associated.{0,20}(mortality|death|, if available)"
+    },
+    {
+     "id": "O10",
+     "kind": "definition",
+     "label": "mortality: right-ventricular (right heart) failure, if available",
+     "page": 42,
+     "pattern": "Right-ventricular failure",
+     "accept": "right.ventricular|right heart failure"
+    },
+    {
+     "id": "O11",
+     "kind": "definition",
+     "label": "lung disease exacerbations",
+     "page": 42,
+     "pattern": "Lung disease exacerbations",
+     "accept": "exacerbation"
+    },
+    {
+     "id": "O12",
+     "kind": "definition",
+     "label": "COPD severe exacerbation: emergency or overnight hospitalisation for COPD; two within 14 days count once",
+     "page": 43,
+     "pattern": "COPD severe exacerbation defined",
+     "accept": "14.day|severe exacerbation"
+    }
+   ]
+  }
+ ]
+}

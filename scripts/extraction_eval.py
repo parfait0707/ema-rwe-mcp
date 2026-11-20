@@ -6,9 +6,10 @@
     uv run python scripts/extraction_eval.py grade               # grade the extractions saved in the database
     uv run python scripts/extraction_eval.py run                 # extract with the configured LLM, then grade
 
-The reference (tests/fixtures/extraction_gold/eligibility.json) lists, for four protocols, every eligibility
-criterion as read by hand: a description in our own words, its physical page and a short pattern that finds
-the passage. It holds no protocol text; quotes are taken from the user's own copy of the PDF when a check runs.
+The reference (tests/fixtures/extraction_gold/*.json, one file per topic: eligibility criteria, outcome
+definitions) lists, for four protocols, every item as read by hand: a description in our own words, its
+physical page and a short pattern that finds the passage. It holds no protocol text; quotes are taken from
+the user's own copy of the PDF when a check runs. Every command reads all the files; --gold FILE reads one.
 
 check    What the server decides, for every reference item: the passage is found on its page, lies in a
          section that analyze_protocol serves to the reader (not background, references, contents or a
@@ -21,8 +22,9 @@ grade    What a reader (the calling LLM or the configured one) extracted: how ma
 catalogue  That the reference studies are still in the catalogue as non-interventional studies; --online also
          asks EMA whether their latest protocol is still the document the reference was read from.
 
-Scope: eligibility criteria only, of four English protocols with a text layer. Data sources, outcomes and
-code lists are not graded. See tests/fixtures/extraction_gold/README.md.
+Scope: eligibility criteria and outcome definitions of four English protocols with a text layer. Data
+sources, exposures, covariates and whole code lists are not graded. See
+tests/fixtures/extraction_gold/README.md.
 """
 
 import argparse
@@ -55,11 +57,24 @@ from ema_rwe.pdf import (
 )
 from ema_rwe.service import Service
 
-GOLD = ROOT / "tests" / "fixtures" / "extraction_gold" / "eligibility.json"
+COHORT_FIELDS = ("cohort.inclusion_criteria", "cohort.exclusion_criteria")
+GOLD_DIR = ROOT / "tests" / "fixtures" / "extraction_gold"
+GOLD = GOLD_DIR / "eligibility.json"
 
 
 def load(path: Path = GOLD) -> dict:
-    return json.loads(path.read_text(encoding="utf-8"))
+    return {"name": path.stem, **json.loads(path.read_text(encoding="utf-8"))}
+
+
+def load_all(folder: Path = GOLD_DIR) -> list[dict]:
+    """Every reference of the folder: one file per topic (eligibility, outcomes), each with its question."""
+    return [load(path) for path in sorted(folder.glob("*.json"))]
+
+
+def documents(golds: list[dict]) -> dict:
+    """The reference protocols of all topics, each once, as a reference of their own (for fetch, catalogue)."""
+    unique = {p["sha256"]: {**p, "items": []} for gold in golds for p in gold["protocols"]}
+    return {"name": "documents", "protocols": list(unique.values())}
 
 
 def archive_dir(settings: Settings) -> Path:
@@ -113,7 +128,12 @@ def check_protocol(protocol: dict, data: bytes, question: str, budget: int = 400
             problems.append(f"not served to the reader (role {holding[0]['role']})")
         elif all(c["role"] in EVIDENCE_REJECT_ROLES for c in holding):
             problems.append(f"in a section whose evidence is refused (role {holding[0]['role']})")
-        if holding and not any(c["section_id"] in offered for c in holding):
+        # beyond_first_search: a code list in an appendix, which the caller reaches by searching on
+        if (
+            holding
+            and not item.get("beyond_first_search")
+            and not any(c["section_id"] in offered for c in holding)
+        ):
             problems.append("not in the question search within the budget")
         fact = Fact(value=item["label"], evidence=[Evidence(page=item["page"], quote=quote)])
         try:
@@ -133,6 +153,7 @@ def check_protocol(protocol: dict, data: bytes, question: str, budget: int = 400
 def check(settings: Settings, gold: dict, require: bool) -> int:
     """Run check_protocol for every reference protocol in the archive; print a table; return the exit code."""
     failed = missing = checked = 0
+    name = gold.get("name", "reference")
     for protocol in gold["protocols"]:
         path = archive_dir(settings) / (protocol_id(protocol) + ".pdf")
         if not path.is_file():
@@ -153,7 +174,7 @@ def check(settings: Settings, gold: dict, require: bool) -> int:
         for item in bad:
             print(f"    {item['id']}: {'; '.join(item['problems'])}")
     total = len(gold["protocols"])
-    print(f"extraction reference: {checked}/{total} protocols checked, {failed} item(s) failing")
+    print(f"extraction reference ({name}): {checked}/{total} protocols checked, {failed} item(s) failing")
     if missing:
         print(
             f"  {missing} reference protocol(s) are not in {archive_dir(settings)}: "
@@ -233,17 +254,24 @@ def facts_text(fact: dict) -> tuple[str, str]:
     return fact["value"], " ".join(re.sub(r"\s+", " ", e["quote"]) for e in fact["evidence"])
 
 
-def grade_protocol(protocol: dict, answer: dict | None, analysis: dict | None) -> dict:
-    """How many reference items a saved answer and a saved cohort block contain. found: the item's pattern
-    is in a fact's value or quotes; supported: in that fact's own verbatim quotes."""
+def field(analysis: dict, path: str) -> list[dict]:
+    """The facts at a dotted path of an analysis (a list of facts, one fact, or nothing)."""
+    value = analysis
+    for key in path.split("."):
+        value = (value or {}).get(key)
+    return value if isinstance(value, list) else [value] if value else []
+
+
+def grade_protocol(
+    protocol: dict, answer: dict | None, analysis: dict | None, fields: tuple[str, ...] = COHORT_FIELDS
+) -> dict:
+    """How many reference items a saved answer and the analysis blocks of the topic contain. found: the
+    item's key words are in a fact's value or quotes; supported: in that fact's own verbatim quotes."""
     answers = [facts_text(f) for f in (answer or {}).get("answers", [])]
-    cohort = (analysis or {}).get("cohort") or {}
-    criteria = [
-        facts_text(f) for key in ("inclusion_criteria", "exclusion_criteria") for f in cohort.get(key, [])
-    ]
+    extracted = [facts_text(f) for path in fields for f in field(analysis or {}, path)]
     rows = []
     for item in protocol["items"]:
-        # A reader may word the criterion otherwise, or quote another of its lines: `accept` lists its key words.
+        # A reader may word the item otherwise, or quote another of its lines: `accept` lists its key words.
         wanted = item.get("accept", item["pattern"])
         hits = [(value, quotes) for value, quotes in answers if matches(wanted, value + " " + quotes)]
         rows.append(
@@ -251,7 +279,7 @@ def grade_protocol(protocol: dict, answer: dict | None, analysis: dict | None) -
                 "id": item["id"],
                 "answer_found": bool(hits),
                 "answer_supported": any(matches(wanted, quotes) for _, quotes in hits),
-                "cohort_found": any(matches(wanted, v + " " + q) for v, q in criteria),
+                "analysis_found": any(matches(wanted, v + " " + q) for v, q in extracted),
             }
         )
     total = len(rows)
@@ -260,8 +288,9 @@ def grade_protocol(protocol: dict, answer: dict | None, analysis: dict | None) -
         "items": total,
         "answered": answer is not None,
         "analysed": analysis is not None,
-        **{k: sum(r[k] for r in rows) for k in ("answer_found", "answer_supported", "cohort_found")},
+        **{k: sum(r[k] for r in rows) for k in ("answer_found", "answer_supported", "analysis_found")},
         "missing": [r["id"] for r in rows if not r["answer_found"]],
+        "missing_in_analysis": [r["id"] for r in rows if not r["analysis_found"]],
     }
 
 
@@ -269,7 +298,8 @@ def grade(settings: Settings, gold: dict) -> int:
     """Grade what the database holds for the reference protocols and question."""
     service = Service(settings)
     minimum, status, graded = gold["minimum"], 0, 0
-    print("  study     answer found/supported   cohort found   of")
+    print(f"{gold.get('name', 'reference')}: {gold['question']}")
+    print("  study     answer found/supported   analysis found   of")
     for protocol in gold["protocols"]:
         pid = protocol_id(protocol)
         saved = service.repo.analysis(protocol["study_id"])
@@ -281,7 +311,8 @@ def grade(settings: Settings, gold: dict) -> int:
                 (service.explorer.key(pid, gold["question"], ""),),
             ).fetchone()
         answer = json.loads(row[0])["answer"] if row else None
-        result = grade_protocol(protocol, answer, saved["analysis"] if saved else None)
+        fields = tuple(gold.get("analysis_fields", COHORT_FIELDS))
+        result = grade_protocol(protocol, answer, saved["analysis"] if saved else None, fields)
         if not result["answered"] and not result["analysed"]:
             print(f"  {protocol['study_id']:>8}  nothing saved for this protocol")
             status = 1
@@ -290,14 +321,14 @@ def grade(settings: Settings, gold: dict) -> int:
         low = []
         if result["answered"] and result["answer_found"] < minimum["answer_found"] * result["items"]:
             low.append("answer")
-        if result["analysed"] and result["cohort_found"] < minimum["cohort_found"] * result["items"]:
-            low.append("cohort")
+        if result["analysed"] and result["analysis_found"] < minimum["analysis_found"] * result["items"]:
+            low.append(f"analysis (not in it: {result['missing_in_analysis']})")
         if not result["answered"] or not result["analysed"]:
             low.append("no answer saved" if not result["answered"] else "no analysis saved")
         status |= 1 if low else 0
         print(
             f"  {protocol['study_id']:>8}  {result['answer_found']:>12}/{result['answer_supported']:<11}"
-            f"{result['cohort_found']:>13}   {result['items']}"
+            f"{result['analysis_found']:>15}   {result['items']}"
             + (
                 f"   BELOW THE MINIMUM: {', '.join(low)}; not in the answer: {result['missing']}"
                 if low
@@ -306,30 +337,36 @@ def grade(settings: Settings, gold: dict) -> int:
         )
     print(
         f"extraction grade: {graded}/{len(gold['protocols'])} protocols graded; minimum "
-        f"{minimum['answer_found']:.0%} of the items in the answer, {minimum['cohort_found']:.0%} in the cohort block"
+        f"{minimum['answer_found']:.0%} of the items in the answer, {minimum['analysis_found']:.0%} in "
+        f"the analysis ({', '.join(gold.get('analysis_fields', COHORT_FIELDS))})"
     )
     return status
 
 
-async def run(settings: Settings, gold: dict) -> int:
-    """Extract the reference protocols and answer the reference question with the configured LLM."""
+async def run(settings: Settings, golds: list[dict]) -> int:
+    """Extract the reference protocols and answer each reference question with the configured LLM."""
     if not configured(settings):
         print(
             "No LLM is configured (LLM_MODEL with LLM_BACKEND=litellm or LLM_BASE_URL). With the caller route, ask "
-            "your MCP client to run analyze_protocol with this question for each study, then run `grade`:\n"
-            f"  question: {gold['question']}\n  studies: {', '.join(p['study_id'] for p in gold['protocols'])}"
+            "your MCP client to run analyze_protocol with each question for each study, then run `grade`:"
         )
+        for gold in golds:
+            print(
+                f"  question: {gold['question']}\n  studies: {', '.join(p['study_id'] for p in gold['protocols'])}"
+            )
         return 1
     service = Service(settings)
     try:
-        for protocol in gold["protocols"]:
+        for protocol in documents(golds)["protocols"]:
             while (await service.analyze_protocol(protocol["study_id"]))["status"] == "extracting":
                 pass  # each call waits LLM_WAIT_SECONDS for the running extraction
-            await service.research_protocol(protocol_id(protocol), gold["question"], poll=False)
+            for gold in golds:
+                if any(p["sha256"] == protocol["sha256"] for p in gold["protocols"]):
+                    await service.research_protocol(protocol_id(protocol), gold["question"], poll=False)
             print(f"  study {protocol['study_id']}: extracted and answered")
     finally:
         await service.close()
-    return grade(settings, gold)
+    return max(grade(settings, gold) for gold in golds)
 
 
 def main() -> int:
@@ -341,12 +378,13 @@ def main() -> int:
     parser.add_argument(
         "--online", action="store_true", help="catalogue: ask EMA for each study's latest protocol"
     )
-    parser.add_argument("--gold", type=Path, default=GOLD)
+    parser.add_argument("--gold", type=Path, help="one reference file (default: every file of the folder)")
     args = parser.parse_args()
-    settings, gold = Settings(), load(args.gold)
+    settings, golds = Settings(), [load(args.gold)] if args.gold else load_all()
+    gold = documents(golds)
     match args.command:
         case "check":
-            return check(settings, gold, args.require)
+            return max(check(settings, one, args.require) for one in golds)
         case "fetch" | "catalogue":
             if args.command == "catalogue" and not args.online:
                 return asyncio.run(catalogue(settings, gold, False))
@@ -360,9 +398,9 @@ def main() -> int:
                     return asyncio.run(fetch(online, gold))
                 return asyncio.run(catalogue(online, gold, True))
         case "grade":
-            return grade(settings, gold)
+            return max(grade(settings, one) for one in golds)
         case "run":
-            return asyncio.run(run(settings, gold))
+            return asyncio.run(run(settings, golds))
     return 2
 
 

@@ -1,9 +1,17 @@
 {
  "about": "Reference items for grading protocol extraction: the eligibility criteria of four protocols, read by hand. No protocol text is stored: each item has a description in our own words, the physical page, a short pattern that finds its passage in the user's own copy of the PDF and, where a reader may word or cite another of its lines, the key words accepted when an extraction is graded. See README.md.",
  "question": "What are the inclusion criteria and the exclusion criteria of the study population?",
+ "analysis_fields": [
+  "cohort.inclusion_criteria",
+  "cohort.exclusion_criteria"
+ ],
+ "kinds": [
+  "inclusion",
+  "exclusion"
+ ],
  "minimum": {
   "answer_found": 0.9,
-  "cohort_found": 0.7
+  "analysis_found": 0.7
  },
  "protocols": [
   {
