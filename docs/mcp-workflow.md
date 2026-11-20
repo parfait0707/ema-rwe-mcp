@@ -177,7 +177,10 @@ filters. Never pick a subset yourself.
   Answer a study listed in `origins` as `local` or `prebuilt` from its rows: cite each row's `page`,
   `section` and `quote`, keep `data_source` rows' `usage` (planned is never used), and report `missing`
   rows as missing information. A `verified_at_build` row has no quote here (`quote_note`): say that its
-  quote appears once the PDF is retrieved. Only the studies in `no_facts` go on to the extraction below.
+  quote appears once the PDF is retrieved. Give that answer first, before any extraction. The pending
+  tools below still run afterwards for the comparison export (spec v1.31: the 3-minute answer does not
+  wait for the export); a study in `no_facts`, or a question its rows do not cover, is answered only after
+  them.
   `text` matches a value, or a quote of a local analysis.
 - The response's top-level `pending_tools` lists `{tool, arguments}` calls. A study with neither an
   analysis nor an answer gets one call, `analyze_protocol` with the `question` (one pass, below); with
