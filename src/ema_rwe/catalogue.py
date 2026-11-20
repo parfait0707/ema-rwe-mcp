@@ -3,9 +3,10 @@
 import asyncio
 import re
 from datetime import UTC, datetime
+from importlib.metadata import version
 from pathlib import Path
 
-from .catalogue_update import current_snapshot
+from .catalogue_update import app_update, current_snapshot
 from .catalogue_update import status as update_status
 from .domain import (
     RWEError,
@@ -94,6 +95,9 @@ class CatalogueMixin:
             # The export date the catalogue was built from, and what the last look for a newer snapshot found.
             "catalogue_snapshot": current_snapshot(self.settings.db_path),
             "update": update_status(self.settings),
+            "app_version": version("ema-rwe-mcp"),
+            # Present only when a newer application release was seen; the server never replaces itself.
+            **({"app_update_available": newer} if (newer := app_update(self.settings)) else {}),
             "latest_import": dict(
                 latest, note="count is the row count of this one export, not the catalogue total"
             )

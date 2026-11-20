@@ -4,6 +4,7 @@ import json
 
 from pydantic import ValidationError
 
+from .catalogue_update import versions
 from .domain import Extraction, ProtocolAnswer, RWEError, now, with_notes
 from .llm import SOURCE_ASSESSMENT_PROMPT, complete_json, configured, drop_invalid_evidence, split_batches
 from .pdf import (
@@ -261,6 +262,7 @@ class Explorer:
             "question": question,
             "answer": answer.model_dump(),
             "source": source,
+            "versions": versions(self.settings.db_path),
             "trace": trace or [],
             "answered_at": now(),
             "cached": False,

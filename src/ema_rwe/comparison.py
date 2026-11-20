@@ -4,6 +4,7 @@ import json
 import re
 import uuid
 
+from .catalogue_update import versions
 from .domain import RWEError, atomic_write, now
 from .llm import configured
 from .pdf import reading_hash
@@ -207,6 +208,8 @@ class Comparisons:
             "comparison_id": cid,
             "question": question,
             "created_at": now(),
+            # The application, catalogue snapshot and parser this comparison was screened with.
+            "versions": versions(self.service.settings.db_path),
             "search": search,
             "rows": [
                 {
@@ -271,6 +274,11 @@ class Comparisons:
             + (f"; {cell(r['error']['message'])}" if r.get("error") else "")
             for r in result["screening_summary"]
         )
+        if made := result.get("versions"):  # comparisons made before versions were recorded have none
+            result["comparison_markdown"] += (
+                f"\n\n作成時の版: ema-rwe-mcp {made['app_version']}; カタログ "
+                f"{made['catalogue_snapshot'] or '日付なし'}; parser {made['parser_version']}"
+            )
         atomic_write(folder / "comparison.md", result["comparison_markdown"])
         atomic_write(folder / "comparison.json", json.dumps(result, ensure_ascii=False, indent=2))
 

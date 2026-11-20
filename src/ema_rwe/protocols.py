@@ -6,6 +6,7 @@ import json
 import re
 from datetime import UTC, datetime
 
+from .catalogue_update import versions
 from .domain import (
     Extraction,
     RWEError,
@@ -178,6 +179,8 @@ class ProtocolsMixin:
             "selection_reason": result["selection_reason"],
             "extractor": self.settings.llm_model or "client-assisted",
             "schema_version": SCHEMA_VERSION,
+            # What extracts it: kept with the analysis, so a later reader sees which versions produced it.
+            **{k: v for k, v in versions(self.settings.db_path).items() if k != "schema_version"},
             # The heading reading the sections are selected under ('' without translations). It stays out of
             # the fingerprint, which comparisons record before any translation; saves are checked against it.
             "reading": reading_hash(self._translations(result["protocol"]["protocol_id"])),

@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Results record what produced them (spec v1.19): an analysis's `source`, and the `versions` of an answer
+  and of a comparison, carry the application version, the catalogue snapshot date and the parser version;
+  the comparison table ends with them. With catalogues now updating by themselves, a result that differs
+  from last month's shows what changed. Saved results keep the versions they were made with.
+- `catalogue_status` reports `app_version` and, when the daily look at GitHub saw a newer release,
+  `app_update_available` with how to update. The server never replaces itself, and no extra request is made.
+- The bundled catalogue is the published snapshot itself: at an application release,
+  `scripts/build_catalogue_snapshot.py --verify <dir> --unpack-to data/ema.sqlite3` replaces it with the
+  verified snapshot. The database is no longer committed month by month (`docs/release.md`).
+
 - Internal: the conditions of a search travel as one `SearchRequest` (in `storage.py`) instead of up to
   twelve positional arguments through `Repository.search` and the screening helpers; variations are made by
   name (`dataclasses.replace`). The MCP and CLI adapters call the service with keyword arguments, and the

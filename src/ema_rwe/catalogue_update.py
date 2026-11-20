@@ -22,12 +22,15 @@ import httpx
 from platformdirs import user_data_path
 
 from .config import REPO_ROOT, Settings
-from .domain import RWEError, atomic_write, now
+from .domain import Extraction, RWEError, atomic_write, now
+from .pdf import PARSER_VERSION
 from .storage import SCHEMA_VERSION, Repository, latest_import, refresh_from_bundle
 
 log = logging.getLogger(__name__)
 
 SNAPSHOT_TAG = re.compile(r"^data-(\d{8})$")
+APP_TAG = re.compile(r"^v(\d+\.\d+\.\d+)$")
+PROJECT_URL = "git+https://github.com/parfait0707/ema-rwe-mcp"
 EXPORT_DATE = re.compile(r"^(\d{8})_")
 CHECK_INTERVAL = timedelta(hours=24)
 MAX_MANIFEST_BYTES = 1 << 20
@@ -83,6 +86,35 @@ def status(settings: Settings) -> dict:
     }
 
 
+def versions(db_path: Path) -> dict:
+    """What produced a result, recorded with it: when the same question gives another answer next month,
+    the record shows whether the application, the catalogue or the PDF parser changed in between."""
+    return {
+        "app_version": version("ema-rwe-mcp"),
+        "catalogue_snapshot": current_snapshot(db_path),
+        "parser_version": PARSER_VERSION,
+        "schema_version": Extraction.model_fields["schema_version"].default,
+    }
+
+
+def app_update(settings: Settings) -> dict | None:
+    """A newer release of the application than the one running, as the last look at GitHub found it; None
+    when this is the newest (or nothing is known). The application is never replaced by the server: the user
+    changes the version their MCP client starts."""
+    latest, running = read_state(settings).get("latest_app_version"), version("ema-rwe-mcp")
+    if not latest or _version_tuple(latest) <= _version_tuple(running):
+        return None
+    return {
+        "current": running,
+        "latest": latest,
+        "instruction": f"Tell the user that ema-rwe-mcp {latest} is available (this is {running}). To update: "
+        f"where the MCP client's configuration pins a version ('{PROJECT_URL}@v{running}'), change it to "
+        f"'@v{latest}' and restart the client; an unpinned 'uvx --from {PROJECT_URL} ema-rwe-mcp' keeps "
+        f"the version uv cached until it is run once with 'uvx --refresh --from {PROJECT_URL} ema-rwe-mcp'. "
+        "Saved analyses, answers and PDFs are kept.",
+    }
+
+
 def _version_tuple(text: str) -> tuple[int, ...]:
     return tuple(int(part) for part in re.findall(r"\d+", text)[:3])
 
@@ -120,13 +152,28 @@ class _Failure(Exception):
         self.result, self.reason = result, reason
 
 
-def latest_release(client: httpx.Client, url: str) -> dict | None:
-    """The newest published data-YYYYMMDD release with its manifest and archive links, or None."""
+def published(client: httpx.Client, url: str) -> list[dict]:
+    """The project's published releases (no drafts, no prereleases)."""
     releases = json.loads(_get(client, url, MAX_MANIFEST_BYTES * 4))
+    return [
+        r
+        for r in (releases if isinstance(releases, list) else [])
+        if isinstance(r, dict) and not r.get("draft") and not r.get("prerelease")
+    ]
+
+
+def latest_app(releases: list[dict]) -> str | None:
+    """The highest vX.Y.Z among the releases, or None."""
+    found = [match[1] for r in releases if (match := APP_TAG.match(str(r.get("tag_name", ""))))]
+    return max(found, key=_version_tuple, default=None)
+
+
+def latest_release(releases: list[dict]) -> dict | None:
+    """The newest data-YYYYMMDD release with its manifest and archive links, or None."""
     found = []
-    for release in releases if isinstance(releases, list) else []:
+    for release in releases:
         match = SNAPSHOT_TAG.match(str(release.get("tag_name", "")))
-        if not match or release.get("draft") or release.get("prerelease"):
+        if not match:
             continue
         assets = {a.get("name"): a.get("browser_download_url") for a in release.get("assets", [])}
         archive = next((link for name, link in assets.items() if str(name).endswith(".sqlite3.gz")), None)
@@ -165,7 +212,10 @@ def update_catalogue(
                 described, packed = json.loads(manifest.read_text(encoding="utf-8")), archive
                 outcome["latest_snapshot"] = str(described.get("snapshot_id"))
             else:
-                release = latest_release(client, settings.catalogue_releases_url)
+                releases = published(client, settings.catalogue_releases_url)
+                if newest := latest_app(releases):  # the same list also tells of a newer application
+                    outcome["latest_app_version"] = newest
+                release = latest_release(releases)
                 if release is None:
                     return _record(settings, outcome, "no_snapshot", "No catalogue snapshot is published.")
                 outcome["latest_snapshot"] = release["snapshot"]
@@ -233,7 +283,7 @@ def _record(settings: Settings, outcome: dict, result: str, reason: str | None =
     previous = read_state(settings)
     state = {
         # What was applied last stays visible while later checks find nothing new.
-        **{k: previous[k] for k in ("applied_at", "applied_snapshot") if k in previous},
+        **{k: previous[k] for k in ("applied_at", "applied_snapshot", "latest_app_version") if k in previous},
         **outcome,
         "result": result,
         **({"reason": reason} if reason else {}),

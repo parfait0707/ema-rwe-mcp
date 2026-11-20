@@ -117,7 +117,7 @@ uvがあれば、cloneせずにMCPクライアントへ登録できます。カ�
 
 ## カタログの更新
 
-月ごとのカタログは、このプロジェクトの GitHub Releases（`data-YYYYMMDD`）にスナップショットとして公開されます。既定の保存先では、サーバーが起動時に新しいスナップショットを確かめ（1日に1回まで）、検証してから自動で取り込みます。設定の書き換えや再起動は要りません。保存済みの解析・回答・PDFは残ります。通信先は GitHub だけで、検索の途中では通信しません。`EMA_CATALOGUE_UPDATE=check`で通知だけ、`off`で確認なしにできます。`EMA_DB_PATH`で指定したDBは自動では更新しないので、`uvx --from git+https://github.com/parfait0707/ema-rwe-mcp ema-rwe update-catalogue`（checkout では`uv run ema-rwe update-catalogue`）を実行してください。状態は`catalogue_status`の`catalogue_snapshot`と`update`で確認できます。
+月ごとのカタログは、このプロジェクトの GitHub Releases（`data-YYYYMMDD`）にスナップショットとして公開されます。既定の保存先では、サーバーが起動時に新しいスナップショットを確かめ（1日に1回まで）、検証してから自動で取り込みます。設定の書き換えや再起動は要りません。保存済みの解析・回答・PDFは残ります。通信先は GitHub だけで、検索の途中では通信しません。`EMA_CATALOGUE_UPDATE=check`で通知だけ、`off`で確認なしにできます。`EMA_DB_PATH`で指定したDBは自動では更新しないので、`uvx --from git+https://github.com/parfait0707/ema-rwe-mcp ema-rwe update-catalogue`（checkout では`uv run ema-rwe update-catalogue`）を実行してください。状態は`catalogue_status`の`catalogue_snapshot`と`update`で確認できます。アプリ自体の新しい版は自動では入りません。新しい版が公開されると`catalogue_status`の`app_update_available`が知らせるので、MCPの設定の固定タグ（`@vX.Y.Z`）を書き換えて再起動してください。解析・回答・比較には、作成時のアプリの版・カタログの日付・parserの版が記録されます。
 
 同梱DBは**2026-11-02の公式CSV export**から作成した非介入研究3,343件です（claims 824件、ehr 926件、registry 575件、タグなし＝others 1,515件。種別は重複します）。新しい版がより新しいDBを同梱している場合、既定の保存先では起動時にカタログを更新し、保存済み解析・回答を保持します。`EMA_DB_PATH`で指定したDBは自動更新の対象外です。
 

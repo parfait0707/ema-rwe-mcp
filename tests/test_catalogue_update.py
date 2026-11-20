@@ -216,3 +216,61 @@ def test_state_is_plain_json_beside_the_database(settings, github):
     update_catalogue(settings, apply=False, client=github.client())
     state = json.loads(catalogue_update.state_path(settings).read_text(encoding="utf-8"))
     assert set(state) >= {"checked_at", "current_snapshot", "latest_snapshot", "result", "reason"}
+
+
+def test_a_newer_application_release_is_reported_and_never_applied(settings, github):
+    from importlib.metadata import version
+
+    update_catalogue(settings, client=github.client())  # the list holds v0.5.7 only: nothing newer
+    status = Service(settings).catalogue_status()
+    assert status["app_version"] == version("ema-rwe-mcp") and "app_update_available" not in status
+    github.releases += [
+        {"tag_name": "v9.10.0", "draft": False, "prerelease": False, "assets": []},
+        {"tag_name": "v9.9.9", "draft": False, "prerelease": False, "assets": []},
+        {"tag_name": "v99.0.0", "draft": False, "prerelease": True, "assets": []},  # not published
+        {"tag_name": "v10.0.0-rc1", "draft": False, "prerelease": False, "assets": []},  # not a release tag
+    ]
+    assert update_catalogue(settings, client=github.client())["latest_app_version"] == "9.10.0"
+    newer = Service(settings).catalogue_status()["app_update_available"]
+    assert newer["current"] == version("ema-rwe-mcp") and newer["latest"] == "9.10.0"
+    assert "@v9.10.0" in newer["instruction"] and "uvx --refresh" in newer["instruction"]
+    # A later failed check keeps what is known
+    github.fail = lambda request: httpx.Response(500)
+    update_catalogue(settings, client=github.client())
+    assert Service(settings).catalogue_status()["app_update_available"]["latest"] == "9.10.0"
+
+
+async def test_results_record_the_versions_that_produced_them(service, github):
+    from importlib.metadata import version
+
+    from test_comparison import seed
+    from test_core import sample_analysis
+
+    from ema_rwe.domain import ProtocolAnswer
+    from ema_rwe.pdf import PARSER_VERSION
+
+    expected = {
+        "app_version": version("ema-rwe-mcp"),
+        "catalogue_snapshot": None,
+        "parser_version": PARSER_VERSION,
+    }
+    seed(service.repo, 1)
+    comparison = await service.compare_protocols("How is diabetes defined?", ["opioid"])
+    assert {k: comparison["versions"][k] for k in expected} == expected
+    assert comparison["versions"]["schema_version"] == "0.3"
+    assert (
+        f"作成時の版: ema-rwe-mcp {expected['app_version']}; カタログ 日付なし"
+        in comparison["comparison_markdown"]
+    )
+    first = await service.analyze_protocol("123")
+    assert {k: first["source"][k] for k in expected} == expected
+    await service.cache_protocol_analysis("123", first["source"]["fingerprint"], sample_analysis(), True)
+    assert {k: service.repo.analysis("123")["source"][k] for k in expected} == expected
+    answer = await service.cache_protocol_answer(
+        first["source"]["protocol_id"], "Q?", ProtocolAnswer(answers=sample_analysis().disease_definitions)
+    )
+    assert {k: answer["versions"][k] for k in expected} == expected
+    # After a snapshot is taken in, new results name it; the saved analysis keeps what it was made with
+    update_catalogue(service.settings, client=github.client())
+    assert catalogue_update.versions(service.settings.db_path)["catalogue_snapshot"] == "20261101"
+    assert service.repo.analysis("123")["source"]["catalogue_snapshot"] is None
