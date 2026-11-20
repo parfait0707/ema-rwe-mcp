@@ -1,6 +1,6 @@
-import asyncio
 import json
 import logging
+import threading
 import time
 from contextlib import asynccontextmanager
 from functools import wraps
@@ -38,11 +38,13 @@ def create_server(service: Service | None = None):
         nonlocal service
         service = service or Service()
         # Look for a newer catalogue snapshot beside the server's work, never inside a tool call (spec v1.18).
-        updating = asyncio.create_task(asyncio.to_thread(startup_update, service.settings))
+        # A daemon thread, not the loop's executor: the runner waits for that executor at exit, so a client
+        # closing the server would keep the process alive until the download ends. A thread stopped midway
+        # leaves the catalogue as it was (the replacement is one transaction).
+        threading.Thread(target=startup_update, args=(service.settings,), daemon=True).start()
         try:
             yield {}
         finally:
-            updating.cancel()  # the thread itself ends on its own; nothing waits for it here
             await service.close()
 
     server = FastMCP(
@@ -495,8 +497,9 @@ ANNOTATIONS = {
     "analyze_protocol": ("Extract a protocol", False, False, False, True),  # a replaced analysis is archived
     "get_protocol_comparison": ("Collect a comparison", False, False, True, False),
     "cache_protocol_analysis": ("Save an extraction", False, False, True, True),  # may fetch the study page
-    "cache_heading_translations": ("Save heading translations", False, False, True, False),
     # These replace what was stored, and no earlier copy is kept.
+    # A changed translation also drops the study's unfinished extraction batches.
+    "cache_heading_translations": ("Save heading translations", False, True, True, False),
     "research_protocol": ("Answer a question from a protocol", False, True, False, True),  # force
     "cache_protocol_answer": ("Save an answer", False, True, True, False),
     "import_catalogue_csv": ("Import a catalogue export", False, True, True, False),
@@ -510,7 +513,10 @@ def reporter(ctx):
         return None
 
     async def report(done: int, total: int, message: str) -> None:
-        await ctx.report_progress(done, total, message)
+        try:
+            await ctx.report_progress(done, total, message)
+        except Exception:  # a notification is advisory; losing one must not stop the work
+            log.warning("progress notification failed", exc_info=True)
 
     return report
 
@@ -521,21 +527,27 @@ def timed(name: str, fn):
     @wraps(fn)
     async def run(*args, **kwargs):
         before, started = parse_stats(), time.perf_counter()
-        result = await fn(*args, **kwargs)
-        after = parse_stats()
-        log.info(
-            "tool=%s ms=%d chars=%d status=%s pdf_parsed=%d pdf_reused=%d pdf_parse_ms=%d",
-            name,
-            (time.perf_counter() - started) * 1000,
-            len(json.dumps(result, ensure_ascii=False, default=str)),
-            (result.get("status") or (result.get("error") or {}).get("code"))
-            if isinstance(result, dict)
-            else None,
-            after["parsed"] - before["parsed"],
-            after["reused"] - before["reused"],
-            after["parse_ms"] - before["parse_ms"],
-        )
-        return result
+        result, status = None, None
+        try:
+            result = await fn(*args, **kwargs)
+            if isinstance(result, dict):
+                status = result.get("status") or (result.get("error") or {}).get("code")
+            return result
+        except BaseException as exc:  # a call that ends in an exception is logged too, by its type
+            status = type(exc).__name__
+            raise
+        finally:
+            after = parse_stats()
+            log.info(
+                "tool=%s ms=%d chars=%d status=%s pdf_parsed=%d pdf_reused=%d pdf_parse_ms=%d",
+                name,
+                (time.perf_counter() - started) * 1000,
+                len(json.dumps(result, ensure_ascii=False, default=str)) if result is not None else 0,
+                status,
+                after["parsed"] - before["parsed"],
+                after["reused"] - before["reused"],
+                after["parse_ms"] - before["parse_ms"],
+            )
 
     return run
 

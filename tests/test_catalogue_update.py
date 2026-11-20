@@ -115,7 +115,9 @@ def test_a_snapshot_that_fails_verification_leaves_the_catalogue_alone(settings,
     result = update_catalogue(settings, client=github.client())
     assert result["result"] == "invalid_snapshot" and "checksum" in result["reason"]
     assert Repository(settings.db_path).study_count() == 0
-    assert not list(settings.db_path.parent.glob("tmp*"))  # nothing of the download is left behind
+    assert not list(
+        settings.db_path.parent.glob(catalogue_update.WORK_PREFIX + "*")
+    )  # nothing is left behind
 
 
 def test_a_snapshot_for_a_newer_package_asks_for_an_application_update(settings, github):
@@ -145,6 +147,7 @@ def test_a_download_that_leaves_github_is_refused(settings, github):
     github.redirect = "https://example.org/manifest"
     result = update_catalogue(settings, client=github.client())
     assert result["result"] == "invalid_snapshot" and "example.org" in result["reason"]
+    assert "/manifest" not in github.seen  # refused before the request, not after
     github.releases = {"message": "not a list"}
     assert update_catalogue(settings, client=github.client())["result"] == "no_snapshot"
 
@@ -154,6 +157,7 @@ def test_a_csv_the_user_imported_after_the_snapshot_was_built_is_kept(settings, 
     assert imported["imported"] > 0
     result = update_catalogue(settings, client=github.client())
     assert result["result"] == "kept_local_import"
+    assert not any(path.endswith("snapshot.gz") for path in github.seen)  # decided before the download
     assert current_snapshot(settings.db_path) is None  # export-data.csv carries no date: still the user's own
 
 
@@ -274,3 +278,86 @@ async def test_results_record_the_versions_that_produced_them(service, github):
     update_catalogue(service.settings, client=github.client())
     assert catalogue_update.versions(service.settings.db_path)["catalogue_snapshot"] == "20261101"
     assert service.repo.analysis("123")["source"]["catalogue_snapshot"] is None
+
+
+def test_a_hand_given_manifest_must_name_the_snapshot_it_holds(settings, snapshot, tmp_path):
+    manifest, packed = snapshot
+    for snapshot_id in (None, "20991231"):
+        described = tmp_path / f"manifest-{snapshot_id}.json"
+        described.write_text(json.dumps({**manifest, "snapshot_id": snapshot_id}), encoding="utf-8")
+        result = update_catalogue(settings, archive=packed, manifest=described)
+        assert result["result"] == "invalid_snapshot", snapshot_id
+        assert Repository(settings.db_path).study_count() == 0
+        assert read_state(settings).get("latest_snapshot") != "None"
+
+
+def test_unpacking_stops_at_the_size_the_manifest_gives(snapshot, tmp_path):
+    from ema_rwe.domain import RWEError
+    from ema_rwe.snapshot import verify_snapshot
+
+    manifest, packed = snapshot
+    small = {**manifest, "database": {**manifest["database"], "size": manifest["database"]["size"] // 2}}
+    target = tmp_path / "unpacked.sqlite3"
+    with pytest.raises(RWEError, match="exceeds"):
+        verify_snapshot(small, packed, target)
+    assert not target.exists()
+
+
+def test_off_reports_no_newer_application(settings):
+    catalogue_update.state_path(settings).parent.mkdir(parents=True, exist_ok=True)
+    catalogue_update.state_path(settings).write_text(json.dumps({"latest_app_version": "99.0.0"}))
+    assert catalogue_update.app_update(settings)["latest"] == "99.0.0"
+    settings.catalogue_update = "off"
+    assert catalogue_update.app_update(settings) is None
+    assert "app_update_available" not in Service(settings).catalogue_status()
+
+
+def test_stopping_the_server_does_not_wait_for_a_catalogue_update(settings, monkeypatch):
+    import asyncio
+    import threading
+
+    from ema_rwe.mcp.server import create_server
+
+    release = threading.Event()
+    monkeypatch.setattr("ema_rwe.mcp.server.startup_update", lambda _settings: release.wait(30))
+    server = create_server(Service(settings))
+
+    async def start_and_stop():
+        async with server.settings.lifespan(server):
+            await asyncio.sleep(0.2)  # the update has started
+
+    runner = threading.Thread(target=asyncio.run, args=(start_and_stop(),))
+    runner.start()
+    runner.join(5)
+    stuck = runner.is_alive()
+    release.set()
+    runner.join()
+    assert not stuck
+
+
+def test_work_folders_an_interrupted_update_left_behind_are_removed_by_the_next(settings, github):
+    """A server stopped mid-update (the update runs in a daemon thread) leaves its work folder beside the
+    database; the next update removes it once it is old enough not to be another process's current one."""
+    import os
+    import time
+
+    folder = settings.db_path.parent
+    folder.mkdir(parents=True, exist_ok=True)
+    old, fresh, foreign = (folder / name for name in ("ema-rwe-update-old", "ema-rwe-update-new", "tmpkeep"))
+    for path in (old, fresh, foreign):
+        path.mkdir()
+        (path / "snapshot.sqlite3.gz").write_bytes(b"partial")
+    day_ago = time.time() - 86400
+    for path in (old, old / "snapshot.sqlite3.gz", foreign, foreign / "snapshot.sqlite3.gz"):
+        os.utime(path, (day_ago, day_ago))
+    during = []
+
+    def unreachable(request):
+        during.extend(p.name for p in folder.iterdir() if p.is_dir())
+        return httpx.Response(503)
+
+    github.fail = unreachable
+    assert update_catalogue(settings, client=github.client())["result"] == "unreachable"
+    assert not old.exists() and fresh.exists() and foreign.exists()
+    assert len([name for name in during if name.startswith("ema-rwe-update-")]) == 2  # fresh and its own
+    assert [p.name for p in folder.glob("ema-rwe-update-*")] == ["ema-rwe-update-new"]  # its own is gone

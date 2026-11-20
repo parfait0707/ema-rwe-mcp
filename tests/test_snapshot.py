@@ -165,3 +165,22 @@ def test_a_built_snapshot_is_held_back_when_the_extraction_reference_fails(expor
         [*build, "--out", tmp_path / "skipped", "--skip-gold"], capture_output=True, text=True, check=False
     )
     assert skipped.returncode == 0 and "extraction reference" not in skipped.stderr
+
+
+def test_unpacking_into_a_missing_folder_is_refused_as_json(exports, tmp_path):
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    script = Path(__file__).resolve().parents[1] / "scripts" / "build_catalogue_snapshot.py"
+    build_snapshot(exports, "20261101", tmp_path / "out", None)
+    missing = tmp_path / "nowhere" / "ema.sqlite3"
+    refused = subprocess.run(
+        [sys.executable, script, "--verify", tmp_path / "out", "--unpack-to", missing],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert refused.returncode == 1 and "Traceback" not in refused.stderr
+    assert json.loads(refused.stderr)["error"]["code"] == "SNAPSHOT_INVALID"
+    assert not missing.parent.exists()

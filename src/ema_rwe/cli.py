@@ -239,7 +239,11 @@ async def run(args):
                 return service.catalogue_status()
             case "update-catalogue":
                 result = await asyncio.to_thread(
-                    update_catalogue, service.settings, not args.check, args.file, args.manifest
+                    update_catalogue,
+                    service.settings,
+                    apply=not args.check,
+                    archive=args.file,
+                    manifest=args.manifest,
                 )
                 if result["result"] in FAILED:
                     raise RWEError("CATALOGUE_UPDATE_FAILED", f"{result['result']}: {result.get('reason')}")

@@ -21,6 +21,7 @@ from .service import Service, source_type_from_filename
 from .storage import SCHEMA_VERSION, Repository, merge_bundle_observations
 
 MANIFEST_VERSION = 1
+MAX_DATABASE_BYTES = 4 << 30
 KINDS = ("studies", "claims", "ehr", "registry")
 
 
@@ -145,8 +146,13 @@ def verify_snapshot(manifest: dict, packed: Path, target: Path) -> Path:
     if sha256_file(packed) != manifest["compressed"]["sha256"]:
         raise RWEError("SNAPSHOT_INVALID", "Compressed snapshot checksum differs from its manifest.")
     try:
+        # The manifest's size, within a ceiling: an archive that unpacks to more stops before filling the disk.
+        limit = min(int(manifest["database"].get("size") or MAX_DATABASE_BYTES), MAX_DATABASE_BYTES)
         with gzip.open(packed, "rb") as source, target.open("wb") as unpacked:
-            shutil.copyfileobj(source, unpacked)
+            while block := source.read(1 << 20):
+                if unpacked.tell() + len(block) > limit:
+                    raise RWEError("SNAPSHOT_INVALID", f"Snapshot database exceeds {limit} bytes.")
+                unpacked.write(block)
         if sha256_file(target) != manifest["database"]["sha256"]:
             raise RWEError("SNAPSHOT_INVALID", "Snapshot database checksum differs from its manifest.")
         check_database(target)
