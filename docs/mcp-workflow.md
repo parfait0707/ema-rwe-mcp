@@ -222,8 +222,8 @@ filters. Never pick a subset yourself.
   `coverage_complete=true` (its `analysis` may be `{}` while cached batches remain to be merged).
   `INCOMPLETE_EXTRACTION` refuses a call in these cases, and its message says which. Without
   `coverage_complete=true` and without `batch_offset`, nothing is saved: cache each batch with its
-  `batch_offset`. With an offset, it names an offset that was never read and cached (also when no batch
-  was cached at all): read and cache it, follow `next_offset` to the end and repeat the call (a batch
+  `batch_offset`. With an offset, it names an offset that was never read and cached (also for an empty
+  final call when no batch was cached): read and cache it, follow `next_offset` to the end and repeat the call (a batch
   counts as far as it was served when you cached it, even if that offset was served again with another
   `max_chars`).
   Without cached batches, it refuses an empty `analysis` (or one with only `missing_information`) that

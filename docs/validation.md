@@ -1190,6 +1190,6 @@ PDF 取得先ディレクトリ名から X/Y が推測可能だった（P）、�
 
 - 見つけた経緯：v0.5.8 のリリース前の採点（研究 105807）で、読み手がバッチを配られた後、どれも保存せずに `coverage_complete=true, analysis={}` を送ると、空の解析が `status=analyzed` で保存された。
 - 再現（修正前）：checkout の MCP サーバーを stdio で起動し、研究 105807（110 節、最初のバッチは `next_offset=18`）で `analyze_protocol` の後、バッチを保存せずに `cache_protocol_analysis(coverage_complete=true, analysis={})` を呼ぶと `status=analyzed`。原因は、読み残しの検査（`extraction.py` の `while cached and position < total`）が、保存したバッチが無いと行われないこと。
-- 修正：検査の条件を「保存したバッチか、配信の記録があるとき」にした。配信の記録も保存したバッチも無いとき（統合の後に解析の全体で置き換えるとき。`tests/test_core.py` の `test_an_empty_final_call_after_the_merge_keeps_the_saved_analysis`）はこれまでどおり。
+- 修正：検査の条件を「保存したバッチがあるとき、または、渡した解析が空で配信の記録があるとき」にした。最初の案（配信の記録があれば常に検査する）は、v1.11 の 3 が受け付ける「バッチを保存せずに解析の全体を 1 回で渡す」呼び方まで断ったので、独立の検証の指摘で空の解析に絞った。配信の記録も保存したバッチも無いとき（統合の後に解析の全体で置き換えるとき。`tests/test_core.py` の `test_an_empty_final_call_after_the_merge_keeps_the_saved_analysis`）もこれまでどおり。
 - 修正後：同じ呼び出しは `INCOMPLETE_EXTRACTION`（offset 0 が読まれていない）で、何も保存しない。
-- テスト：`tests/test_provider_extraction.py` の `test_a_final_call_with_no_batch_cached_is_refused_while_the_protocol_has_unread_batches` は修正前に落ち、修正後に通る。全件 540 passed、1 skipped。
+- テスト：`tests/test_provider_extraction.py` の `test_a_final_call_with_no_batch_cached_is_refused_while_the_protocol_has_unread_batches` は修正前に落ち、修正後に通る。`test_a_whole_analysis_in_one_final_call_is_still_accepted_without_cached_batches`（4 つのバッチを読み、保存せずに中身のある解析を 1 回で渡す）は、最初の案で落ち、絞った修正で通る。全件 541 passed、1 skipped。

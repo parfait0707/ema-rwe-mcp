@@ -11,9 +11,10 @@
 - A tool call with an argument name the tool does not have (a misspelt `page_start` for `start_page`)
   is refused as a validation error instead of running with the default; every tool schema states
   `additionalProperties: false` (spec v1.28, #102).
-- A `coverage_complete` call made after batches were served but none was cached is refused as
+- An empty `coverage_complete` call made after batches were served but none was cached is refused as
   `INCOMPLETE_EXTRACTION` (naming the first unread offset) when the protocol has more than one batch; it
-  used to save the analysis given, even an empty one (spec v1.29).
+  used to save the empty analysis. A whole analysis given in one call without cached batches is still
+  accepted (spec v1.29).
 
 ## 0.5.7 (2026-11-20)
 
