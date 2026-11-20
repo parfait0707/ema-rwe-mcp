@@ -1193,3 +1193,12 @@ PDF 取得先ディレクトリ名から X/Y が推測可能だった（P）、�
 - 修正：検査の条件を「保存したバッチがあるとき、または、渡した解析が空で配信の記録があるとき」にした。最初の案（配信の記録があれば常に検査する）は、v1.11 の 3 が受け付ける「バッチを保存せずに解析の全体を 1 回で渡す」呼び方まで断ったので、独立の検証の指摘で空の解析に絞った。配信の記録も保存したバッチも無いとき（統合の後に解析の全体で置き換えるとき。`tests/test_core.py` の `test_an_empty_final_call_after_the_merge_keeps_the_saved_analysis`）もこれまでどおり。
 - 修正後：同じ呼び出しは `INCOMPLETE_EXTRACTION`（offset 0 が読まれていない）で、何も保存しない。
 - テスト：`tests/test_provider_extraction.py` の `test_a_final_call_with_no_batch_cached_is_refused_while_the_protocol_has_unread_batches` は修正前に落ち、修正後に通る。`test_a_whole_analysis_in_one_final_call_is_still_accepted_without_cached_batches`（4 つのバッチを読み、保存せずに中身のある解析を 1 回で渡す）は、最初の案で落ち、絞った修正で通る。全件 541 passed、1 skipped。
+
+## 2026-11-20 行末のハイフンで折れた語の引用（spec v1.30、Issue #106）
+
+- 見つけた経緯：v0.5.8 のリリース前の採点（研究 49276）で、30 ページの `(ICD-O-` 改行 `3) (31)` を `(ICD-O-3) (31)` と引用すると断られた。
+- 再現（修正前）：checkout の MCP サーバーを stdio で起動し、研究 49276 の `cache_protocol_answer` に、30 ページの引用 `International Classification of Diseases for Oncology, 3rd version (ICD-O-3) (31)` を渡すと `EVIDENCE_INVALID`（Quote not found on PDF page 30）。原因は `pdf.normalize_quote` が空白の並びを 1 つの空白にまとめ、ハイフンの後の改行が `icd-o- 3` として残ること。
+- 修正：`normalize_quote` で、ハイフンの直後の空白を消してから空白をまとめる。PDF 側と引用側の両方にかかる。
+- 修正後：同じ呼び出しは `status=answered`。
+- テスト：`tests/test_parse_cache.py` の `test_a_word_broken_after_a_hyphen_at_a_line_end_verifies_joined_or_as_printed`（つなげた引用と、PDF のとおりの引用の 2 通り）。つなげた方は修正前に落ちた。
+- `uv run scripts/check.py` の全段階が通った（543 passed、1 skipped）。照合はすべて `normalize_quote` を通るが、gold（正解の 4 つのプロトコルの全項目）はこれまでどおり合格。

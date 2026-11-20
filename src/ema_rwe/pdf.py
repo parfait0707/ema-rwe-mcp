@@ -1093,7 +1093,9 @@ def search_sections(
 
 
 def normalize_quote(text: str) -> str:
-    return re.sub(r"\s+", " ", text.replace("\u00ad", "")).strip().casefold()
+    # A word the PDF breaks after its hyphen at a line end ('ICD-O-' / '3') matches the word written whole.
+    text = re.sub(r"-\s+", "-", text.replace("\u00ad", ""))
+    return re.sub(r"\s+", " ", text).strip().casefold()
 
 
 WORD = re.compile(r"[^\W_]+")

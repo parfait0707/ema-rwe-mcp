@@ -234,7 +234,9 @@ filters. Never pick a subset yourself.
   never to resume after context compaction. While a server-side extraction of the same PDF and reading is
   still running, `force_refresh=true` joins it instead of starting another.
 - Section text is returned with runs of three or more spaces shortened to two (table columns keep a gap);
-  copy quotes from it as they are, the comparison with the PDF ignores whitespace.
+  copy quotes from it as they are. The comparison with the PDF treats a run of whitespace as one space and
+  ignores whitespace right after a hyphen, so a word the PDF breaks after its hyphen at a line end
+  (`ICD-O-` / `3`) may be written whole.
 - A data source `value` is the name as the protocol writes it, with no words of your own (no added
   country or abbreviation). The name is matched by its words, in order, case and punctuation aside, in one
   of the fact's quotes. Up to three other words may stand between two words of the name, but not a `;`, a

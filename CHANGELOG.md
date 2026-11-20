@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- A quote that writes whole a word the PDF breaks after its hyphen at a line end (`ICD-O-` / `3` quoted
+  as `ICD-O-3`) is accepted: the comparison ignores whitespace right after a hyphen, on both sides. The
+  workflow now says what the comparison does instead of "ignores whitespace" (spec v1.30, #106).
+
 ## 0.5.8 (2026-11-20)
 
 - Quotes a caller saves (`cache_protocol_analysis` analysis and answer, `cache_protocol_answer`) with a null
