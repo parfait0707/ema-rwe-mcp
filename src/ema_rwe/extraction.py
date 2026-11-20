@@ -415,11 +415,14 @@ class ExtractionMixin:
         chunks = compact_spaces(reading_order(sections(pages)))
         if not chunks:
             raise RWEError("SECTION_PARSE_FAILED", "No relevant protocol sections found.")
-        analysis = await extract_with_provider(self.settings, chunks, progress)
+        checkpoint = ProviderCheckpoint(self.repo, study_id, source["fingerprint"], source["reading"])
+        analysis = await extract_with_provider(self.settings, chunks, progress, checkpoint)
         catalogue_sources = self.repo.get(study_id).catalogue_data_sources
         analysis, _ = await asyncio.to_thread(finalize_extraction, analysis, pages, catalogue_sources)
         validate_evidence(analysis, pages)
-        return self._save(study_id, analysis, source, "configured_provider")
+        saved = self._save(study_id, analysis, source, "configured_provider")
+        self.repo.clear_batches(study_id)
+        return saved
 
     def _save(self, study_id, analysis, source, method, detail: str = "full"):
         result = {
@@ -434,6 +437,23 @@ class ExtractionMixin:
         }
         self.repo.save_analysis(self.repo.get(study_id), result, reading=source.get("reading", ""))
         return analysis_view(result, detail)
+
+
+class ProviderCheckpoint:
+    """The finished batches of a server-side extraction, kept in extraction_batches under the PDF, extractor
+    and reading they were read with (the table drops batches of any other): a failed batch or a server
+    restart costs only the batches that had not finished."""
+
+    def __init__(self, repo, study_id: str, fingerprint: str, reading: str):
+        self.repo, self.key = repo, (study_id, fingerprint, reading)
+
+    def finished(self) -> dict[int, dict]:
+        return self.repo.batches(*self.key, "provider")
+
+    def save(self, index: int, sections: str, extraction: Extraction) -> None:
+        self.repo.save_batch(
+            *self.key, "provider", index, {"sections": sections, "analysis": extraction.model_dump()}
+        )
 
 
 FINAL = 10**9  # batch offset of the answer passed with the coverage_complete call itself
