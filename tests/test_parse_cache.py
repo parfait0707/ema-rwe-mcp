@@ -134,6 +134,15 @@ def test_reader_text_loses_layout_spaces_and_its_quotes_still_verify():
             False,
         ),
         ("()", "anything", None),
+        # Words of other names across a clause break, or another name written in between
+        ("Hospital Episode Statistics", "Hospital admissions; Episode counts; Statistics Denmark", False),
+        (
+            "Danish National Patient Registry",
+            "the Danish National Prescription Registry and Patient Registry",
+            False,
+        ),
+        ("Clinical Practice Research Datalink GOLD", "Clinical Practice Research Datalink (CPRD) GOLD", True),
+        ("U.S. Medicare", "claims of U.S. Medicare beneficiaries", True),
     ],
 )
 def test_data_source_name_is_matched_by_its_words(name, text, found):
@@ -324,3 +333,111 @@ async def test_caller_batch_with_a_quote_on_the_wrong_page_is_saved_with_the_pag
     assert saved["study_design"]["evidence"][0]["server"] is None
     # The limits a caller keeps running into are stated where it reads them
     assert "at least 8 characters" in first["instruction"] and "at most 8 quotes" in first["instruction"]
+
+
+def methods_chunk(page: int, text: str) -> dict:
+    return {"page": page, "role": "methods", "text": text}
+
+
+def test_naming_quote_comes_from_the_page_nearest_to_any_cited_page():
+    name = "National Example Hospital Register"
+    chunks = [methods_chunk(p, f"Page {p} text without the source.") for p in range(1, 11)]
+    chunks[1]["text"] = chunks[8]["text"] = f"Data come from the {name} for all stays."
+    cited = [
+        Evidence(page=5, quote="Page 5 text without the source."),
+        Evidence(page=10, quote="Page 10 text without the source."),
+    ]
+    (named,) = with_source_name_quotes([DataSource(value=name, usage="planned", evidence=cited)], [], chunks)
+    assert (named.evidence[-1].page, named.evidence[-1].server) == (9, "source_name")
+
+
+def test_a_naming_passage_longer_than_a_quote_is_not_added():
+    from ema_rwe.domain import QUOTE_LIMIT as limit
+
+    name = " ".join(f"word{i}" for i in range(limit // 6))
+    chunks = [methods_chunk(1, f"Usage of the source is described here. {name} holds the records.")]
+    source = DataSource(
+        value=name,
+        usage="planned",
+        evidence=[Evidence(page=1, quote="Usage of the source is described here.")],
+    )
+    assert len(name) > limit
+    assert with_source_name_quotes([source], [], chunks) == [source]
+
+
+def test_a_fact_with_eight_quotes_that_omit_the_name_is_told_so():
+    data = one_page(
+        "9.4 Data sources\nNational Example Prescription Register (NEPR)\n"
+        + "\n".join(f"Dispensing records of pharmacy group {i} are available from 2005." for i in range(8))
+    )
+    pages = extract_pages(data)
+    quotes = [
+        Evidence(page=1, quote=f"Dispensing records of pharmacy group {i} are available from 2005.")
+        for i in range(8)
+    ]
+    source = DataSource(value="National Example Prescription Register", usage="planned", evidence=quotes)
+    (kept,) = with_source_name_quotes([source], pages)
+    with pytest.raises(RWEError) as error:
+        validate_evidence(Extraction(data_sources=[kept]), pages)
+    assert (
+        "8 quotes" in error.value.message and "nor in the protocol's methods text" not in error.value.message
+    )
+
+
+def test_server_marks_from_outside_the_server_are_dropped(pdf_bytes):
+    from ema_rwe.pdf import prune_unverifiable, without_server_marks
+
+    pages = extract_pages(pdf_bytes)
+    analysis = sample_analysis()
+    quote = analysis.data_sources[0].evidence[0].quote
+    analysis.data_sources[0].evidence[0] = Evidence(page=1, quote=quote, server="source_name")
+    criterion = {"value": "x", "evidence": [{"page": 1, "quote": quote, "server": "page"}]}
+    analysis = Extraction.model_validate(
+        {**analysis.model_dump(), "cohort": {"inclusion_criteria": [criterion]}}
+    )
+    stripped = without_server_marks(analysis)
+    assert stripped.data_sources[0].evidence[0].server is None
+    assert stripped.cohort.inclusion_criteria[0].evidence[0].server is None
+    pruned, _ = prune_unverifiable(analysis, pages)
+    assert pruned.data_sources[0].evidence[0].server is None
+
+
+async def test_a_callers_server_marks_are_not_saved(service):
+    """A mark records what this server did to a quote (spec v1.13): one a caller wrote is dropped."""
+    from ema_rwe.domain import Fact, ProtocolAnswer
+
+    first = await service.analyze_protocol("123")
+    analysis = sample_analysis()
+    quote = analysis.data_sources[0].evidence[0].quote
+    analysis.data_sources[0].evidence[0] = Evidence(page=1, quote=quote, server="source_name")
+    answer = ProtocolAnswer(
+        answers=[Fact(value="x", evidence=[Evidence(page=1, quote=quote, server="page")])]
+    )
+    await service.cache_protocol_analysis(
+        "123", first["source"]["fingerprint"], analysis, True, answer=answer, question="Which source?"
+    )
+    saved = service.repo.analysis("123")["analysis"]["data_sources"][0]["evidence"][0]
+    assert saved["quote"] == quote and saved["server"] is None
+    protocol = first["source"]["protocol_id"]
+    for question in ("Which source?", "Which source, again?"):
+        if question.endswith("again?"):
+            await service.cache_protocol_answer(protocol, question, answer)
+        served = await service.research_protocol(protocol, question)
+        assert served["answer"]["answers"][0]["evidence"][0]["server"] is None
+
+
+async def test_a_tool_call_that_raises_is_timed_on_the_log(service, caplog, monkeypatch):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from ema_rwe.mcp.server import create_server
+
+    def broken():
+        raise ValueError("unexpected")
+
+    monkeypatch.setattr(service, "catalogue_status", broken)
+    server = create_server(service)
+    with caplog.at_level(logging.INFO, logger="ema_rwe.mcp.server"), pytest.raises(ToolError):
+        await server._tool_manager.call_tool("catalogue_status", {})
+    lines = [r.getMessage() for r in caplog.records if r.getMessage().startswith("tool=")]
+    assert len(lines) == 1 and lines[0].startswith("tool=catalogue_status ms=")
+    assert "status=ValueError" in lines[0]

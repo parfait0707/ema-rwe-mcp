@@ -41,6 +41,7 @@ async def test_every_tool_is_annotated_and_the_context_is_not_an_argument(servic
     assert {name for name, tool in tools.items() if tool.annotations.destructiveHint} == {
         "research_protocol",
         "cache_protocol_answer",
+        "cache_heading_translations",  # replaces the stored translations and drops unfinished batches
         "import_catalogue_csv",
         "refresh_drug_dictionary",
     }
@@ -63,8 +64,9 @@ async def test_preparing_a_comparison_reports_each_study(service):
         )
         await asyncio.sleep(0.05)  # notifications are delivered beside the response
     assert not result.isError
-    assert [(done, total) for done, total, _ in seen] == [(0, 2), (1, 2)]
-    assert all("Retrieving the protocol of study" in message for _, _, message in seen)
+    assert [(done, total) for done, total, _ in seen] == [(0, 2), (1, 2), (2, 2)]
+    assert all("Retrieving the protocol of study" in message for _, _, message in seen[:-1])
+    assert seen[-1][2] == "Retrieved every protocol"
 
 
 async def test_a_call_without_a_progress_request_sends_none(service):
@@ -97,3 +99,13 @@ async def test_server_side_extraction_reports_finished_batches(service, monkeypa
     done = await service.analyze_protocol("123", on_progress=on_progress)
     assert done["status"] == "analyzed"
     assert seen[0][:2] == (1, 3) and "1 of 3 batches" in seen[0][2]
+
+
+async def test_a_progress_notification_that_fails_does_not_stop_the_tool():
+    from ema_rwe.mcp.server import reporter
+
+    class Gone:
+        async def report_progress(self, *args):
+            raise ConnectionResetError("client went away")
+
+    await reporter(Gone())(1, 2, "Retrieving")
