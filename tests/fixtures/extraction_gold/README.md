@@ -5,7 +5,7 @@
 | ファイル | 内容 | 採点で読む解析のブロック | 下限（回答、解析） |
 |---|---|---|---|
 | `eligibility.json` | 組入れ基準と除外基準、51 項目 | `cohort.inclusion_criteria`、`cohort.exclusion_criteria` | 90%、70% |
-| `outcomes.json` | アウトカムの定義（挙げられたアウトカム、同定に使う登録・記録、コード、感度分析での別定義、SAP に委ねる点）、27 項目 | `outcomes`、`disease_definitions` | 80%、60% |
+| `outcomes.json` | アウトカムの定義（挙げられたアウトカム、同定に使う登録・記録、コード、感度分析での別定義、SAP に委ねる点、別の節に書かれた定義）、31 項目 | `outcomes`、`disease_definitions` | 80%、60% |
 
 項目は、自分の言葉での説明、物理ページ、手元の PDF からその箇所を見つける短いパターン、採点で受け入れる鍵となる語だけを持ちます。
 

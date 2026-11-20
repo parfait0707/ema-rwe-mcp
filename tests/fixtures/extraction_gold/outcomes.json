@@ -162,6 +162,38 @@
      "page": 26,
      "pattern": "each outcome will vary by data source",
      "accept": "\\bSAP\\b|statistical analysis plan|vary by data source"
+    },
+    {
+     "id": "O5",
+     "kind": "definition",
+     "label": "discontinuation is dated at the end of the current use period (written in the exposure section)",
+     "page": 24,
+     "pattern": "Treatment discontinuation will be defined",
+     "accept": "end of (the )?current use|discontinu.{0,80}(grace|30)"
+    },
+    {
+     "id": "O6",
+     "kind": "definition",
+     "label": "current use runs to the end of supply plus a 30-day grace period",
+     "page": 24,
+     "pattern": "grace period of 30 days",
+     "accept": "grace|30.day|30 days"
+    },
+    {
+     "id": "O7",
+     "kind": "definition",
+     "label": "switching has a restricted meaning: treatment changed without changing the number of drugs",
+     "page": 26,
+     "pattern": "switching will have a restricted meaning",
+     "accept": "restricted meaning|without changing the total number"
+    },
+    {
+     "id": "O8",
+     "kind": "definition",
+     "label": "add-on or switch is classified from use in the 90 days before and after the index date",
+     "page": 26,
+     "pattern": "during the 90 days before the",
+     "accept": "90.days?"
     }
    ]
   },

@@ -175,7 +175,8 @@ filters. Never pick a subset yourself.
 - A section returned by `search_protocol_text` or `research_protocol` with `continues` is the next (or
   previous) page of the hit it names: read them as one passage (a list of criteria often runs over a page).
   A question's grammatical words (each, from, which, ...) are not searched, and one English word also
-  matches its plain plural or singular.
+  matches its plain plural or singular. A row with `beside` is a neighbour of a short section named for
+  the question (`9.3.1` beside `9.3.2 Outcomes definition`): the definitions are often there.
 - `analyze_protocol` may return `status=extracting` (server-side provider extraction running):
   call it again for the same study until it returns the analysis; do not extract client-side.
   Finished batches are kept (`progress.reused` counts those not asked again), so calling it again after

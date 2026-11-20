@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Merging the batches of an extraction (spec v1.23): list entries that say the same thing in several
+  batches (a data source named in each chapter) become one entry with their quotes together, and a list
+  still over its schema limit keeps entries taken in turn from every batch instead of the first batches'
+  only. A source called both planned and used stays planned.
+- `search_protocol_text` and `research_protocol` rank the neighbours of a short section named for the
+  question right after it (`beside`): a four-line "Outcomes definition" whose definitions stand under
+  "Exposure definition" no longer leaves them outside the passages returned. The outcome reference gains
+  four such items (31 outcome items, 82 in all).
 - An evidence `section` label retyped with single spaces is accepted (PDF headings keep runs of spaces);
   a repeated `coverage_complete` call with an empty analysis and no cached batch no longer replaces a saved
   analysis with an empty one (spec v1.22). Both were met by readers while the extraction reference was
