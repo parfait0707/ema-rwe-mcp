@@ -1178,3 +1178,10 @@ PDF 取得先ディレクトリ名から X/Y が推測可能だった（P）、�
   - 既存の `test_caller_batch_with_a_quote_on_the_wrong_page_is_saved_with_the_page_corrected` の期待を変えた。ページを直した引用は、直した先のページの節（`9 Data sources`）を受け取る。
 - 実 PDF：研究 105807 の手元の PDF（`data/protocols/` を読み取り専用）で、p28 の引用 "Currently, PAH patients are not directly identifiable in claims nor in EMR databases" を section=null で `with_derived_sections` に渡すと `3.1.3   Group 1 PAH Cohort` が入り、`validate_evidence` を通った。MCP サーバー経由の再実行はしていない。
 - `uv run pytest -q tests/test_parse_cache.py tests/test_exploration.py tests/test_provider_extraction.py tests/test_core.py tests/test_bookmarks_cohort.py tests/test_source_types.py tests/test_comparison.py tests/test_heading_translation.py tests/test_cli_mcp_parity.py tests/test_extraction_audit.py`：240 passed、1 skipped。`ruff check`・`ruff format --check` green。全件は未実行（メインスレッドが実行する）。
+
+## 2026-11-20 ツールの未知の引数を断る（spec v1.28、Issue #102）
+
+- 再現（修正前）：checkout の MCP サーバーを stdio で起動し、研究 105807 の `read_protocol_text` を `page_start=31`、`page_end=31`（正しくは `start_page`、`end_page`）で呼ぶと、`isError=false` で 1 ページ目の本文が返った。原因は FastMCP の `ArgModelBase` が pydantic の既定（`extra="ignore"`）のままであること（`mcp/server/fastmcp/utilities/func_metadata.py`、mcp 1.30.0）。
+- 修正：`create_server` の各ツールの処理で、引数モデルを `extra="forbid"` にして再構築し、`inputSchema` に `additionalProperties: false` を付けた。
+- 修正後：同じ呼び出しは `isError=true`（`page_start`、`page_end` が `extra_forbidden`）。正しい名前の呼び出しは 31 ページを返す。
+- テスト：`tests/test_mcp.py`（実 stdio）に、綴りを間違えた `search_studies` の引数が断られることと、全ツールのスキーマが `additionalProperties: false` であることを足した。修正前に落ちることを確かめた。`uv run scripts/check.py` の全段階を実行した（結果は PR）。

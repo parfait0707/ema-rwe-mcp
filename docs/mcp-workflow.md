@@ -20,7 +20,8 @@ configured LLM): `get_study`, `get_protocol`, `compare_protocols`, `analyze_prot
 `use_llm=true`. A call that asks for progress gets notifications from `compare_protocols` (one per candidate
 while `check_protocols` checks Study documents, one per study while protocols are retrieved, then a last one
 when all are) and from a server-side `analyze_protocol`
-(batches done). A notification that cannot be sent does not stop the tool.
+(batches done). A notification that cannot be sent does not stop the tool. An argument name a tool does
+not have is refused as a validation error (`additionalProperties: false`), never ignored: fix the name.
 
 ## 1. Plan
 

@@ -479,7 +479,10 @@ def create_server(service: Service | None = None):
         )
 
     for tool in server._tool_manager._tools.values():
-        tool.parameters = strip_titles(tool.parameters)
+        # A misspelt argument would otherwise be dropped and its default used without a word (issue #102).
+        tool.fn_metadata.arg_model.model_config["extra"] = "forbid"
+        tool.fn_metadata.arg_model.model_rebuild(force=True)
+        tool.parameters = strip_titles(tool.parameters) | {"additionalProperties": False}
         tool.fn = timed(tool.name, tool.fn)
         title, read_only, destructive, idempotent, open_world = ANNOTATIONS[tool.name]
         tool.title = title
