@@ -33,7 +33,14 @@ PAIRS = {
     "cache-headings": "cache_heading_translations",
 }
 # Maintenance commands a user runs in a terminal; they have no tool (docs: README_DEV.md).
-CLI_ONLY_COMMANDS = {"import-csv", "import-all", "backfill-protocols", "merge-observations", "cleanup-cache"}
+CLI_ONLY_COMMANDS = {
+    "import-csv",
+    "import-all",
+    "backfill-protocols",
+    "merge-observations",
+    "cleanup-cache",
+    "update-catalogue",  # the server does this by itself at start (spec v1.18)
+}
 # CLI destination -> MCP parameter, where the names differ (repeatable flags are singular, files are 'input').
 RENAMED = {
     "search": {"synonym": "synonyms", "code": "codes", "analogous": "analogous_terms"},

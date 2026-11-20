@@ -18,6 +18,10 @@ data/ema.sqlite3 (shipped in the wheel as ema_rwe/data/ema.sqlite3)
     https://catalogues.ema.europa.eu/legal-notice
     https://www.ema.europa.eu/en/about-us/about-website/legal-notice
 
+Catalogue snapshots (release assets ema-catalogue-YYYYMMDD.sqlite3.gz of this project)
+  The same data and terms as data/ema.sqlite3, built from the exports of the
+  date in their name. A server downloads them to keep its catalogue current.
+
 data/ema-medicines.json (shipped in the wheel as ema_rwe/data/ema-medicines.json)
   EMA medicines data, https://www.ema.europa.eu/, retrieved 2026-09-13.
   Source: European Medicines Agency (EMA). (c) EMA.

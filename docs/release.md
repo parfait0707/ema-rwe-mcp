@@ -58,7 +58,7 @@ gh repo edit parfait0707/ema-rwe-mcp --visibility public --accept-visibility-cha
 3. `gh release create data-<YYYYMMDD> --target main --latest=false --title "Catalogue <YYYY-MM-DD>" --notes "Catalogue snapshot of the EMA exports dated <YYYY-MM-DD>; see manifest.json" dist/snapshots/<YYYYMMDD>/ema-catalogue-<YYYYMMDD>.sqlite3.gz dist/snapshots/<YYYYMMDD>/manifest.json`。`--latest=false` で、アプリの最新版の表示を変えない。保守者の Claude Code の環境では、利用者レベルのフック（リポジトリには無い）が、リリースの作成の前に整合性の監査を済ませ、コミットした状態に印を付けることを求める。
 4. 公開したファイルを取り直して照合する：`gh release download data-<YYYYMMDD> -D <一時フォルダ>` の後、`uv run scripts/build_catalogue_snapshot.py --verify <一時フォルダ>`。
 
-利用者のサーバーがスナップショットを取り込む機能（段階 2 以降）はまだ無い。それまでは、同梱 DB の更新はアプリのリリースで行う。
+公開したスナップショットは、利用者のサーバーが起動時に確かめて取り込む（spec v1.18。計画の段階 2 と 3）。公開の後、`uv run ema-rwe update-catalogue --check` が新しい日付を `latest_snapshot` に示すことを確かめる。同梱 DB（オフラインでの最初の起動のため）は、従来どおりアプリのリリースで更新する。月ごとのコミットをやめるのは、計画の段階 4 である。
 
 ## 公開後の確認
 

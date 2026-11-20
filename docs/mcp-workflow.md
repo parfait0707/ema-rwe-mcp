@@ -20,7 +20,11 @@ notifications from `compare_protocols` (one per study while protocols are retrie
 
 ## 1. Plan
 
-- `catalogue_status` once per session. `status=current` and `source_type_imports` containing
+- `catalogue_status` once per session. `catalogue_snapshot` is the export date of the catalogue, and `update`
+  what the server's own look for a newer published snapshot found (`result`: `updated`, `up_to_date`,
+  `available`, `kept_local_import`, `app_update_required`, or a failure with its `reason`); the server takes
+  newer snapshots by itself, so no action follows from it except telling the user about
+  `app_update_required`. `status=current` and `source_type_imports` containing
   `claims`, `ehr`, `registry` means the committed catalogue is usable (freshness is judged per export:
   `exports`, `snapshot_aligned` with `snapshot_note`, `missing_source_type_exports`). Only when no CSV was ever
   imported, or a stale snapshot yields no candidates, may a visible user-initiated browser export be

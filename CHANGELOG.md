@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Newer catalogues arrive without changing the pinned version (spec v1.18): at start, at most once a day and
+  outside any tool call, the server looks for a newer catalogue snapshot in this project's GitHub releases
+  (`data-YYYYMMDD`), verifies it (manifest, both SHA-256, schema, integrity) and replaces the catalogue
+  tables; analyses, answers and PDFs are kept. `EMA_CATALOGUE_UPDATE=apply|check|off` (default `apply`);
+  only the database seeded in the user data folder is updated automatically. `ema-rwe update-catalogue
+  [--check] [--file --manifest]` updates any database, also from a hand-downloaded snapshot.
+  `catalogue_status` reports `catalogue_snapshot` and `update`. The requests go to GitHub, never to EMA.
+
 - CLI subcommands and MCP tools are checked against each other (spec v1.17): `tests/test_cli_mcp_parity.py`
   fails when a parameter, a required flag, a default, a choice list or a bound exists on one side only. The
   check found no missing argument; it aligned two bounds: `compare_protocols`, `research_protocol` and
