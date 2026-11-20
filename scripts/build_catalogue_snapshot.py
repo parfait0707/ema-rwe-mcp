@@ -8,7 +8,10 @@ r"""Build a monthly catalogue snapshot for publication as a GitHub release (data
 
 Reads the four exports dated <id> under data/imports/{studies,source_type}/, imports them into a fresh
 database, merges the protocol observations of the committed database, compacts and checks it, then writes
-the database, its gzip and manifest.json to dist/snapshots/<id>/. --verify DIR checks a downloaded
+the database, its gzip and manifest.json to dist/snapshots/<id>/. It then runs the extraction reference
+against the new catalogue (scripts/extraction_eval.py: the reference studies are still listed as
+non-interventional studies, and every reference criterion is still found in their protocols) and exits 1,
+leaving the files, when that fails: do not publish before it passes (--skip-gold to leave it out). --verify DIR checks a downloaded
 snapshot (manifest.json and the gzip in DIR) against its manifest; with --unpack-to FILE the verified
 database is kept there (for an application release: --unpack-to data/ema.sqlite3 makes the bundled
 catalogue the published snapshot itself).
@@ -16,7 +19,10 @@ catalogue the published snapshot itself).
 
 import argparse
 import json
+import os
 import re
+import shutil
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -46,6 +52,9 @@ def main() -> int:
         default=ROOT / "data" / "ema.sqlite3",
         help="Database whose protocol observations (medicine backfill) the snapshot keeps; 'none' to skip",
     )
+    parser.add_argument(
+        "--skip-gold", action="store_true", help="Do not run the extraction reference on the new catalogue"
+    )
     args = parser.parse_args()
     if args.unpack_to and not args.verify:
         parser.error("--unpack-to needs --verify")
@@ -65,6 +74,34 @@ def main() -> int:
         print(json.dumps(exc.as_dict(), ensure_ascii=False), file=sys.stderr)
         return 1
     print(json.dumps(manifest, ensure_ascii=False, indent=2))
+    if args.skip_gold:
+        return 0
+    out = args.out or ROOT / "dist" / "snapshots" / args.snapshot_id
+    return gold(out / manifest["database"]["name"])
+
+
+def gold(database: Path) -> int:
+    """Run the extraction reference with the new catalogue: on a copy, so the published file stays as hashed."""
+    archive = os.getenv("EMA_PROTOCOL_DIR") or str(ROOT / "data" / "protocols")
+    with tempfile.TemporaryDirectory() as work:
+        copy = Path(work) / "ema.sqlite3"
+        shutil.copyfile(database, copy)
+        env = {**os.environ, "EMA_DB_PATH": str(copy), "EMA_PROTOCOL_DIR": archive}
+        for command in (["catalogue"], ["check", "--require"]):
+            print(f"== extraction reference: {' '.join(command)}", file=sys.stderr, flush=True)
+            done = subprocess.run(
+                [sys.executable, str(ROOT / "scripts" / "extraction_eval.py"), *command],
+                env=env,
+                stdout=sys.stderr,  # stdout carries the manifest only
+                check=False,
+            )
+            if done.returncode:
+                print(
+                    "The extraction reference fails with this catalogue: do not publish the snapshot. "
+                    "See tests/fixtures/extraction_gold/README.md.",
+                    file=sys.stderr,
+                )
+                return 1
     return 0
 
 

@@ -1,0 +1,444 @@
+{
+ "about": "Reference items for grading protocol extraction: the eligibility criteria of four protocols, read by hand. No protocol text is stored: each item has a description in our own words, the physical page, a short pattern that finds its passage in the user's own copy of the PDF and, where a reader may word or cite another of its lines, the key words accepted when an extraction is graded. See README.md.",
+ "question": "What are the inclusion criteria and the exclusion criteria of the study population?",
+ "minimum": {
+  "answer_found": 0.9,
+  "cohort_found": 0.7
+ },
+ "protocols": [
+  {
+   "study_id": "49324",
+   "document_url": "https://catalogues.ema.europa.eu/sites/default/files/document_files/EXCEED_PASS%20Protocol_V2.0_20%20Mar%202020_SIGNED_redacted.pdf",
+   "version": "2.0",
+   "sha256": "9c73993cb5df57745c184f309c35d7bd9b7fc678c0d0017129781115be82315c",
+   "pages": 108,
+   "items": [
+    {
+     "id": "I1",
+     "kind": "inclusion",
+     "label": "age 18 or older at the index date",
+     "page": 24,
+     "pattern": "18 years or older",
+     "accept": "18 years|(>=|≥) ?18"
+    },
+    {
+     "id": "I2",
+     "kind": "inclusion",
+     "label": "individual-level prescription, diagnosis and history data for at least 12 months before the index date",
+     "page": 24,
+     "pattern": "12 months prior to the index",
+     "accept": "12 months (before|prior)|minimum of 12 months|(>=|≥) ?12 months"
+    },
+    {
+     "id": "I3",
+     "kind": "inclusion",
+     "label": "type 2 diabetes diagnosis on or before the index date (prescription proxy where diagnoses are incomplete)",
+     "page": 24,
+     "pattern": "diagnosis of T2DM on index date",
+     "accept": "diagnosis of t2dm|t2dm (diagnosis|dx)|type 2 diabetes"
+    },
+    {
+     "id": "Ia",
+     "kind": "inclusion",
+     "label": "exenatide group: one incident (dispensed) exenatide prescription in the study window, after a glucose-lowering drug of another class",
+     "page": 25,
+     "pattern": "prescription\\) for exenatide",
+     "accept": "incident .{0,40}prescription.{0,60}exenatide|exenatide.{0,80}incident|incident (dispensed )?exenatide"
+    },
+    {
+     "id": "Ib",
+     "kind": "inclusion",
+     "label": "BYDUREON group (secondary objective): incident BYDUREON prescription instead",
+     "page": 25,
+     "pattern": "BYDUREON BCise exposure group",
+     "accept": "bydureon"
+    },
+    {
+     "id": "Ic",
+     "kind": "inclusion",
+     "label": "comparator group: one incident glucose-lowering drug prescription that is not a DPP-4 inhibitor or a GLP-1 receptor agonist",
+     "page": 25,
+     "pattern": "GLD must not be a",
+     "accept": "must not be a|not (a )?dpp-4i"
+    },
+    {
+     "id": "E1",
+     "kind": "exclusion",
+     "label": "type 1 diabetes on the index date, or in baseline without a later type 2 diagnosis",
+     "page": 25,
+     "pattern": "\\(T1DM\\) on index date",
+     "accept": "type 1 diabetes|t1dm"
+    },
+    {
+     "id": "E2",
+     "kind": "exclusion",
+     "label": "gestational diabetes in baseline or on the index date",
+     "page": 25,
+     "pattern": "gestational diabetes"
+    },
+    {
+     "id": "E3",
+     "kind": "exclusion",
+     "label": "polycystic ovarian syndrome with metformin as the only glucose-lowering drug",
+     "page": 25,
+     "pattern": "polycystic ovarian syndrome",
+     "accept": "polycystic|pcos"
+    },
+    {
+     "id": "E4",
+     "kind": "exclusion",
+     "label": "any cancer on or before the index date, except non-melanoma skin cancer",
+     "page": 26,
+     "pattern": "History of any cancer",
+     "accept": "any cancer|cancer history"
+    },
+    {
+     "id": "E5",
+     "kind": "exclusion",
+     "label": "acute pancreatitis or other disease or disorder of the pancreas on or before the index date",
+     "page": 26,
+     "pattern": "acute pancreatitis",
+     "accept": "pancreatitis"
+    },
+    {
+     "id": "E6",
+     "kind": "exclusion",
+     "label": "a GLP-1 receptor agonist other than exenatide on or before the index date",
+     "page": 26,
+     "pattern": "other than exenatide",
+     "accept": "other than exenatide"
+    },
+    {
+     "id": "E7",
+     "kind": "exclusion",
+     "label": "a DPP-4 inhibitor on or before the index date (not applied in one sensitivity analysis)",
+     "page": 26,
+     "pattern": "of DPP-4i",
+     "accept": "dpp-4i"
+    }
+   ]
+  },
+  {
+   "study_id": "49276",
+   "document_url": "https://catalogues.ema.europa.eu/system/files/2025-10/_%20Public%20Registration%20of%20Results%20%204447%20protocol%20eu-pas-reg%20redacted.pdf",
+   "version": null,
+   "sha256": "bd18fe5fdd416268148c1bade8719f622166743569a9879362301a3b4a1cf760",
+   "pages": 70,
+   "items": [
+    {
+     "id": "I1",
+     "kind": "inclusion",
+     "label": "new use of semaglutide or an active comparator in the study period (no same ingredient in the past 10 years)",
+     "page": 24,
+     "pattern": "first subject is dispensed",
+     "accept": "first subject is dispensed|no previous prescription|initiation of active comparators|new use"
+    },
+    {
+     "id": "I2",
+     "kind": "inclusion",
+     "label": "at least two prescriptions, the second within one year of the first",
+     "page": 24,
+     "pattern": "At least two prescriptions",
+     "accept": "two prescriptions|(>=|≥) ?2 prescriptions"
+    },
+    {
+     "id": "I3",
+     "kind": "inclusion",
+     "label": "age 18 or older at cohort entry",
+     "page": 24,
+     "pattern": "18 years old",
+     "accept": "18 years|(>=|≥) ?18"
+    },
+    {
+     "id": "I4",
+     "kind": "inclusion",
+     "label": "ten or more years of continuous residency before initiation",
+     "page": 24,
+     "pattern": "continuous residency",
+     "accept": "residency"
+    },
+    {
+     "id": "E1",
+     "kind": "exclusion",
+     "label": "any cancer except non-melanoma skin cancer",
+     "page": 24,
+     "pattern": "any cancer except",
+     "accept": "any cancer"
+    },
+    {
+     "id": "E2",
+     "kind": "exclusion",
+     "label": "acute pancreatitis",
+     "page": 25,
+     "pattern": "Acute pancreatitis"
+    },
+    {
+     "id": "E3",
+     "kind": "exclusion",
+     "label": "alcohol-induced chronic pancreatitis",
+     "page": 25,
+     "pattern": "Alcohol-induced chronic pancreatitis",
+     "accept": "alcohol"
+    },
+    {
+     "id": "E4",
+     "kind": "exclusion",
+     "label": "other chronic pancreatitis",
+     "page": 25,
+     "pattern": "Other chronic pancreatitis"
+    },
+    {
+     "id": "E5",
+     "kind": "exclusion",
+     "label": "cystic fibrosis",
+     "page": 25,
+     "pattern": "Cystic fibrosis"
+    },
+    {
+     "id": "E6",
+     "kind": "exclusion",
+     "label": "other phacomatoses (Peutz-Jeghers, Von Hippel-Lindau)",
+     "page": 25,
+     "pattern": "phacomatoses"
+    },
+    {
+     "id": "E7",
+     "kind": "exclusion",
+     "label": "neurofibromatosis",
+     "page": 25,
+     "pattern": "Neurofibromatosis"
+    },
+    {
+     "id": "E8",
+     "kind": "exclusion",
+     "label": "history of pancreatic cancer",
+     "page": 25,
+     "pattern": "history of pancreatic cancer",
+     "accept": "pancreatic cancer"
+    },
+    {
+     "id": "E9",
+     "kind": "exclusion",
+     "label": "insulin as first-line treatment without a non-insulin drug within 3 months",
+     "page": 25,
+     "pattern": "insulin as first-line",
+     "accept": "insulin as first-line|first-line (antidiabetic|insulin)|insulin first"
+    },
+    {
+     "id": "E10",
+     "kind": "exclusion",
+     "label": "polycystic ovary syndrome",
+     "page": 25,
+     "pattern": "polycystic ovary syndrome",
+     "accept": "polycystic|pcos"
+    },
+    {
+     "id": "E11",
+     "kind": "exclusion",
+     "label": "gestational diabetes",
+     "page": 25,
+     "pattern": "gestational diabetes"
+    },
+    {
+     "id": "E12",
+     "kind": "exclusion",
+     "label": "an exclusion condition (other than pancreatitis) arising between cohort entry and the start of follow-up",
+     "page": 25,
+     "pattern": "before start of follow-up",
+     "accept": "before start of follow-up|after cohort entry"
+    }
+   ]
+  },
+  {
+   "study_id": "49285",
+   "document_url": "https://catalogues.ema.europa.eu/sites/default/files/document_files/21956_FINEGUST_Protocol_Redacted_v1.0_2022-05-30.pdf",
+   "version": "1.0",
+   "sha256": "24e3acaad3a7382f8d18910082e86aa165e57e88fbba79fedcba7d233cc47efc",
+   "pages": 69,
+   "items": [
+    {
+     "id": "I1",
+     "kind": "inclusion",
+     "label": "active registration or continuous enrolment for at least 12 months before the index date",
+     "page": 23,
+     "pattern": "continuous enrolment for at least 12 months",
+     "accept": "continuous enrolment|active registration"
+    },
+    {
+     "id": "I2",
+     "kind": "inclusion",
+     "label": "no prescription or dispensing of a medicine of the class in the 12 months before the index date",
+     "page": 23,
+     "pattern": "No recorded prescription or dispensing",
+     "accept": "no recorded prescription|medication in the class|new user"
+    },
+    {
+     "id": "I3",
+     "kind": "inclusion",
+     "label": "age 18 or older at the index date",
+     "page": 23,
+     "pattern": "18 years or older",
+     "accept": "18 years|(>=|≥) ?18"
+    },
+    {
+     "id": "I4",
+     "kind": "inclusion",
+     "label": "type 2 diabetes diagnosis on or before the index date",
+     "page": 23,
+     "pattern": "Diagnosis of T2D",
+     "accept": "diagnosis of t2d|t2d (diagnosis|on|dx)|type 2 diabetes"
+    },
+    {
+     "id": "I5",
+     "kind": "inclusion",
+     "label": "chronic kidney disease diagnosis on or before the index date",
+     "page": 23,
+     "pattern": "Diagnosis of CKD",
+     "accept": "diagnosis of ckd|ckd (diagnosis|on|dx|stage)|chronic kidney disease"
+    },
+    {
+     "id": "E1",
+     "kind": "exclusion",
+     "label": "type 1 diabetes",
+     "page": 23,
+     "pattern": "Type 1 diabetes identified",
+     "accept": "type 1 diabetes|t1d"
+    },
+    {
+     "id": "E2",
+     "kind": "exclusion",
+     "label": "kidney cancer on or before the index date",
+     "page": 23,
+     "pattern": "Kidney cancer"
+    },
+    {
+     "id": "E3",
+     "kind": "exclusion",
+     "label": "kidney failure",
+     "page": 23,
+     "pattern": "Kidney failure"
+    },
+    {
+     "id": "E4",
+     "kind": "exclusion",
+     "label": "maintenance dialysis on or before the index date",
+     "page": 23,
+     "pattern": "Maintenance dialysis"
+    },
+    {
+     "id": "E5",
+     "kind": "exclusion",
+     "label": "kidney transplantation on or before the index date",
+     "page": 23,
+     "pattern": "Kidney transplantation",
+     "accept": "transplant"
+    }
+   ]
+  },
+  {
+   "study_id": "105807",
+   "document_url": "https://catalogues.ema.europa.eu/sites/default/files/document_files/20230517_Alira%20Health_Ferrer%20RWE%20Study%20Umbrella%20protocol_final_v2.0.pdf",
+   "version": "2.0",
+   "sha256": "14246890c76572847e3ffd7fe004236a9cc11d41b11b7030699061b44fce81bd",
+   "pages": 82,
+   "items": [
+    {
+     "id": "G1-I1",
+     "kind": "inclusion",
+     "label": "Group 1 PAH cohort: age 18 or older at the index date",
+     "page": 29,
+     "pattern": "18 years at index date",
+     "accept": "18 years|(>=|≥) ?18"
+    },
+    {
+     "id": "G1-I2",
+     "kind": "inclusion",
+     "label": "Group 1 PAH cohort: recorded pulmonary hypertension diagnosis (I27.0 or I27.2) or a visit to a specialist centre in the inclusion period",
+     "page": 29,
+     "pattern": "recorded PH diagnosis \\(I27",
+     "accept": "i27\\.0|recorded ph diagnosis"
+    },
+    {
+     "id": "G1-I3",
+     "kind": "inclusion",
+     "label": "Group 1 PAH cohort: combinations of a specialist-centre visit, right heart catheterisation and a PAH-specific drug",
+     "page": 29,
+     "pattern": "RHC procedure during the study period",
+     "accept": "rhc|right heart cath|pah(-| )specific (drug|therap)|specific pah drug"
+    },
+    {
+     "id": "G1-E1",
+     "kind": "exclusion",
+     "label": "Group 1 PAH cohort: a pulmonary hypertension diagnosis of another group in the lookback period",
+     "page": 29,
+     "pattern": "other than Group 1 PAH",
+     "accept": "other than group 1|other ph groups"
+    },
+    {
+     "id": "G1-E2",
+     "kind": "exclusion",
+     "label": "Group 1 PAH cohort: less than 24 months of lookback",
+     "page": 29,
+     "pattern": "minimum of 24-month lookback",
+     "accept": "24-month look|24 month"
+    },
+    {
+     "id": "G1-E3",
+     "kind": "exclusion",
+     "label": "Group 1 PAH cohort: less than 12 months of follow-up (treatment, resource-use and outcome analyses)",
+     "page": 29,
+     "pattern": "12-months follow up",
+     "accept": "12-months? follow|12 months? (of )?follow"
+    },
+    {
+     "id": "G3-I1",
+     "kind": "inclusion",
+     "label": "Group 3 PH cohort: age 18 or older",
+     "page": 32,
+     "pattern": "Patients aged . 18 years",
+     "accept": "18 years|(>=|≥) ?18"
+    },
+    {
+     "id": "G3-I2",
+     "kind": "inclusion",
+     "label": "Group 3 PH cohort: an inpatient pulmonary hypertension diagnosis or two outpatient visits in the inclusion period",
+     "page": 32,
+     "pattern": "two outpatient visits",
+     "accept": "two outpatient|2 outpatient"
+    },
+    {
+     "id": "G3-I3",
+     "kind": "inclusion",
+     "label": "Group 3 PH cohort: a lung disease diagnosis from 24 months before to 60 days after the index date",
+     "page": 32,
+     "pattern": "LD diagnosis \\(see Table 19\\)",
+     "accept": "ld diagnosis|lung disease"
+    },
+    {
+     "id": "G3-E1",
+     "kind": "exclusion",
+     "label": "Group 3 PH cohort: a diagnosis typical of pulmonary hypertension group 2, 4 (chronic) or 5 before the index date",
+     "page": 32,
+     "pattern": "associated with PH Group 2",
+     "accept": "group 2"
+    },
+    {
+     "id": "G3-E2",
+     "kind": "exclusion",
+     "label": "Group 3 PH cohort: acute pulmonary thromboembolism more than 60 days before or after the index date",
+     "page": 32,
+     "pattern": "Acute Pulmonary thromboembolism",
+     "accept": "i26|acute pulmonary thromboembolism"
+    },
+    {
+     "id": "G3-E3",
+     "kind": "exclusion",
+     "label": "Group 3 PH cohort: less than 24 months of lookback",
+     "page": 32,
+     "pattern": "minimum of 24-month lookback",
+     "accept": "24-month look|24 month"
+    }
+   ]
+  }
+ ]
+}

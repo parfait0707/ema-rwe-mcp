@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Extraction is checked against a hand-read reference (spec v1.20): the eligibility criteria of four
+  protocols, 51 items, in `tests/fixtures/extraction_gold/` (descriptions, pages and short locating
+  patterns; no protocol text). `scripts/check.py` gains a `gold` step, so every push checks that each item
+  is still found on its page, served to the reader, returned for the question and accepted as evidence;
+  `scripts/build_catalogue_snapshot.py` runs the same reference on every monthly snapshot and says not to
+  publish when it fails. `scripts/extraction_eval.py` also fetches the reference protocols, asks EMA
+  whether they are still the latest, and grades a saved extraction (`grade`, `run`).
+- `search_protocol_text` and `research_protocol` return the pages on which a matching section continues
+  (`continues`; up to three pages either way, outside `limit`). The second half of a list of criteria on
+  the next page, which holds none of the query's words, was missing from the passages for a question.
 - Results record what produced them (spec v1.19): an analysis's `source`, and the `versions` of an answer
   and of a comparison, carry the application version, the catalogue snapshot date and the parser version;
   the comparison table ends with them. With catalogues now updating by themselves, a result that differs

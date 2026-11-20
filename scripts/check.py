@@ -10,11 +10,16 @@ Steps, in order; the first failure stops the run and is named in the last line:
     lint      ruff check src tests scripts
     format    ruff format --check src tests scripts
     tests     pytest (includes the real stdio MCP tests)
+    gold      scripts/extraction_eval.py check --require: every reference criterion of the four reference
+              protocols is still found, served to the reader and accepted as evidence. The protocols are the
+              user's own copies (`uv run python scripts/extraction_eval.py fetch`, once per clone);
+              --allow-missing-gold checks only those that are there.
     build     uv build into a temporary folder
     wheel     the wheel holds every module and the bundled data the server reads at run time
 
 `.githooks/pre-push` runs this before every push once `git config core.hooksPath .githooks` is set for the
-clone (README_DEV.md). Nothing here needs the network once the environment is installed.
+clone (README_DEV.md). Nothing here needs the network once the environment is installed and the reference
+protocols are fetched.
 """
 
 import argparse
@@ -89,13 +94,20 @@ def wheel(folder: Path) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--no-build", action="store_true", help="skip the build and wheel steps")
+    parser.add_argument(
+        "--allow-missing-gold",
+        action="store_true",
+        help="pass when reference protocols of the extraction check are not in the archive (they are skipped)",
+    )
     args = parser.parse_args()
+    gold = ["uv", "run", "python", "scripts/extraction_eval.py", "check"]
     steps = [
         ("versions", versions),
         ("lock", lambda: run("uv", "lock", "--check")),
         ("lint", lambda: run("uv", "run", "ruff", "check", *PATHS)),
         ("format", lambda: run("uv", "run", "ruff", "format", "--check", *PATHS)),
         ("tests", lambda: run("uv", "run", "pytest", "-q")),
+        ("gold", lambda: run(*gold, *([] if args.allow_missing_gold else ["--require"]))),
     ]
     with tempfile.TemporaryDirectory() as folder:
         if not args.no_build:
