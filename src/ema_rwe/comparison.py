@@ -199,7 +199,7 @@ class Comparisons:
             raise RWEError("INVALID_INPUT", "Use a comparison_id returned by compare_protocols.")
         return self.root / comparison_id / "comparison.json"
 
-    async def prepare(self, question, candidates, search):
+    async def prepare(self, question, candidates, search, on_progress=None):
         if not 1 <= len(candidates) <= self.service.settings.max_screening_studies:
             raise RWEError("NEEDS_NARROWING", "Narrow candidates to the configured PDF screening limit.")
         cid = "cmp_" + uuid.uuid4().hex
@@ -222,7 +222,13 @@ class Comparisons:
             ],
         }
         self.write(result)
-        for row in result["rows"]:
+        for done, row in enumerate(result["rows"]):
+            if (
+                on_progress
+            ):  # one study at a time under the EMA request interval: tell the caller where we are
+                await on_progress(
+                    done, len(result["rows"]), f"Retrieving the protocol of study {row['study']['study_id']}"
+                )
             try:
                 _, row["source"] = await self.service._context(row["study"]["study_id"])
                 row["study"] = self.service.repo.get(row["study"]["study_id"]).model_dump(exclude={"tabs"})
