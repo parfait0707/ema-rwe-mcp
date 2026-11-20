@@ -15,7 +15,7 @@ from ema_rwe.llm import drop_invalid_evidence
 from ema_rwe.pdf import Page, extract_pages, sections, validate_evidence
 from ema_rwe.selection import SearchFilters
 from ema_rwe.service import Service, source_type_from_filename
-from ema_rwe.storage import Repository, import_csv
+from ema_rwe.storage import Repository, SearchRequest, import_csv
 
 
 def test_default_db_is_the_committed_checkout_catalogue(monkeypatch):
@@ -54,20 +54,20 @@ def test_import_search_scope_and_privacy(settings, csv_file):
     assert result["imported"] == 2
     assert result["skipped_out_of_scope"] == 2
     assert repo.get("789") is None
-    results = repo.search("opioid", 5, True, ["Finalised"])
+    results = repo.search("opioid", SearchRequest(darwin_only=True, status=["Finalised"]), limit=5)
     assert len(results) == 1
     assert results[0]["data_source_types"] == ["EHR", "Claims"]
     assert results[0]["protocol_data_sources_status"] == "not_analyzed"
     assert results[0]["protocol_data_sources"] == []
     assert "private@example.org" not in json.dumps(results)
-    assert repo.search("Diabetes", 5, True, None) == []
-    assert len(repo.search("Diabetes", 5, False, None)) == 1
-    assert len(repo.search("opioid", 5, True, None, analyzed_only=True)) == 0
+    assert repo.search("Diabetes", SearchRequest(darwin_only=True), limit=5) == []
+    assert len(repo.search("Diabetes", limit=5)) == 1
+    assert len(repo.search("opioid", SearchRequest(darwin_only=True, analyzed_only=True), limit=5)) == 0
     assert (
         settings.db_path.parent / "raw" / f"{result['checksum']}.csv"
     ).read_bytes() == csv_file.read_bytes()
     import_csv(repo, csv_file)
-    assert len(repo.search("opioid", 20, False, None)) == 1
+    assert len(repo.search("opioid", limit=20)) == 1
 
 
 def test_import_actual_export_columns_and_safe_clinical_search(settings, tmp_path):
@@ -124,9 +124,9 @@ def test_import_actual_export_columns_and_safe_clinical_search(settings, tmp_pat
         "Regional claims data",
         "Death register",
     ]
-    assert repo.search("B01AF02", 5, False, None)[0]["study_id"] == "2468"
-    assert repo.search("major bleeding", 5, False, None)[0]["study_id"] == "2468"
-    assert "Private Name" not in json.dumps(repo.search("bleeding", 5, False, None))
+    assert repo.search("B01AF02", limit=5)[0]["study_id"] == "2468"
+    assert repo.search("major bleeding", limit=5)[0]["study_id"] == "2468"
+    assert "Private Name" not in json.dumps(repo.search("bleeding", limit=5))
 
 
 def test_catalogue_download_inbox_status_and_import(settings, csv_file):
@@ -209,7 +209,7 @@ def test_typed_exports_tag_studies_and_survive_full_reimport(settings, csv_file)
 def test_fts_escaping(settings, csv_file, query):
     repo = Repository(settings.db_path)
     import_csv(repo, csv_file)
-    assert isinstance(repo.search(query, 5, True, None), list)
+    assert isinstance(repo.search(query, SearchRequest(darwin_only=True), limit=5), list)
 
 
 def test_bad_csv_is_not_silently_imported(settings, tmp_path):
@@ -427,7 +427,7 @@ def test_csv_update_to_interventional_removes_old_entry(settings, csv_file):
     )
     import_csv(repo, csv_file)
     assert repo.get("123") is None
-    assert repo.search("opioid", 5, True, None) == []
+    assert repo.search("opioid", SearchRequest(darwin_only=True), limit=5) == []
 
 
 def test_bad_record_does_not_partially_import(settings, csv_file):

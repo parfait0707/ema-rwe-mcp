@@ -21,7 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from ema_rwe.domain import CodeCandidate
-from ema_rwe.storage import Repository
+from ema_rwe.storage import Repository, SearchRequest
 from ema_rwe.vocabulary import canonical
 
 GOLD = ROOT / "tests" / "fixtures" / "gold"
@@ -66,7 +66,7 @@ def intersect(block_scores: list[dict[str, float]]) -> list[str]:
 
 
 def search_ids(repo: Repository, query: str, role: str, codes=None) -> list[str]:
-    rows = repo.search(query, None, False, None, codes=codes, role=role, split_long=False)
+    rows = repo.search(query, SearchRequest(codes=codes, role=role, split_long=False))
     return [r["study_id"] for r in rows]
 
 

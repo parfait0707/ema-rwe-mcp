@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Internal: the conditions of a search travel as one `SearchRequest` (in `storage.py`) instead of up to
+  twelve positional arguments through `Repository.search` and the screening helpers; variations are made by
+  name (`dataclasses.replace`). The MCP and CLI adapters call the service with keyword arguments, and the
+  options of `search_studies` and `compare_protocols` are keyword-only. An unused helper (`_union`) is
+  gone. Search and screening results are unchanged.
+
 - Newer catalogues arrive without changing the pinned version (spec v1.18): at start, at most once a day and
   outside any tool call, the server looks for a newer catalogue snapshot in this project's GitHub releases
   (`data-YYYYMMDD`), verifies it (manifest, both SHA-256, schema, integrity) and replaces the catalogue

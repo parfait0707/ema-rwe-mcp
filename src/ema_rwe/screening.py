@@ -1,6 +1,7 @@
 """Search and screening: local catalogue search, candidate counting and narrowing, search planning."""
 
 import re
+from dataclasses import replace
 
 from pydantic import ValidationError
 
@@ -20,6 +21,7 @@ from .medicines import (
 )
 from .ranking import ScreeningBlock, order_key, screen
 from .selection import SearchFilters, compact, selection
+from .storage import SearchRequest
 from .terminology import labelled_phrases, proposed_codes
 from .unmatched import record_unmatched
 from .vocabulary import expand
@@ -92,6 +94,7 @@ class ScreeningMixin:
         self,
         query: str,
         limit: int = 5,
+        *,  # the options are many and of like types: by name only
         darwin_only: bool = False,
         status: list[str] | None = None,
         analyzed_only: bool = False,
@@ -107,19 +110,18 @@ class ScreeningMixin:
             raise RWEError("INVALID_INPUT", "limit must be 1..20; preview also obeys max_comparison_studies.")
         if detail not in ("compact", "full"):
             raise RWEError("INVALID_INPUT", "detail must be compact or full.")
-        candidates = self.repo.search(
-            query,
-            None,
-            darwin_only,
-            status,
-            analyzed_only,
-            synonyms,
-            codes,
-            filters,
-            role,
-            match_scope,
-            analogous,
+        request = SearchRequest(
+            darwin_only=darwin_only,
+            status=status,
+            analyzed_only=analyzed_only,
+            synonyms=synonyms,
+            codes=codes,
+            filters=filters,
+            role=role,
+            scope=match_scope,
+            analogous=analogous,
         )
+        candidates = self.repo.search(query, request)
         results = candidates[: min(limit, self.settings.max_comparison_studies)]
         for result in results:
             result["protocol_id"] = (result.get("protocol_source") or {}).get("protocol_id")
@@ -141,20 +143,7 @@ class ScreeningMixin:
             "query": query,
             "role": role,
             **self._selection(candidates),
-            **self._match_scope(
-                [query],
-                [expansion],
-                darwin_only,
-                synonyms,
-                codes,
-                filters,
-                role,
-                match_scope,
-                analogous,
-                bool(candidates),
-                status,
-                analyzed_only,
-            ),
+            **self._match_scope([query], [expansion], request, bool(candidates)),
             "max_comparison_studies": self.settings.max_comparison_studies,
             "returned_count": len(results),
             "results_are_preview": len(results) < len(candidates),
@@ -169,68 +158,18 @@ class ScreeningMixin:
             "detail=full returns descriptions, provenance and the full query expansion.",
         }
 
-    def _union(
-        self,
-        queries,
-        darwin_only,
-        synonyms,
-        codes,
-        filters,
-        role,
-        scope="concept",
-        analogous=None,
-        status=None,
-        analyzed_only=False,
-        split_long=True,
-    ):
-        """Deduplicated candidates of all query variants; matched_terms accumulate across variants.
-        An analogous search excludes the concept matches of every variant, not just its own."""
-        exclude = (
-            self._concept_ids(queries, synonyms, codes, role, split_long) if scope == "analogous" else None
-        )
-        unique = {}
-        for query in queries:
-            for row in self.repo.search(
-                query,
-                None,
-                darwin_only,
-                status,
-                analyzed_only,
-                synonyms,
-                codes,
-                filters,
-                role,
-                scope,
-                analogous,
-                exclude,
-                split_long,
-            ):
-                kept = unique.setdefault(row["study_id"], row)
-                kept["matched_terms"] = list(dict.fromkeys(kept["matched_terms"] + row["matched_terms"]))
-                kept["matched_term_sources"] = {**row["matched_term_sources"], **kept["matched_term_sources"]}
-        return unique
-
     def _match_scope(
         self,
         queries,
         expansions,
-        darwin_only,
-        synonyms,
-        codes,
-        filters,
-        role,
-        scope,
-        analogous,
-        has_candidates,
-        status=None,
-        analyzed_only=False,
-        split_long=True,
+        request: SearchRequest,
+        has_candidates: bool,
         derived=frozenset(),
     ):
         """How candidates matched, plus the analogous-concept fallback when the concept itself has no study."""
-        terms = analogous_terms(expansions, analogous)
-        result = {"match_scope": scope}
-        if scope == "analogous":
+        terms = analogous_terms(expansions, request.analogous)
+        result = {"match_scope": request.scope}
+        if request.scope == "analogous":
             result["analogous_terms"] = terms
             result["analogous_note"] = (
                 "Every candidate matched only an analogous concept, not the requested one; present its "
@@ -240,40 +179,14 @@ class ScreeningMixin:
                 "analogous_terms."
             )
         elif not has_candidates:
-            union_args = (
-                queries,
-                darwin_only,
-                synonyms,
-                codes,
-                filters,
-                role,
-                "analogous",
-                analogous,
-                status,
-                analyzed_only,
-                split_long,
-            )
-            result["analogous_fallback"] = self._fallback(
-                queries, terms, synonyms, codes, role, union_args, split_long, derived
-            )
+            result["analogous_fallback"] = self._fallback(queries, terms, request, derived)
         return result
 
-    def _concept_ids(self, queries, synonyms, codes, role, split_long=True) -> set[str]:
-        return set().union(*(self.repo.concept_ids(q, synonyms, codes, role, split_long) for q in queries))
+    def _concept_ids(self, queries, request: SearchRequest) -> set[str]:
+        return set().union(*(self.repo.concept_ids(q, request) for q in queries))
 
     def _analogous_screen(
-        self,
-        queries,
-        terms,
-        darwin_only,
-        synonyms,
-        codes,
-        filters,
-        role,
-        status=None,
-        analyzed_only=False,
-        split_long=True,
-        derived=frozenset(),
+        self, queries, terms, request: SearchRequest, derived=frozenset()
     ) -> dict[str, dict]:
         """Analogous-concept candidates, screened and ranked like concept ones: the analogous terms form
         one block, each searched as one phrase; studies matching the requested concept are excluded.
@@ -283,22 +196,14 @@ class ScreeningMixin:
         if not terms:
             return {}
         # Studies that mention the requested concept anywhere are its own, not analogous candidates.
-        exclude = self._concept_ids(queries, synonyms, codes, "any", split_long)
+        exclude = self._concept_ids(queries, replace(request, role="any"))
+        # Each analogous term is searched as itself: one phrase, without the question's synonyms and codes.
+        own_terms = replace(
+            request, synonyms=None, codes=None, scope="concept", analogous=None, split_long=False
+        )
 
         def search(term: str, column_role: str, with_expansion: bool) -> list[dict]:
-            rows = self.repo.search(
-                term,
-                None,
-                darwin_only,
-                status,
-                analyzed_only,
-                None,
-                None,
-                filters,
-                column_role,
-                split_long=False,
-                exclude=exclude,
-            )
+            rows = self.repo.search(term, replace(own_terms, role=column_role), exclude=exclude)
             # The index labels a match by the term's content words ('drugs excl insulins'); report the
             # analogous term as written, so its origin and study_count line up.
             phrases = labelled_phrases(term, expand(term, whole_term=True), False)
@@ -318,7 +223,7 @@ class ScreeningMixin:
             else "dictionary"
             for t in terms
         }
-        block = ScreeningBlock.model_construct(role=role, queries=list(origin), category_terms=[])
+        block = ScreeningBlock.model_construct(role=request.role, queries=list(origin), category_terms=[])
         rows = screen(search, [block])
         for row in rows:
             row["match_basis"] = "analogous"
@@ -327,33 +232,11 @@ class ScreeningMixin:
             }
         return {row["study_id"]: row for row in rows}
 
-    def _fallback(
-        self, queries, terms, synonyms, codes, role, union_args, split_long=True, derived=frozenset()
-    ):
+    def _fallback(self, queries, terms, request: SearchRequest, derived=frozenset()):
         # Concept studies in the index that filters, darwin_only, status or analyzed_only removed:
         # then the concept is not absent, and the caller must say so before offering analogues.
-        filtered_out = len(self._concept_ids(queries, synonyms, codes, role, split_long))
-        darwin_only, filters, status, analyzed_only = (
-            union_args[1],
-            union_args[4],
-            union_args[8],
-            union_args[9],
-        )
-        rows = list(
-            self._analogous_screen(
-                queries,
-                terms,
-                darwin_only,
-                synonyms,
-                codes,
-                filters,
-                role,
-                status,
-                analyzed_only,
-                split_long,
-                derived,
-            ).values()
-        )
+        filtered_out = len(self._concept_ids(queries, request))
+        rows = list(self._analogous_screen(queries, terms, request, derived).values())
         selected = self._selection(rows)
         counts = {
             t["term"]: sum(t["term"].casefold() in {m.casefold() for m in r["matched_terms"]} for r in rows)
@@ -420,6 +303,7 @@ class ScreeningMixin:
         self,
         question: str,
         queries: list[str],
+        *,  # the options are many and of like types: by name only
         filters: SearchFilters | None = None,
         darwin_only: bool = False,
         synonyms=None,
@@ -468,30 +352,29 @@ class ScreeningMixin:
         role = blocks[0].role if len(blocks) == 1 else role
         medicines: list[dict] = []
         derived: set[str] = set()  # analogous terms the server built from ATC codes
+        # Each query is one phrase here (split_long=False); status and analyzed_only are not screening options.
+        request = SearchRequest(
+            darwin_only=darwin_only,
+            synonyms=synonyms,
+            codes=codes,
+            filters=filters,
+            role=role,
+            split_long=False,
+        )
         if match_scope == "analogous":
             # The ATC class offered on a zero-hit result is searched on rerun, as the fallback said.
             atc_terms = self._atc_analogues(queries)
             derived |= {t.term for t in atc_terms}
             analogous = [*(analogous or []), *atc_terms]
             terms = analogous_terms([expand(q, synonyms, codes, whole_term=True) for q in queries], analogous)
-            unique = self._analogous_screen(
-                queries, terms, darwin_only, synonyms, codes, filters, role, split_long=False, derived=derived
-            )
+            unique = self._analogous_screen(queries, terms, request, derived)
         else:
 
             def search(term: str, column_role: str, with_expansion: bool) -> list[dict]:
-                return self.repo.search(
-                    term,
-                    None,
-                    darwin_only,
-                    None,
-                    False,
-                    synonyms if with_expansion else None,
-                    codes if with_expansion else None,
-                    filters,
-                    column_role,
-                    split_long=False,
-                )
+                # A block's own queries carry the question's synonyms and codes; the terms the server adds
+                # (categories, medicine names) are searched as written.
+                expansion = {} if with_expansion else {"synonyms": None, "codes": None}
+                return self.repo.search(term, replace(request, role=column_role, **expansion))
 
             # Every column, ranked: the role is a ranking signal, not a filter (empty Outcomes fields).
             sources: dict[str, str] = {}
@@ -554,16 +437,9 @@ class ScreeningMixin:
             **self._match_scope(
                 queries,
                 expansions,
-                darwin_only,
-                synonyms,
-                codes,
-                filters,
-                role,
-                match_scope,
-                analogous,
+                replace(request, scope=match_scope, analogous=analogous),
                 bool(unique) or len(blocks) > 1,
-                split_long=False,
-                derived=frozenset(derived),
+                frozenset(derived),
             ),
             "darwin_only": darwin_only,
             "search_scope": "local catalogue metadata and saved analysis only",

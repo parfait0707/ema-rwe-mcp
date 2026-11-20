@@ -10,6 +10,7 @@ from test_screening import study
 from ema_rwe.cli import parser
 from ema_rwe.domain import AnalogousTerm, RWEError
 from ema_rwe.selection import SearchFilters
+from ema_rwe.storage import SearchRequest
 from ema_rwe.terminology import Concept
 
 T1DM = {
@@ -99,7 +100,7 @@ def test_known_terms_without_studies_report_no_matches(service, dictionary):
 
 def test_invalid_scope_and_term_are_rejected(service, dictionary):
     with pytest.raises(RWEError, match="scope"):
-        service.repo.search("x", None, False, None, scope="nearby")
+        service.repo.search("x", SearchRequest(scope="nearby"))
     with pytest.raises(ValueError):
         AnalogousTerm(term="renal impairment", relation="synonym")
     with pytest.raises(ValueError):
