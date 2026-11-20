@@ -195,6 +195,10 @@ async def test_stdio_discovery_validation_and_local_search(settings, csv_file, p
         assert json.loads(missing_comparison.content[0].text)["error"]["code"] == "INVALID_INPUT"
         invalid = await session.call_tool("search_studies", {"query": "opioid", "limit": 21})
         assert invalid.isError
+        # A misspelt argument is refused, not ignored in favour of the default (issue #102)
+        misspelt = await session.call_tool("search_studies", {"query": "opioid", "limt": 2})
+        assert misspelt.isError and "limt" in misspelt.content[0].text
+        assert all(t.inputSchema.get("additionalProperties") is False for t in tools.tools)
         error = await session.call_tool("get_study", {"study_id": "../oops"})
         assert json.loads(error.content[0].text)["error"]["code"] == "INVALID_INPUT"
         hits = await session.call_tool("search_protocol_text", {"protocol_id": pid, "query": "傾向スコア"})
