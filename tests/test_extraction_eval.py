@@ -210,3 +210,24 @@ def test_the_commands_run_on_an_empty_database(settings, command, monkeypatch, c
         assert evaluation.grade(settings, gold) == 1 and "nothing saved" in capsys.readouterr().out
     else:
         assert asyncio.run(evaluation.catalogue(settings, gold, online=False)) == 1
+
+
+def test_a_section_label_retyped_with_single_spaces_is_accepted():
+    """PDF headings keep layout runs of spaces ('9.2   Selection criteria'); every reader of the reference
+    run retyped them with one space and lost a round trip to EVIDENCE_INVALID (validation 2026-11-20)."""
+    from ema_rwe.domain import Evidence, Extraction, Fact, RWEError
+    from ema_rwe.pdf import validate_evidence
+
+    pages = extract_pages(protocol_pdf())
+    chunks = sections(pages)
+    spaced = [dict(c, section="9.2   Selection criteria") if c["page"] == 1 else c for c in chunks]
+    quote = "Patients aged 18 years or older at the index date."
+
+    def note(section):
+        return Extraction(
+            key_notes=[Fact(value="age", evidence=[Evidence(page=1, quote=quote, section=section)])]
+        )
+
+    validate_evidence(note("9.2 Selection criteria"), pages, spaced)
+    with pytest.raises(RWEError, match="Section does not match"):
+        validate_evidence(note("9.3 Variables"), pages, spaced)
