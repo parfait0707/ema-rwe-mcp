@@ -187,6 +187,69 @@ class CatalogueMixin:
         result = import_csv(self.repo, path, column_map, source_type)
         return {**result, "source_path": str(path), "catalogue": self.catalogue_status()}
 
+    async def prefetch_protocols(
+        self, source_type: str, interval: float = 30.0, limit: int | None = None, pause: float = 900.0
+    ):
+        """Fetch and keep the latest protocol of every study of one catalogue source type whose export lists
+        one (a user-run command, never part of a search; spec v1.31).
+
+        Resumable: studies with a kept protocol, or already found to have none, are skipped. On a rate limit
+        the gap between studies widens to 60 seconds and the study is tried again; a second rate limit in a
+        row pauses `pause` seconds first. Three pauses in a row stop the run.
+        """
+        if source_type not in TYPED_SOURCES or interval < 0 or (limit is not None and limit < 1):
+            raise RWEError("INVALID_INPUT", f"source_type one of {TYPED_SOURCES}; interval >= 0; limit >= 1.")
+        with self.repo.connection() as db:
+            bodies = [r[0] for r in db.execute("SELECT body FROM studies").fetchall()]
+        studies = [
+            s
+            for s in map(Study.model_validate_json, bodies)
+            if is_non_interventional(s.study_type)
+            and s.protocol_listed
+            and source_type in s.data_source_types
+        ]
+        queue = [
+            s
+            for s in studies
+            if not self.archive.list(s.study_id)
+            and not self.repo.observation(s.study_id).get("prefetch_done")
+        ]
+        summary = {"studies": len(studies), "queued": len(queue), "fetched": 0, "no_protocol": 0}
+        summary |= {"errors": {}, "rate_limited": 0, "pauses": 0, "stopped": None}
+        gap, limited, pauses = interval, 0, 0
+        pending = queue[:limit]
+        while pending:
+            study = pending[0]
+            try:
+                await self.get_protocol(study.study_id)
+            except RWEError as exc:
+                if exc.code == "EMA_RATE_LIMITED":
+                    summary["rate_limited"] += 1
+                    limited += 1
+                    gap = max(gap, 60.0)
+                    if limited >= 2:
+                        if pauses >= 3:
+                            summary["stopped"] = f"rate limited after 3 pauses at study {study.study_id}"
+                            break
+                        pauses += 1
+                        summary["pauses"] += 1
+                        await asyncio.sleep(pause)
+                    await asyncio.sleep(gap)
+                    continue
+                if exc.code == "PROTOCOL_NOT_FOUND":
+                    summary["no_protocol"] += 1
+                    self.repo.observe(study.study_id, prefetch_done=True)
+                else:  # outage or an unreadable document: recorded, and the next run tries it again
+                    summary["errors"][exc.code] = summary["errors"].get(exc.code, 0) + 1
+            else:
+                summary["fetched"] += 1
+            limited = pauses = 0
+            pending.pop(0)
+            if pending:
+                await asyncio.sleep(gap)
+        summary["gap_seconds"] = gap
+        return summary
+
     async def backfill_protocols(
         self, interval: float = 60.0, limit: int | None = None, download: bool = True, reextract: bool = False
     ):

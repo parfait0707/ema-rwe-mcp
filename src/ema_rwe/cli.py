@@ -60,6 +60,13 @@ def parser():
         action="store_true",
         help="Read the PASS tables of protocols already kept again (no network)",
     )
+    prefetch = commands.add_parser(
+        "prefetch-protocols",
+        help="Fetch and keep the latest protocol of every study of one source type (resumable; spec v1.31)",
+    )
+    prefetch.add_argument("--source-type", required=True, choices=("claims", "ehr", "registry"))
+    prefetch.add_argument("--interval", type=float, default=30.0, help="Seconds between studies (default 30)")
+    prefetch.add_argument("--limit", type=int, help="At most this many studies in this run")
     merge = commands.add_parser(
         "merge-observations", help="Add another database's protocol observations (e.g. a backfill run) here"
     )
@@ -276,6 +283,10 @@ async def run(args):
                     ),
                     "vacuum": service.repo.vacuum(),
                 }
+            case "prefetch-protocols":
+                return await service.prefetch_protocols(
+                    source_type=args.source_type, interval=args.interval, limit=args.limit
+                )
             case "backfill-protocols":
                 return await service.backfill_protocols(
                     interval=args.interval,

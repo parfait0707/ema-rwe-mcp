@@ -39,6 +39,7 @@ CLI_ONLY_COMMANDS = {
     "import-csv",
     "import-all",
     "backfill-protocols",
+    "prefetch-protocols",
     "merge-observations",
     "cleanup-cache",
     "update-catalogue",  # the server does this by itself at start (spec v1.18)
