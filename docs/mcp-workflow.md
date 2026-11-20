@@ -6,6 +6,18 @@ the model that drives the tools; the rest of `docs/` is in Japanese. The server 
 the MCP resource `ema-rwe://docs/mcp-workflow` (bundled in the wheel), so a client installed with
 `uvx` can read it without a checkout.
 
+## Tool hints
+
+Every tool carries a title and the MCP hints. Read-only (no confirmation needed for what they change):
+`catalogue_status`, `search_studies`, `plan_study_search`, `list_local_protocols`, `get_protocol_outline`,
+`search_protocol_text`, `read_protocol_text`. Destructive (replace something with no copy kept):
+`research_protocol` with `force=true`, `cache_protocol_answer`, `import_catalogue_csv`,
+`refresh_drug_dictionary`. Open world (may reach EMA or the configured LLM): `get_study`, `get_protocol`,
+`compare_protocols`, `analyze_protocol`, `cache_protocol_analysis`, `research_protocol`,
+`refresh_drug_dictionary`, and `plan_study_search` with `use_llm=true`. A call that asks for progress gets
+notifications from `compare_protocols` (one per study while protocols are retrieved) and from a server-side
+`analyze_protocol` (batches done).
+
 ## 1. Plan
 
 - `catalogue_status` once per session. `status=current` and `source_type_imports` containing

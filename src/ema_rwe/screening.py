@@ -432,6 +432,7 @@ class ScreeningMixin:
         category_terms: list[str] | None = None,
         blocks: list[ScreeningBlock] | None = None,
         check_protocols: int = 0,
+        on_progress=None,
     ):
         given_blocks = bool(blocks)
         if blocks:
@@ -514,7 +515,7 @@ class ScreeningMixin:
         requests = 0
         if check_protocols and listed and study_ids is None and match_scope == "concept":
             before = getattr(self.client, "requests_made", 0)
-            checked = await self._check_protocols(candidates[:check_protocols])
+            checked = await self._check_protocols(candidates[:check_protocols], on_progress)
             requests = getattr(self.client, "requests_made", 0) - before
             candidates.sort(key=order_key)
         # Reported as matched: each variant is one whole name, as in the search itself.
@@ -576,7 +577,7 @@ class ScreeningMixin:
             }
         if not 1 <= len(candidates) <= self.settings.max_screening_studies:
             return {**search, "network_requests": requests, "rows": [], "pdf_downloads": 0}
-        return await self.comparisons.prepare(question, candidates, search)
+        return await self.comparisons.prepare(question, candidates, search, on_progress)
 
     def _with_medicines(
         self, blocks: list[ScreeningBlock], report: list[dict], sources: dict[str, str]
@@ -628,10 +629,12 @@ class ScreeningMixin:
                     terms.append(AnalogousTerm(term=name, relation=relation))
         return terms
 
-    async def _check_protocols(self, rows: list[dict]) -> int:
+    async def _check_protocols(self, rows: list[dict], on_progress=None) -> int:
         """Mark whether each top candidate's Study documents list a protocol (no PDF download). A study
         without one cannot answer a definition question; it is ranked last, never removed."""
-        for row in rows:
+        for done, row in enumerate(rows):
+            if on_progress:
+                await on_progress(done, len(rows), f"Checking Study documents of study {row['study_id']}")
             try:
                 await self.get_protocol(row["study_id"], download=False)
                 row["protocol_available"] = row["protocol_found"] = True

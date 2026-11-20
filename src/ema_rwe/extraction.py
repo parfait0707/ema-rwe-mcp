@@ -47,6 +47,7 @@ class ExtractionMixin:
         max_chars: int = 30000,
         detail: str = "summary",
         question: str | None = None,
+        on_progress=None,
     ):
         if question is not None and (not question.strip() or len(question) > 2000):
             raise RWEError("INVALID_INPUT", "Question must be 1..2000 characters.")
@@ -82,7 +83,7 @@ class ExtractionMixin:
                 return request
             source["reading"] = reading_hash(self._translations(source["protocol_id"]))
         if configured(self.settings):
-            return analysis_view(await self._provider_extraction(study_id, pdf, source), detail)
+            return analysis_view(await self._provider_extraction(study_id, pdf, source, on_progress), detail)
         # One snapshot of the translations: the batch is read under the reading it reports.
         translations = self._translations(source["protocol_id"])
         source["reading"] = reading_hash(translations)
@@ -376,7 +377,7 @@ class ExtractionMixin:
         )
         return True
 
-    async def _provider_extraction(self, study_id: str, pdf: bytes, source: dict) -> dict:
+    async def _provider_extraction(self, study_id: str, pdf: bytes, source: dict, on_progress=None) -> dict:
         """Run (or keep running) the server-side extraction; return status=extracting when it outlasts the wait."""
         key = (study_id, source["fingerprint"], source["reading"])
         for stale in [k for k in self._extractions if k[0] == study_id and k != key]:
@@ -388,7 +389,17 @@ class ExtractionMixin:
             task = asyncio.create_task(self._extract_and_save(study_id, pdf, source, progress))
             entry = self._extractions[key] = (task, progress)
         task, progress = entry
-        done, _ = await asyncio.wait({task}, timeout=self.settings.llm_wait_seconds)
+        deadline, reported = asyncio.get_running_loop().time() + self.settings.llm_wait_seconds, None
+        while True:
+            left = deadline - asyncio.get_running_loop().time()
+            # With a listener, wake up every second to pass on how many batches are done.
+            done, _ = await asyncio.wait({task}, timeout=max(0.0, min(left, 1.0) if on_progress else left))
+            if task in done or left <= 0:
+                break
+            state = (progress.get("done"), progress.get("total"))
+            if on_progress and state[1] and state != reported:
+                reported = state
+                await on_progress(state[0], state[1], f"Extracting: {state[0]} of {state[1]} batches done")
         if task in done:
             self._extractions.pop(key, None)
             if task.cancelled():

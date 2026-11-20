@@ -5,7 +5,8 @@ from contextlib import asynccontextmanager
 from functools import wraps
 from typing import Annotated, Literal
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp import Context, FastMCP
+from mcp.types import ToolAnnotations
 from pydantic import Field
 
 from ..config import WORKFLOW_URI, workflow_doc_path
@@ -199,6 +200,7 @@ def create_server(service: Service | None = None):
                 "without study_ids, match_scope=concept)",
             ),
         ] = 0,
+        ctx: Context = None,
     ) -> dict:
         """Screen the union of all query variants in every column, ranked (no protocol or text layer last,
         specificity, role columns, protocol listed, study type, fused rank).
@@ -223,6 +225,7 @@ def create_server(service: Service | None = None):
             category_terms,
             blocks,
             check_protocols,
+            on_progress=reporter(ctx),
         )
 
     @server.tool()
@@ -274,9 +277,19 @@ def create_server(service: Service | None = None):
                 description="Also answer this question while reading the batches (one pass); pending_tools supplies it",
             ),
         ] = None,
+        ctx: Context = None,
     ) -> dict:
         """Cached extraction summary (detail=full for the whole extraction); status=extracting means call again later; needs_heading_translation means translate `headings`, call cache_heading_translations, then call again; else paginated sections to extract (follow next_offset)."""
-        return await call("analyze_protocol", study_id, force_refresh, offset, max_chars, detail, question)
+        return await call(
+            "analyze_protocol",
+            study_id,
+            force_refresh,
+            offset,
+            max_chars,
+            detail,
+            question,
+            on_progress=reporter(ctx),
+        )
 
     @server.tool()
     async def cache_protocol_analysis(
@@ -416,7 +429,54 @@ def create_server(service: Service | None = None):
     for tool in server._tool_manager._tools.values():
         tool.parameters = strip_titles(tool.parameters)
         tool.fn = timed(tool.name, tool.fn)
+        title, read_only, destructive, idempotent, open_world = ANNOTATIONS[tool.name]
+        tool.title = title
+        tool.annotations = ToolAnnotations(
+            title=title,
+            readOnlyHint=read_only,
+            destructiveHint=destructive,
+            idempotentHint=idempotent,
+            openWorldHint=open_world,
+        )
     return server
+
+
+# What each tool does to its surroundings, for clients that decide by it which calls to confirm (spec v1.16):
+# title, read-only (changes nothing the user keeps), destructive (may replace something with no copy kept),
+# idempotent (the same call again changes nothing more), open world (may reach EMA or the configured LLM).
+ANNOTATIONS = {
+    "catalogue_status": ("Catalogue status", True, False, True, False),
+    "search_studies": ("Search the local catalogue", True, False, True, False),
+    "plan_study_search": ("Plan search terms", True, False, True, True),  # use_llm asks the configured LLM
+    "list_local_protocols": ("List archived protocols", True, False, True, False),
+    "get_protocol_outline": ("Protocol outline", True, False, True, False),
+    "search_protocol_text": ("Search a protocol's text", True, False, True, False),
+    "read_protocol_text": ("Read a protocol's text", True, False, True, False),
+    # Fetch from EMA (cached) and keep what they fetch; nothing is replaced without a copy.
+    "get_study": ("Get a study", False, False, True, True),
+    "get_protocol": ("Get the latest protocol", False, False, True, True),
+    "compare_protocols": ("Screen and prepare a comparison", False, False, False, True),
+    "analyze_protocol": ("Extract a protocol", False, False, False, True),  # a replaced analysis is archived
+    "get_protocol_comparison": ("Collect a comparison", False, False, True, False),
+    "cache_protocol_analysis": ("Save an extraction", False, False, True, True),  # may fetch the study page
+    "cache_heading_translations": ("Save heading translations", False, False, True, False),
+    # These replace what was stored, and no earlier copy is kept.
+    "research_protocol": ("Answer a question from a protocol", False, True, False, True),  # force
+    "cache_protocol_answer": ("Save an answer", False, True, True, False),
+    "import_catalogue_csv": ("Import a catalogue export", False, True, True, False),
+    "refresh_drug_dictionary": ("Refresh the medicines dictionary", False, True, True, True),
+}
+
+
+def reporter(ctx):
+    """A progress callback for the service that notifies the client, if it asked for progress."""
+    if ctx is None:
+        return None
+
+    async def report(done: int, total: int, message: str) -> None:
+        await ctx.report_progress(done, total, message)
+
+    return report
 
 
 def timed(name: str, fn):

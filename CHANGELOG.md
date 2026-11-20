@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Every MCP tool has a title and the four MCP hints (read-only, destructive, idempotent, open world), so a
+  client can tell which calls change or replace something and which reach EMA or the configured LLM
+  (spec v1.16). Seven tools are read-only; four may replace stored data without keeping a copy.
+- `compare_protocols` reports progress per study while it retrieves protocols, and a server-side
+  `analyze_protocol` per finished batch, to calls that ask for progress. Tools and arguments are unchanged.
+
 - `research_protocol` with a configured provider no longer holds one tool call until the answer is ready
   (about two minutes for a full-text answer, close to a client's tool timeout): after `LLM_WAIT_SECONDS` it
   returns `status=answering`, the exploration goes on in the server, and calling again with the same
