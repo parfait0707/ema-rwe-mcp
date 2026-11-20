@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Server-side extraction keeps each finished provider batch in the database (spec v1.14). After a failed
+  batch or a server restart, the next `analyze_protocol` asks the provider only for the batches still
+  missing; before, every batch was sent again. A failing batch no longer discards the batches running
+  beside it. A saved batch is reused only for the same section texts, PDF, model, prompt and reading;
+  `progress.reused` reports how many were.
+
 - Development: `uv run python scripts/check.py` runs every check a change must pass (the version written the
   same everywhere, `uv.lock`, ruff, pytest, the build and the wheel's contents); `.githooks/pre-push` runs it
   before each push once `git config core.hooksPath .githooks` is set. No hosted CI is used. Development tools

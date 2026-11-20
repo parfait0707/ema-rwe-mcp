@@ -57,7 +57,7 @@ async def test_parallel_batches_merge_within_schema_limits(settings, monkeypatch
     chunks = [{"page": 1, "text": "x" * 40} for _ in range(3)]
     result = await extract_with_provider(settings, chunks, progress)
     max_notes = Extraction.model_json_schema()["properties"]["key_notes"]["maxItems"]
-    assert len(seen) == 3 and progress == {"done": 3, "total": 3}
+    assert len(seen) == 3 and progress == {"done": 3, "total": 3, "reused": 0}
     assert len(result.key_notes) == max_notes
     assert all('"of": 3' in payload for payload in seen)
     # The facts beyond the limit are reported, not dropped silently
@@ -99,7 +99,7 @@ async def test_analyze_protocol_returns_extracting_then_result(service, monkeypa
     service.settings.llm_wait_seconds = 0.05
     release = asyncio.Event()
 
-    async def slow_extract(_settings, _chunks, progress=None):
+    async def slow_extract(_settings, _chunks, progress=None, checkpoint=None):
         await release.wait()
         return sample_analysis()
 
@@ -125,7 +125,7 @@ async def test_protocol_changed_during_extraction_never_returns_the_old_result(
     service.settings.llm_wait_seconds = 0.05
     releases = []
 
-    async def slow_extract(_settings, _chunks, progress=None):
+    async def slow_extract(_settings, _chunks, progress=None, checkpoint=None):
         releases.append(asyncio.Event())
         await releases[-1].wait()
         return sample_analysis()
@@ -353,3 +353,108 @@ async def test_single_pass_without_an_answer_leaves_the_question_to_research(ser
     assert (await service.research_protocol(first["source"]["protocol_id"], question))["status"] == (
         "needs_client_exploration"
     )
+
+
+class MemoryCheckpoint:
+    def __init__(self):
+        self.batches = {}
+
+    def finished(self):
+        return dict(self.batches)
+
+    def save(self, index, sections, extraction):
+        self.batches[index] = {"sections": sections, "analysis": extraction.model_dump()}
+
+
+def note(value: str) -> dict:
+    return Extraction(
+        key_notes=[Fact(value=value, evidence=[Evidence(page=1, quote="a quote long enough")])]
+    ).model_dump()
+
+
+async def test_finished_provider_batches_are_kept_and_only_the_rest_is_asked_again(settings, monkeypatch):
+    settings.llm_base_url, settings.llm_model = "https://provider.example/v1", "test-model"
+    settings.llm_batch_chars, settings.llm_concurrency = 50, 1
+    chunks = [{"page": 1, "text": letter * 40} for letter in "abc"]
+    asked, fail = [], {"b"}
+
+    async def fake_complete(_settings, messages):
+        letter = json.loads(messages[1]["content"])["sections"][0]["text"][0]
+        asked.append(letter)
+        if letter in fail:
+            raise RWEError("LLM_EXTRACTION_FAILED", "Provider request or structured output failed.")
+        return note(f"note {letter}")
+
+    monkeypatch.setattr("ema_rwe.llm.complete_json", fake_complete)
+    checkpoint, progress = MemoryCheckpoint(), {}
+    with pytest.raises(RWEError) as error:
+        await extract_with_provider(settings, chunks, progress, checkpoint)
+    # The batch after the failed one still ran and was kept
+    assert error.value.code == "LLM_EXTRACTION_FAILED" and asked == ["a", "b", "c"]
+    assert sorted(checkpoint.batches) == [0, 2] and progress == {"done": 2, "total": 3, "reused": 0}
+    asked.clear()
+    fail.clear()
+    progress = {}
+    result = await extract_with_provider(settings, chunks, progress, checkpoint)
+    assert asked == ["b"] and progress == {"done": 3, "total": 3, "reused": 2}
+    assert [n.value for n in result.key_notes] == ["note a", "note b", "note c"]
+
+
+async def test_a_saved_batch_of_other_sections_is_not_reused(settings, monkeypatch):
+    settings.llm_base_url, settings.llm_model = "https://provider.example/v1", "test-model"
+    settings.llm_batch_chars = 50
+    asked = []
+
+    async def fake_complete(_settings, messages):
+        asked.append(json.loads(messages[1]["content"])["sections"][0]["text"][0])
+        return note(f"note {asked[-1]}")
+
+    monkeypatch.setattr("ema_rwe.llm.complete_json", fake_complete)
+    checkpoint = MemoryCheckpoint()
+    await extract_with_provider(
+        settings, [{"page": 1, "text": "a" * 40}, {"page": 1, "text": "b" * 40}], {}, checkpoint
+    )
+    asked.clear()
+    # Batch 0 holds the same text, batch 1 another one (the sections or the batch size changed)
+    changed = [{"page": 1, "text": "a" * 40}, {"page": 1, "text": "z" * 40}]
+    result = await extract_with_provider(settings, changed, {}, checkpoint)
+    assert asked == ["z"] and [n.value for n in result.key_notes] == ["note a", "note z"]
+    # A saved batch that no longer fits the schema is extracted again
+    checkpoint.batches[0]["analysis"] = {"key_notes": [{"value": "", "evidence": []}]}
+    asked.clear()
+    await extract_with_provider(settings, changed, {}, checkpoint)
+    assert asked == ["a"]
+
+
+async def test_server_side_extraction_resumes_after_a_restart(service, monkeypatch):
+    service.settings.llm_base_url, service.settings.llm_model = "https://provider.example/v1", "test-model"
+    service.settings.llm_batch_chars, service.settings.llm_concurrency = 1, 1  # one section per batch
+    design = sample_analysis().study_design
+    calls, fail_after = [], [1]
+
+    async def fake_complete(_settings, messages):
+        calls.append(json.loads(messages[1]["content"])["batch"])
+        if len(calls) > fail_after[0]:
+            raise RWEError("LLM_EXTRACTION_FAILED", "Provider request or structured output failed.")
+        return Extraction(study_design=design).model_dump() if calls[-1] == 1 else Extraction().model_dump()
+
+    monkeypatch.setattr("ema_rwe.llm.complete_json", fake_complete)
+    with pytest.raises(RWEError):
+        await service.analyze_protocol("123")
+    total = max(calls)
+    assert total > 1 and service.repo.analysis("123") is None
+    source = (await service.get_protocol("123"))["protocol"]
+    with service.repo.connection() as db:
+        kept = db.execute(
+            "SELECT batch_offset FROM extraction_batches WHERE study_id='123' AND kind='provider'"
+        ).fetchall()
+    assert [row[0] for row in kept] == [0] and source["protocol_id"]
+    # A new server process: the task registry is gone, the finished batch is not
+    restarted = Service(service.settings, client=service.client)
+    calls.clear()
+    fail_after[0] = 10**6
+    done = await restarted.analyze_protocol("123", detail="full")
+    assert done["status"] == "analyzed" and 1 not in calls and len(calls) == total - 1
+    assert done["analysis"]["study_design"]["value"] == design.value
+    with restarted.repo.connection() as db:
+        assert db.execute("SELECT COUNT(*) FROM extraction_batches WHERE study_id='123'").fetchone()[0] == 0

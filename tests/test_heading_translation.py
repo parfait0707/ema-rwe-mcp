@@ -178,7 +178,7 @@ async def test_configured_provider_translates_headings_before_extracting(service
 
     read = []
 
-    async def extract(_settings, chunks, progress=None):
+    async def extract(_settings, chunks, progress=None, checkpoint=None):
         read.append(" ".join(c["text"] for c in chunks))
         return Extraction()
 
@@ -243,7 +243,7 @@ async def test_changed_translations_cancel_a_running_server_extraction(service, 
     async def translate(_settings, _messages):
         return {"translations": TRANSLATIONS}
 
-    async def slow_extract(_settings, chunks, progress=None):
+    async def slow_extract(_settings, chunks, progress=None, checkpoint=None):
         read.append(" ".join(c["text"] for c in chunks))
         releases.append(asyncio.Event())
         call = len(releases)
@@ -303,7 +303,7 @@ async def test_another_server_cannot_save_an_analysis_read_under_old_translation
     provider(service, monkeypatch, TRANSLATIONS)
     release, read = asyncio.Event(), []
 
-    async def slow_extract(_settings, chunks, progress=None):
+    async def slow_extract(_settings, chunks, progress=None, checkpoint=None):
         read.append(" ".join(c["text"] for c in chunks))
         if len(read) == 1:
             await release.wait()
@@ -338,7 +338,7 @@ async def test_returning_to_the_same_translations_keeps_work_read_that_way(servi
     provider(service, monkeypatch, TRANSLATIONS)
     release = asyncio.Event()
 
-    async def slow_extract(_settings, chunks, progress=None):
+    async def slow_extract(_settings, chunks, progress=None, checkpoint=None):
         await release.wait()
         return Extraction()
 

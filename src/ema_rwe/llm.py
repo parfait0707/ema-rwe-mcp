@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import json
 import os
 
@@ -213,16 +214,37 @@ async def translate_headings(
     return {k: v for part in await asyncio.gather(*map(run, batches)) for k, v in part.items()}
 
 
+def batch_signature(batch: list[dict]) -> str:
+    """What a batch held: a finished batch is reused only for the very same section texts."""
+    return hashlib.sha256(json.dumps([c["text"] for c in batch], ensure_ascii=False).encode()).hexdigest()[
+        :32
+    ]
+
+
 async def extract_with_provider(
-    settings: Settings, chunks: list[dict], progress: dict | None = None
+    settings: Settings, chunks: list[dict], progress: dict | None = None, checkpoint=None
 ) -> Extraction:
-    """Extract from all relevant sections with the configured provider, batches in parallel, then merge."""
+    """Extract from all relevant sections with the configured provider, batches in parallel, then merge.
+
+    checkpoint (finished() -> {index: {sections, analysis}}, save(index, sections, extraction)) keeps each
+    finished batch: a run that follows a failed batch or a server restart asks the provider only for the
+    batches that are missing, as long as they hold the same section texts (spec v1.14)."""
     batches = split_batches(chunks, settings.llm_batch_chars)
+    signatures = [batch_signature(batch) for batch in batches]
+    finished: dict[int, Extraction] = {}
+    for index, saved in (checkpoint.finished() if checkpoint else {}).items():
+        if index < len(batches) and saved.get("sections") == signatures[index]:
+            try:
+                finished[index] = Extraction.model_validate(saved["analysis"])
+            except ValidationError:
+                pass  # saved under another schema: extract the batch again
     progress = progress if progress is not None else {}
-    progress.update(done=0, total=len(batches))
+    progress.update(done=len(finished), total=len(batches), reused=len(finished))
     semaphore = asyncio.Semaphore(max(1, settings.llm_concurrency))
 
     async def run(index: int, batch: list[dict]) -> Extraction:
+        if index in finished:
+            return finished[index]
         payload = {
             "batch": index + 1,
             "of": len(batches),
@@ -239,13 +261,20 @@ async def extract_with_provider(
                     {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
                 ],
             )
-        progress["done"] += 1
         try:
-            return Extraction.model_validate(drop_invalid_evidence(result))
+            extraction = Extraction.model_validate(drop_invalid_evidence(result))
         except ValidationError as exc:
             raise RWEError("SCHEMA_VALIDATION_FAILED", "Invalid extraction schema.") from exc
+        if checkpoint:
+            checkpoint.save(index, signatures[index], extraction)
+        progress["done"] += 1
+        return extraction
 
-    outputs = await asyncio.gather(*(run(i, b) for i, b in enumerate(batches)))
+    # Every batch runs to its end, so one failure does not discard the batches that finish after it.
+    outputs = await asyncio.gather(*(run(i, b) for i, b in enumerate(batches)), return_exceptions=True)
+    for output in outputs:
+        if isinstance(output, BaseException):
+            raise output
     return merge_extractions(outputs)
 
 

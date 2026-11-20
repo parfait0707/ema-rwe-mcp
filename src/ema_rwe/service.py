@@ -28,8 +28,8 @@ class Service(CatalogueMixin, ScreeningMixin, ProtocolsMixin, ExtractionMixin):
         )
         self.explorer = Explorer(self.settings, self.archive, self.repo)
         self.comparisons = Comparisons(self)
-        # ponytail: in-process registry of running provider extractions; a server restart loses them
-        # and the next analyze_protocol simply starts over (add DB checkpoints if that ever matters).
+        # Running provider extractions of this process. A restart loses the tasks, not their work: finished
+        # batches are in the database, and the next analyze_protocol asks only for the rest (spec v1.14).
         self._extractions: dict[tuple[str, str], tuple[asyncio.Task, dict]] = {}  # (study, fingerprint)
 
     @property
