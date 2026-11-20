@@ -1,4 +1,4 @@
-# 同義語・章構造・ローカルPDF追加探索（v0.2 で導入、v1.10 まで更新）
+# 同義語・章構造・ローカルPDF追加探索（v0.2 で導入。各版の変更は docs/spec/ の該当版）
 
 ## 検索語の十分性
 
@@ -53,13 +53,15 @@ PDFは追加要望に従ってユーザーが削除するまで保持する。�
 | `plan_study_search` | 同義語の確認／内部LLMによる検索式の作成 |
 | `list_local_protocols(study_id)` | ローカル保存した各版とID一覧 |
 | `get_protocol_outline(protocol_id, offset=0, limit=100)` | 全文の章一覧。最大200チャンク／回 |
-| `search_protocol_text(protocol_id, query, synonyms=[], limit=10)` | 初回除外した章も含むPDF全文検索。最大30件 |
+| `search_protocol_text(protocol_id, query, synonyms=[], limit=10)` | 初回除外した章も含むPDF全文検索。最大30件（`continues` と `beside` の行は `limit` の外で加わる） |
 | `read_protocol_text(protocol_id, section_id=..., offset=0)` | チャンク全文を読む |
 | `research_protocol(protocol_id, question, force=false)` | 保存回答を再利用、または問い合わせ別の探索を開始 |
 | `cache_protocol_answer(protocol_id, question, answer, reading=None)` | 問い合わせ別の出典付き回答を検証・保存（`reading` は `research_protocol` が返した値。英語以外のプロトコルでは必須） |
 | `cache_heading_translations(protocol_id, translations)` | 英語以外のプロトコルの見出しの英訳を保存（`analyze_protocol` の `needs_heading_translation` への応答） |
 
 `read_protocol_text` は `section_id` の代わりに `start_page` / `end_page` で物理PDFの1～5ページを指定できる。最大20,000文字／回で、`next_offset` があるときは同じ対象と次のoffsetで続きを読む。
+
+`search_protocol_text` と `research_protocol` の検索は、質問の文法の語（each、from、which など）を検索せず、英語の1語は単純な複数形・単数形にも一致させ（outcome と Outcomes）、節の題名にある語を重く数える（spec v1.21）。ヒットした節が次（または前）のページに続くときは、そのページを `continues` 付きでヒットの隣に返す。続きのページとヒットは1つの文章として読む。見出しが質問の語を含む短い節（同じ見出しが続くページの合計が1,000文字以下、番号が3階層以上）があれば、同じ親の下の兄弟の節とその下位の節のうち質問の語に一致したものを、`beside` 付きでその直後に並べる。親の節、もとの節の下位の節、背景・参考文献などの節は並べない（spec v1.23、v1.26）。
 
 内部LLM未設定の `research_protocol` は `needs_client_exploration`、初期検索ヒット、回答schema、読み方 `reading`（英訳のある文書でだけ空でない）を返す。呼出元LLMは追加語で検索し、章一覧や前後ページを辿ってから保存する。章一覧・検索・読取の応答の `source.reading` がこの `reading` と違えば、途中で英訳が変わったので `research_protocol` からやり直す（spec v1.10）。内部LLMの探索は開始時の英訳で一貫して読む。回答schemaは `answers: [{value, evidence:[{page,section,quote}]}]`、`source_assessments`（データタイプと定義用途の判定。[用途別分類](source-types.md)）、`missing_information`。元の共通抽出schemaを上書きしない。質問別回答は別SQLiteテーブルに保存する。
 
@@ -95,12 +97,12 @@ CLIも共通Coreを使用する:
 ## LiteLLM経由の内部探索
 
 ```powershell
-uv sync --extra dev --extra llm
+uv sync --extra llm
 ```
 
 `LLM_BACKEND=litellm` と `LLM_MODEL=<provider>/<model-id>` を設定する。内部の `research_protocol` は、まず質問に関連する章をまとめて読み、一括で回答を求める（全文ルート。`LLM_CONCURRENCY`並列）。それで回答も判定も得られなかったときだけ、JSONで search / outline / read / finish を選び、観測結果を見て次の行動を決める段階的な探索に移る。外部ページ・シェル・任意パスにはアクセスせず、指定IDのローカルPDFだけを探索する。通常の共通抽出も同じLiteLLM接続を使うが、共通抽出自体は関連章のバッチ処理。
 
-内部の探索はサーバーのタスクとして動き、`research_protocol` は `LLM_WAIT_SECONDS`（既定120秒）を超えると `status=answering` を返す。同じ `protocol_id` と質問でもう一度呼ぶと、動いている探索に合流して結果を受け取る（spec v1.15。CLIの `ask` は終わるまで待つ）。`LLM_MAX_STEPS` は既定8、上限20。各API呼出しのタイムアウトは、`LLM_BACKEND=litellm`で600秒、`compatible`で180秒。出力上限は`LLM_MAX_TOKENS`（0ならLiteLLMのモデル表、引けなければ16,000トークン）。APIリトライは0回。上限に到達した場合は `exploration_limit_reached` と探索履歴を返し、未完了の回答は保存しない。回答の引用・ページ・セクションを検証してから保存し、同じPDF ID・質問・モデル／backend／base URL・探索の版（`EXPLORER_VERSION`）・臨床展開の版（利用者辞書とEMA医薬品辞書の版を含む）、および保存された見出しの英訳では再利用する。
+内部の探索はサーバーのタスクとして動き、`research_protocol` は `LLM_WAIT_SECONDS`（既定120秒）を超えると `status=answering` を返す。同じ `protocol_id` と質問でもう一度呼ぶと、動いている探索に合流して結果を受け取る（spec v1.15。CLIの `ask` は終わるまで待つ）。`force` の有無は合流に関係しない。探索が終わった後の最初の呼び出しは、`force=true` でもその結果を受け取る。`force=true` が新しい探索を始めるのは、探索が動いておらず、受け取られていない結果も無いときだけ（spec v1.26）。探索の中のPDFの解析・検索・検証・保存はスレッドで行うので、待っている呼び出しと他のツール呼び出しを止めない。`LLM_MAX_STEPS` は既定8、上限20。各API呼出しのタイムアウトは、`LLM_BACKEND=litellm`で600秒、`compatible`で180秒。出力上限は`LLM_MAX_TOKENS`（0ならLiteLLMのモデル表、引けなければ16,000トークン）。APIリトライは0回。上限に到達した場合は `exploration_limit_reached` と探索履歴を返し、未完了の回答は保存しない。回答の引用・ページ・セクションを検証してから保存し、同じPDF ID・質問・モデル／backend／base URL・探索の版（`EXPLORER_VERSION`）・臨床展開の版（利用者辞書とEMA医薬品辞書の版を含む）、および保存された見出しの英訳では再利用する。
 
 MCP設定の `env` に入れる共通設定例（モデルIDは利用可能なものに置き換える）:
 

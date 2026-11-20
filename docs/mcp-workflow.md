@@ -12,20 +12,26 @@ Every tool carries a title and the MCP hints. Read-only (no confirmation needed 
 `catalogue_status`, `search_studies`, `plan_study_search`, `list_local_protocols`, `get_protocol_outline`,
 `search_protocol_text`, `read_protocol_text`. Destructive (replace something with no copy kept):
 `research_protocol` with `force=true`, `cache_protocol_answer`, `import_catalogue_csv`,
-`refresh_drug_dictionary`. Open world (may reach EMA or the configured LLM): `get_study`, `get_protocol`,
-`compare_protocols`, `analyze_protocol`, `cache_protocol_analysis`, `research_protocol`,
-`refresh_drug_dictionary`, and `plan_study_search` with `use_llm=true`. A call that asks for progress gets
-notifications from `compare_protocols` (one per study while protocols are retrieved) and from a server-side
-`analyze_protocol` (batches done).
+`refresh_drug_dictionary`, and `cache_heading_translations` (it replaces the translations with no copy kept,
+and a changed translation drops the study's unfinished extraction batches). Open world (may reach EMA or the
+configured LLM): `get_study`, `get_protocol`, `compare_protocols`, `analyze_protocol`,
+`cache_protocol_analysis`, `research_protocol`, `refresh_drug_dictionary`, and `plan_study_search` with
+`use_llm=true`. A call that asks for progress gets notifications from `compare_protocols` (one per study
+while protocols are retrieved, then a last one when all are) and from a server-side `analyze_protocol`
+(batches done). A notification that cannot be sent does not stop the tool.
 
 ## 1. Plan
 
 - `catalogue_status` once per session. `catalogue_snapshot` is the export date of the catalogue, and `update`
   what the server's own look for a newer published snapshot found (`result`: `updated`, `up_to_date`,
-  `available`, `kept_local_import`, `app_update_required`, or a failure with its `reason`); the server takes
-  newer snapshots by itself, so no action follows from it except telling the user about
-  `app_update_required`. When `app_update_available` is present, tell the user once as its `instruction`
-  says (a newer application release exists; the server never replaces itself). Analyses (`source`), answers
+  `available`, `kept_local_import`, `app_update_required`, or a failure with its `reason`). With
+  `update.automatic=true` and `mode=apply` the server takes newer snapshots by itself, so no action follows
+  except telling the user about `app_update_required`. With `automatic=false` (a database named by
+  `EMA_DB_PATH`, or a checkout's), or with `result=available`, tell the user that
+  `ema-rwe update-catalogue` takes the newer snapshot; the server does not look at start then, so
+  `app_update_available` appears only after that command (or `--check`). When `app_update_available` is
+  present, tell the user once as its `instruction` says (a newer application release exists; the server never
+  replaces itself). With `EMA_CATALOGUE_UPDATE=off` it never appears. Analyses (`source`), answers
   and comparisons (`versions`) record the `app_version`, `catalogue_snapshot` and `parser_version` that
   produced them: quote them when a result differs from an earlier one. `status=current` and `source_type_imports` containing
   `claims`, `ehr`, `registry` means the committed catalogue is usable (freshness is judged per export:
@@ -167,8 +173,10 @@ filters. Never pick a subset yourself.
 - One pass: when `analyze_protocol` was given a `question`, its instruction and `answer_schema` ask you
   to answer it while you read. Pass `question` and that batch's `answer` (`answers=[]` when the batch
   says nothing) with every `cache_protocol_analysis`, one fact per item with its own quote. The
-  question never narrows the extraction. The `coverage_complete` call (pass `question` again) saves the
-  merged answer and returns `answer_saved`; only when it is `false`, call `research_protocol`.
+  question never narrows the extraction. The `coverage_complete` call (pass the same `question` again,
+  character for character) saves the merged answer and returns `answer_saved`; only when it is `false`,
+  call `research_protocol`. A `coverage_complete` call without that `question` while cached batches hold
+  answers is refused with `INVALID_INPUT` and saves nothing: repeat it with the `question`.
 - While exploring, `search_protocol_text`, `get_protocol_outline` and
   `read_protocol_text` report `source.reading`; if it differs from that `reading`, the heading translations
   changed: call `research_protocol` again and explore afresh.
@@ -183,7 +191,9 @@ filters. Never pick a subset yourself.
   an `LLM_EXTRACTION_FAILED` or a server restart asks the provider only for the batches still missing.
 - `research_protocol` may return `status=answering` (the configured provider is still answering): call it
   again with the same `protocol_id` and `question` until it returns the answer; do not explore client-side
-  meanwhile. Calls with the same question join the running exploration, also with `force=true`.
+  meanwhile. Calls with the same question join the running exploration, with or without `force=true`, and
+  the first call after it ended receives its result (also with `force=true`), so repeat the call exactly as
+  you made it. `force=true` starts a new exploration only when none is running or waiting to be collected.
 - `analyze_protocol` may return `status=needs_heading_translation` for a protocol that is not in
   English (section roles are read from English heading words; only without a configured server LLM,
   which otherwise translates them itself). Resolve it before `research_protocol` on that protocol.
@@ -197,23 +207,34 @@ filters. Never pick a subset yourself.
   so progress survives context compaction and a server restart (batches are kept in the database);
   skip offsets listed in `cached_batch_offsets`. Always continue at the `next_offset` the previous
   response returned and cache the last batch with its `batch_offset` too; then finish with
-  `coverage_complete=true` (its `analysis` may be `{}`). `INCOMPLETE_EXTRACTION` names an offset that
-  was never read and cached: read and cache it, follow `next_offset` to the end and repeat the call. A
-  `batch_offset` that no `analyze_protocol` response returned is refused.
+  `coverage_complete=true` (its `analysis` may be `{}` while cached batches remain to be merged).
+  `INCOMPLETE_EXTRACTION` has two meanings. With an offset, it names an offset that was never read and
+  cached: read and cache it, follow `next_offset` to the end and repeat the call (a batch counts as far as
+  it was served when you cached it, even if that offset was served again with another `max_chars`).
+  Without cached batches, it refuses an empty `analysis` (or one with only `missing_information`) that
+  would replace a saved analysis, for instance a repeated final call after the merge; the saved analysis
+  is kept. To correct a saved analysis in one call, pass all of its items. A `batch_offset` that no
+  `analyze_protocol` response returned is refused. `analyze_protocol(force_refresh=true)` at `offset=0`
+  discards the study's cached batches with their answers (a server-side extraction's too): use it to start over,
+  never to resume after context compaction.
 - Section text is returned with runs of three or more spaces shortened to two (table columns keep a gap);
   copy quotes from it as they are, the comparison with the PDF ignores whitespace.
 - A data source `value` is the name as the protocol writes it, with no words of your own (no added
   country or abbreviation). The name is matched by its words, in order, case and punctuation aside, in one
-  of the fact's quotes; when your quotes leave the name out but the protocol's methods text writes it (on a
-  page you cite, else the nearest one), the server adds the naming passage as one more quote.
-  `EVIDENCE_INVALID` names a value that is written nowhere outside the contents, references, background and
-  checklists: correct the name or cite the passage that names it.
+  of the fact's quotes. Up to three other words may stand between two words of the name, but not a `;`, a
+  sentence end, or another word of the name. When your quotes leave the name out but the protocol's methods
+  text writes it (on a page you cite, else the page nearest to any you cite), the server adds the naming
+  passage as one more quote; it adds none to a fact that already has 8 quotes, nor a passage over 1000
+  characters. `EVIDENCE_INVALID` names a value that is written nowhere outside the contents, references,
+  background and checklists, or a fact with 8 quotes that leave the name out: correct the name, drop a
+  quote, or cite the passage that names it.
 - A quote has at least 8 characters (quote the whole line around a bare code or word) and a fact at most 8
   quotes (split the fact for more). A verbatim quote given on the wrong page is moved to the nearest page
-  that holds it; a quote found on no page is refused.
+  that holds it; a quote found on no page, or on two pages equally near, is refused.
 - In saved analyses and answers `evidence[].server` marks what the server did: `source_name` is a passage it
   added because it writes the data source's name (not support for the usage or definition; the comparison
-  table lists its page apart), `page` a quote whose page it corrected. Leave `server` out of what you send. If your client can run a cheaper subagent (Claude Code: `Agent` with
+  table lists its page apart), `page` a quote whose page it corrected. Leave `server` out of what you send: the server drops any `server`
+  it did not set itself. If your client can run a cheaper subagent (Claude Code: `Agent` with
   model sonnet), delegate one study's batch reading and caching to it and keep only results in
   the main context.
 - Quotes must be verbatim; pages are physical PDF pages; keep `usage` honest
@@ -225,7 +246,9 @@ filters. Never pick a subset yourself.
   `others`; a block's `role` takes `outcome`, `condition`, `exposure`, `any`).
 - Call `get_protocol_comparison`. If `selection_status=needs_selection`, show `screening_summary`
   and ask for `selected_study_ids` within `max_comparison_studies`.
-- Present the comparison table, JSON paths, failures and missing information.
+- Present the comparison table, JSON paths, failures and missing information. A list over its schema limit
+  (data sources 60, `key_notes` 20, answers 60) keeps entries taken in turn from every batch; how many were
+  dropped is in `missing_information`.
 
 ## 5. Follow-up questions
 
