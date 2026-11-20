@@ -144,18 +144,18 @@ def create_server(service: Service | None = None):
         """
         try:
             return service.search_studies(
-                query,
-                limit,
-                darwin_only,
-                status,
-                analyzed_only,
-                synonyms,
-                codes,
-                filters,
-                role,
-                detail,
-                match_scope,
-                analogous_terms,
+                query=query,
+                limit=limit,
+                darwin_only=darwin_only,
+                status=status,
+                analyzed_only=analyzed_only,
+                synonyms=synonyms,
+                codes=codes,
+                filters=filters,
+                role=role,
+                detail=detail,
+                match_scope=match_scope,
+                analogous=analogous_terms,
             )
         except RWEError as exc:
             return exc.as_dict()
@@ -218,20 +218,20 @@ def create_server(service: Service | None = None):
         """
         return await call(
             "compare_protocols",
-            question,
-            queries or [],
-            filters,
-            darwin_only,
-            synonyms,
-            codes,
-            source_preference,
-            role,
-            study_ids,
-            match_scope,
-            analogous_terms,
-            category_terms,
-            blocks,
-            check_protocols,
+            question=question,
+            queries=queries or [],
+            filters=filters,
+            darwin_only=darwin_only,
+            synonyms=synonyms,
+            codes=codes,
+            source_preference=source_preference,
+            role=role,
+            study_ids=study_ids,
+            match_scope=match_scope,
+            analogous=analogous_terms,
+            category_terms=category_terms,
+            blocks=blocks,
+            check_protocols=check_protocols,
             on_progress=reporter(ctx),
         )
 
@@ -242,7 +242,12 @@ def create_server(service: Service | None = None):
         detail: Literal["compact", "full"] = "compact",
     ) -> dict:
         """Rebuild the comparison JSON/Markdown (compact rows; detail=full adds analysis/answer bodies); if needs_selection, pass selected_study_ids."""
-        return await call("get_protocol_comparison", comparison_id, selected_study_ids, detail)
+        return await call(
+            "get_protocol_comparison",
+            comparison_id=comparison_id,
+            selected_study_ids=selected_study_ids,
+            detail=detail,
+        )
 
     @server.tool()
     async def get_study(
@@ -266,7 +271,9 @@ def create_server(service: Service | None = None):
         ] = False,
     ) -> dict:
         """Select latest protocol from Study documents, with selection reason and retained local PDF ID."""
-        return await call("get_protocol", study_id, version, download, refresh)
+        return await call(
+            "get_protocol", study_id=study_id, version=version, download=download, refresh=refresh
+        )
 
     @server.tool()
     async def analyze_protocol(
@@ -289,12 +296,12 @@ def create_server(service: Service | None = None):
         """Cached extraction summary (detail=full for the whole extraction); status=extracting means call again later; needs_heading_translation means translate `headings`, call cache_heading_translations, then call again; else paginated sections to extract (follow next_offset)."""
         return await call(
             "analyze_protocol",
-            study_id,
-            force_refresh,
-            offset,
-            max_chars,
-            detail,
-            question,
+            study_id=study_id,
+            force_refresh=force_refresh,
+            offset=offset,
+            max_chars=max_chars,
+            detail=detail,
+            question=question,
             on_progress=reporter(ctx),
         )
 
@@ -330,14 +337,14 @@ def create_server(service: Service | None = None):
         finish with coverage_complete=true; an unread batch is reported as INCOMPLETE_EXTRACTION."""
         return await call(
             "cache_protocol_analysis",
-            study_id,
-            fingerprint,
-            analysis,
-            coverage_complete,
-            batch_offset,
-            reading,
-            answer,
-            question,
+            study_id=study_id,
+            fingerprint=fingerprint,
+            analysis=analysis,
+            coverage_complete=coverage_complete,
+            batch_offset=batch_offset,
+            reading=reading,
+            answer=answer,
+            question=question,
         )
 
     @server.tool()
@@ -379,7 +386,9 @@ def create_server(service: Service | None = None):
         detail: Literal["compact", "full"] = "compact",
     ) -> dict:
         """List PDF section IDs, pages, titles and roles; detail=full adds parents, neighbours and structural warnings."""
-        return await call("get_protocol_outline", protocol_id, offset, limit, detail)
+        return await call(
+            "get_protocol_outline", protocol_id=protocol_id, offset=offset, limit=limit, detail=detail
+        )
 
     @server.tool()
     async def search_protocol_text(
@@ -396,7 +405,15 @@ def create_server(service: Service | None = None):
         max_chars: Annotated[int, Field(ge=1000)] | None = None,
     ) -> dict:
         """Search one archived PDF (all sections) with synonym expansion; hit text is included up to max_chars in rank order. Zero hits do not prove absence."""
-        return await call("search_protocol_text", protocol_id, query, limit, synonyms, codes, max_chars)
+        return await call(
+            "search_protocol_text",
+            protocol_id=protocol_id,
+            query=query,
+            limit=limit,
+            synonyms=synonyms,
+            codes=codes,
+            max_chars=max_chars,
+        )
 
     @server.tool()
     async def read_protocol_text(
@@ -409,14 +426,20 @@ def create_server(service: Service | None = None):
     ) -> dict:
         """Read a section chunk or 1..5 physical pages by immutable PDF ID. Follow next_offset for full text."""
         return await call(
-            "read_protocol_text", protocol_id, section_id, start_page, end_page, offset, max_chars
+            "read_protocol_text",
+            protocol_id=protocol_id,
+            section_id=section_id,
+            start_page=start_page,
+            end_page=end_page,
+            offset=offset,
+            max_chars=max_chars,
         )
 
     @server.tool()
     async def research_protocol(protocol_id: str, question: Question, force: bool = False) -> dict:
         """Answer a question from one archived PDF: saved answer, provider run (status=answering means call again
         later), or caller-driven hits."""
-        return await call("research_protocol", protocol_id, question, force)
+        return await call("research_protocol", protocol_id=protocol_id, question=question, force=force)
 
     @server.tool()
     async def cache_protocol_answer(
@@ -431,7 +454,13 @@ def create_server(service: Service | None = None):
         ] = None,
     ) -> dict:
         """Validate and save a caller's question-specific answer with exact quotes/pages/sections."""
-        return await call("cache_protocol_answer", protocol_id, question, answer, reading)
+        return await call(
+            "cache_protocol_answer",
+            protocol_id=protocol_id,
+            question=question,
+            answer=answer,
+            reading=reading,
+        )
 
     for tool in server._tool_manager._tools.values():
         tool.parameters = strip_titles(tool.parameters)

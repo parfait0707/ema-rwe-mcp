@@ -272,6 +272,7 @@ stdioで18ツールを公開します。引数・範囲・既定値の正本は[
 - `compare_protocols`の`pending_tools`は、解析も回答も無い研究には質問付きの`analyze_protocol`を1つだけ出します（内部LLM設定時は`analyze_protocol`と`research_protocol`の2つ）。
 - 全ツールに題名と注釈（読み取り専用・破壊的・冪等・外部通信）があります（`mcp/server.py`の`ANNOTATIONS`、割り当ては[spec v1.16](docs/spec/v1.16.md)）。ツールを足すときは、この表にも足します（無いと起動時に`KeyError`になります）。`compare_protocols`と、サーバー側抽出の`analyze_protocol`は、クライアントが求めたときに進捗を通知します。
 - 引用の`server`はサーバーが付ける印です（spec v1.13）。`source_name`はデータソース名の書かれた箇所としてサーバーが足した引用（使い方や定義を支える引用ではありません）、`page`はサーバーがページを直した引用です。印の無い引用は、呼出元か内部LLMが渡したままです。
+- 検索の条件（DARWIN EU、状態、類義語、コード、絞り込み、役割、範囲など）は、`storage.SearchRequest`の1つの値で受け渡します。条件を変えた検索は`dataclasses.replace(request, role=...)`のように名前で作ります。`search_studies`と`compare_protocols`の任意の引数は名前でしか渡せず、MCPとCLIのアダプタはサービスを名前付きの引数で呼びます。
 - 完了済み解析を`coverage_complete=true`で修正するときは全項目を渡します。一部だけの再保存は解析全体を置き換えます。
 
 CLIのサブコマンドは、MCPのツールと1対1で対応し、同じ引数を持ちます（spec v1.17）。

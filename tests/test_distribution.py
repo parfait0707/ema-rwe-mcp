@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from ema_rwe import config
+from ema_rwe.storage import SearchRequest
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -113,7 +114,7 @@ def test_newer_bundle_refreshes_catalogue_and_keeps_user_caches(tmp_path):
     assert refresh_from_bundle(bundled, user)
     refreshed = type(repo)(user)
     assert refreshed.study_count() == 2
-    assert [r["study_id"] for r in refreshed.search("stroke", None, False, None)] == ["2"]
+    assert [r["study_id"] for r in refreshed.search("stroke")] == ["2"]
     assert refreshed.analysis("1") == {"analysis": {}}
     # Observations: the user's own survive the refresh, the bundle's are added
     assert refreshed.observation("1")["text_layer"] == "none"
@@ -163,7 +164,7 @@ def test_bundle_observations_reach_a_user_whose_catalogue_is_current(tmp_path):
     assert not refresh_from_bundle(bundled, user)
     user_repo = type(mine)(user)
     assert user_repo.observation("1") == mine.observation("1")  # the user's own observation wins
-    assert [r["study_id"] for r in user_repo.search("metoprolol", None, False, None)] == ["2"]
+    assert [r["study_id"] for r in user_repo.search("metoprolol")] == ["2"]
 
 
 def test_shared_observations_carry_no_local_ids_or_errors(tmp_path):
@@ -212,7 +213,7 @@ def test_bundle_exposures_from_newer_rules_replace_only_that_source(tmp_path):
     assert merge_bundle_observations(bundled, user) == 1
     observed = type(mine)(user).observation("1")
     assert observed["exposures"] == [pass_table] and observed["exposure_rules"] == {"catalogue_text": 2}
-    assert not type(mine)(user).search("sonatamab", None, False, None, role="exposure")
+    assert not type(mine)(user).search("sonatamab", SearchRequest(role="exposure"))
     # Same rules on both sides: the local entries win again
     mine.observe("1", exposures=[pass_table, {"term": "anastrozole", "source": "catalogue_text"}])
     assert merge_bundle_observations(bundled, user) == 0

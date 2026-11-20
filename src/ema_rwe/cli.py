@@ -261,22 +261,25 @@ async def run(args):
                 }
             case "backfill-protocols":
                 return await service.backfill_protocols(
-                    args.interval, args.limit, not args.no_download, args.reextract
+                    interval=args.interval,
+                    limit=args.limit,
+                    download=not args.no_download,
+                    reextract=args.reextract,
                 )
             case "search":
                 return service.search_studies(
-                    args.query,
-                    args.limit,
-                    args.darwin_only,
-                    args.status,
-                    args.analyzed_only,
-                    args.synonym,
-                    args.code,
-                    filters,
-                    args.role,
-                    args.detail,
-                    args.match_scope,
-                    args.analogous,
+                    query=args.query,
+                    limit=args.limit,
+                    darwin_only=args.darwin_only,
+                    status=args.status,
+                    analyzed_only=args.analyzed_only,
+                    synonyms=args.synonym,
+                    codes=args.code,
+                    filters=filters,
+                    role=args.role,
+                    detail=args.detail,
+                    match_scope=args.match_scope,
+                    analogous=args.analogous,
                 )
             case "compare":
                 if (
@@ -286,72 +289,82 @@ async def run(args):
                         "INVALID_INPUT", "--source-role/--source-mode requires --prefer-source-type."
                     )
                 return await service.compare_protocols(
-                    args.question,
-                    args.query,
-                    filters,
-                    args.darwin_only,
-                    args.synonym,
-                    args.code,
-                    SourcePreference(
+                    question=args.question,
+                    queries=args.query,
+                    filters=filters,
+                    darwin_only=args.darwin_only,
+                    synonyms=args.synonym,
+                    codes=args.code,
+                    source_preference=SourcePreference(
                         types=args.prefer_source_type, role=args.source_role, mode=args.source_mode
                     )
                     if args.prefer_source_type
                     else None,
-                    args.role,
-                    args.study_ids,
-                    args.match_scope,
-                    args.analogous,
-                    args.category_term,
-                    [
+                    role=args.role,
+                    study_ids=args.study_ids,
+                    match_scope=args.match_scope,
+                    analogous=args.analogous,
+                    category_terms=args.category_term,
+                    blocks=[
                         ScreeningBlock.model_validate(b)
                         for b in json.loads(args.blocks.read_text(encoding="utf-8"))
                     ]
                     if args.blocks
                     else None,
-                    args.check_protocols,
+                    check_protocols=args.check_protocols,
                 )
             case "comparison":
-                return await service.get_protocol_comparison(args.comparison_id, args.study_id, args.detail)
+                return await service.get_protocol_comparison(
+                    comparison_id=args.comparison_id, selected_study_ids=args.study_id, detail=args.detail
+                )
             case "plan-search":
                 return await service.plan_study_search(args.question, args.llm)
             case "local-protocols":
                 return await service.list_local_protocols(args.study_id)
             case "outline":
                 return await service.get_protocol_outline(
-                    args.protocol_id, args.offset, args.limit, args.detail
+                    protocol_id=args.protocol_id, offset=args.offset, limit=args.limit, detail=args.detail
                 )
             case "pdf-search":
                 return await service.search_protocol_text(
-                    args.protocol_id, args.query, args.limit, args.synonym, args.code, args.max_chars
+                    protocol_id=args.protocol_id,
+                    query=args.query,
+                    limit=args.limit,
+                    synonyms=args.synonym,
+                    codes=args.code,
+                    max_chars=args.max_chars,
                 )
             case "pdf-read":
                 return await service.read_protocol_text(
-                    args.protocol_id,
-                    args.section_id,
-                    args.start_page,
-                    args.end_page,
-                    args.offset,
-                    args.max_chars,
+                    protocol_id=args.protocol_id,
+                    section_id=args.section_id,
+                    start_page=args.start_page,
+                    end_page=args.end_page,
+                    offset=args.offset,
+                    max_chars=args.max_chars,
                 )
             case "ask":
                 # One process per call: wait for the provider instead of returning status=answering.
                 return await service.research_protocol(
-                    args.protocol_id, args.question, args.force, poll=False
+                    protocol_id=args.protocol_id, question=args.question, force=args.force, poll=False
                 )
             case "study":
                 return (await service.get_study(args.study_id, args.refresh)).model_dump()
             case "protocol":
                 return await service.get_protocol(
-                    args.study_id, args.version, not args.no_download, args.refresh
+                    study_id=args.study_id,
+                    version=args.version,
+                    download=not args.no_download,
+                    refresh=args.refresh,
                 )
             case "analyze":
                 return await service.analyze_protocol(
-                    args.study_id,
-                    args.refresh,
-                    args.offset,
-                    args.max_chars,
-                    args.detail,
-                    args.question,
+                    study_id=args.study_id,
+                    force_refresh=args.refresh,
+                    offset=args.offset,
+                    max_chars=args.max_chars,
+                    detail=args.detail,
+                    question=args.question,
                 )
             case "cache-analysis":
                 analysis = Extraction.model_validate_json(args.input.read_text(encoding="utf-8"))
@@ -361,19 +374,19 @@ async def run(args):
                     else None
                 )
                 return await service.cache_protocol_analysis(
-                    args.study_id,
-                    args.fingerprint,
-                    analysis,
-                    args.coverage_complete,
-                    args.batch_offset,
-                    args.reading,
-                    answer,
-                    args.question,
+                    study_id=args.study_id,
+                    fingerprint=args.fingerprint,
+                    analysis=analysis,
+                    coverage_complete=args.coverage_complete,
+                    batch_offset=args.batch_offset,
+                    reading=args.reading,
+                    answer=answer,
+                    question=args.question,
                 )
             case "cache-answer":
                 answer = ProtocolAnswer.model_validate_json(args.input.read_text(encoding="utf-8"))
                 return await service.cache_protocol_answer(
-                    args.protocol_id, args.question, answer, args.reading
+                    protocol_id=args.protocol_id, question=args.question, answer=answer, reading=args.reading
                 )
             case "cache-headings":
                 translations = json.loads(args.input.read_text(encoding="utf-8"))

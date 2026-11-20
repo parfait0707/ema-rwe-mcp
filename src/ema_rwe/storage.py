@@ -5,12 +5,13 @@ import json
 import re
 import sqlite3
 from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 
 from .domain import RWEError, Study, now
 from .ema import BASE, is_non_interventional, norm
 from .medicines import catalogue_atc
-from .selection import filter_rows
+from .selection import SearchFilters, filter_rows
 from .terminology import analogous_phrases, labelled_phrases, term_source
 from .vocabulary import canonical, expand
 
@@ -36,6 +37,27 @@ ROLE_COLUMNS = {
     "condition": ("title", "condition"),
     "exposure": ("title", "exposure", "data_sources"),
 }
+
+
+@dataclass(frozen=True)
+class SearchRequest:
+    """What a search asks for besides the query text. One request serves every query variant of a question;
+    a variation of it (another role, the analogous scope) is made with dataclasses.replace, by name.
+
+    scope=concept searches the query and its expansion; scope=analogous searches only analogous concepts
+    (dictionary and caller terms). split_long=False takes a multi-word query as one phrase (one medicine
+    name for dictionary expansion), as compare_protocols does."""
+
+    darwin_only: bool = False
+    status: list[str] | None = None
+    analyzed_only: bool = False
+    synonyms: list[str] | None = None
+    codes: list | None = None
+    filters: SearchFilters | None = None
+    role: str = "any"
+    scope: str = "concept"
+    analogous: list | None = None
+    split_long: bool = True
 
 
 class Repository:
@@ -370,11 +392,12 @@ class Repository:
             ).fetchall()
         return catalogue_atc(r[0] for r in rows)
 
-    def concept_ids(
-        self, query: str, synonyms=None, codes=None, role: str = "any", split_long: bool = True
-    ) -> set[str]:
-        """Index matches of the requested concept before any filter: the analogous-scope exclusion and
-        the evidence that a zero-hit result came from filters rather than from the catalogue."""
+    def concept_ids(self, query: str, request: SearchRequest | None = None) -> set[str]:
+        """Index matches of the requested concept before any filter (the request's synonyms, codes, role and
+        split_long count; its filters do not): the analogous-scope exclusion and the evidence that a
+        zero-hit result came from filters rather than from the catalogue."""
+        request = request or SearchRequest()
+        synonyms, codes, role, split_long = request.synonyms, request.codes, request.role, request.split_long
         groups = [
             group
             for _, group in labelled_phrases(
@@ -390,22 +413,17 @@ class Repository:
     def search(
         self,
         query: str,
-        limit: int | None,
-        darwin_only: bool,
-        status: list[str] | None,
-        analyzed_only: bool = False,
-        synonyms: list[str] | None = None,
-        codes=None,
-        filters=None,
-        role: str = "any",
-        scope: str = "concept",
-        analogous=None,
+        request: SearchRequest | None = None,
+        limit: int | None = None,
         exclude: set[str] | None = None,
-        split_long: bool = True,
     ) -> list[dict]:
-        """scope=concept searches the query and its expansion; scope=analogous searches only analogous
-        concepts (dictionary + caller terms) and drops studies the concept search would also match,
-        plus exclude (the concept matches of sibling query variants)."""
+        """Studies matching the query under the request (see SearchRequest), best first. An analogous-scope
+        search drops studies the concept search would also match, plus exclude (the concept matches of
+        sibling query variants)."""
+        request = request or SearchRequest()
+        darwin_only, status, analyzed_only = request.darwin_only, request.status, request.analyzed_only
+        synonyms, codes, filters, role = request.synonyms, request.codes, request.filters, request.role
+        scope, analogous, split_long = request.scope, request.analogous, request.split_long
         if (limit is not None and not 1 <= limit <= 20) or len(query) > 2000:
             raise RWEError("INVALID_INPUT", "limit must be 1..20; query must be at most 2000 characters.")
         if role not in ROLE_COLUMNS:
@@ -436,7 +454,7 @@ class Repository:
                         terms.append(label)
         excluded = set(exclude or ())
         if scope == "analogous":
-            excluded |= self.concept_ids(query, synonyms, codes, role, split_long)
+            excluded |= self.concept_ids(query, request)
         with self.connection() as db:
             if match:
                 rows = db.execute(

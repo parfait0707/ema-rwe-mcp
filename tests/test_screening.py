@@ -3,6 +3,7 @@
 import csv
 import io
 import json
+from dataclasses import FrozenInstanceError, replace
 from pathlib import Path
 
 import pymupdf
@@ -16,7 +17,7 @@ from ema_rwe.ema import BASE
 from ema_rwe.pdf import text_layer
 from ema_rwe.selection import COMPACT_KEYS, SearchFilters, country, filter_rows
 from ema_rwe.service import Service
-from ema_rwe.storage import Repository, fts_match, import_csv
+from ema_rwe.storage import Repository, SearchRequest, fts_match, import_csv
 from ema_rwe.vocabulary import expand
 
 EXAMPLE = Path(__file__).resolve().parents[1] / "data" / "terminology.example.json"
@@ -198,9 +199,9 @@ def test_import_fills_role_columns_from_the_official_headers(settings, tmp_path)
     assert saved.outcomes == "Hepatic events defined by AST > 3 x ULN"
     assert saved.exposures == ["atorvastatin", "ATOZET", "C10BA05"]
     assert saved.objective == "To compare hepatic event rates"
-    assert repo.search("hepatic events", None, False, None, role="outcome")[0]["study_id"] == "77"
-    assert repo.search("C10BA05", None, False, None, role="exposure")[0]["study_id"] == "77"
-    assert repo.search("hypertension", None, False, None, role="condition", filters=SearchFilters())
+    assert repo.search("hepatic events", SearchRequest(role="outcome"))[0]["study_id"] == "77"
+    assert repo.search("C10BA05", SearchRequest(role="exposure"))[0]["study_id"] == "77"
+    assert repo.search("hypertension", SearchRequest(role="condition", filters=SearchFilters()))
 
 
 @pytest.mark.parametrize(
@@ -320,7 +321,7 @@ async def test_protocol_retrieval_keeps_catalogue_only_fields(service):
     kept = service.repo.get("123")
     assert kept.detail_checked_at
     assert {name: getattr(kept, name) for name in fields} == fields
-    assert [r["study_id"] for r in service.repo.search("morphine", None, False, None)] == ["123"]
+    assert [r["study_id"] for r in service.repo.search("morphine")] == ["123"]
 
 
 async def test_protocol_text_layer_is_recorded_and_survives_a_page_refresh(service):
@@ -416,7 +417,7 @@ async def test_backfill_fills_medicines_from_text_then_protocols_and_stops_on_ra
     # Text step: a named medicine becomes an observed exposure, searchable in the exposure column
     assert summary["named_in_text"] == 1
     assert service.repo.observation("1")["exposures"] == [{"term": "apixaban", "source": "catalogue_text"}]
-    rows = service.repo.search("apixaban", None, False, None, role="exposure")
+    rows = service.repo.search("apixaban", SearchRequest(role="exposure"))
     assert [r["study_id"] for r in rows] == ["1"]
     # Download step: only studies without medicines whose export lists a protocol; stops at a rate limit
     calls = []
@@ -500,12 +501,10 @@ async def test_backfill_records_a_permanent_http_error_as_done(service, monkeypa
 async def test_text_matches_step_aside_once_the_catalogue_lists_medicines(service):
     service.repo.upsert(study("1", title="Apixaban users"))
     await service.backfill_protocols(interval=0, download=False)
-    assert [r["study_id"] for r in service.repo.search("apixaban", None, False, None, role="exposure")] == [
-        "1"
-    ]
+    assert [r["study_id"] for r in service.repo.search("apixaban", SearchRequest(role="exposure"))] == ["1"]
     # A newer export fills the medicines: the text match no longer counts, even before a rerun
     service.repo.upsert(study("1", title="Apixaban users", exposures=["(B01AF01) rivaroxaban"]))
-    row = service.repo.search("rivaroxaban", None, False, None)[0]
+    row = service.repo.search("rivaroxaban")[0]
     assert row["observed_exposures"] == []
 
 
@@ -646,3 +645,17 @@ async def test_page_refresh_keeps_the_typed_export_source_tags(service):
         kept = service.repo.get("123")
         assert kept.data_source_types == ["claims"]
         assert kept.data_source_types_source == "filtered export claims.csv"
+
+
+async def test_search_options_are_passed_by_name(service):
+    """The options of the two search entry points are many and of like types (lists, strings, booleans):
+    a caller that passes one by position gets an error instead of a search with shifted arguments."""
+    with pytest.raises(TypeError):
+        service.search_studies("opioid", 5, True)
+    with pytest.raises(TypeError):
+        await service.compare_protocols("How defined?", ["opioid"], None, True)
+    # One request serves every variant; a variation is made by name
+    request = SearchRequest(role="exposure", darwin_only=True)
+    assert replace(request, role="any") == SearchRequest(darwin_only=True)
+    with pytest.raises(FrozenInstanceError):
+        request.role = "outcome"
