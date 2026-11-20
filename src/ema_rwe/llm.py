@@ -8,7 +8,7 @@ import httpx
 from pydantic import BaseModel, ValidationError
 
 from .config import Settings
-from .domain import Extraction, RWEError, quote_length, with_notes
+from .domain import Extraction, ProtocolAnswer, RWEError, quote_length, with_notes
 from .pdf import clean_translations
 
 SOURCE_ASSESSMENT_PROMPT = """Assess source types from this protocol, never from database names alone.
@@ -396,3 +396,33 @@ def cap_lists(model, prefix: str = "", origins: dict | None = None) -> list[str]
         elif isinstance(value, BaseModel) and not hasattr(value, "evidence"):
             notes += cap_lists(value, f"{prefix}{name}.", origins)
     return notes
+
+
+ANSWER_LIMIT = ProtocolAnswer.model_json_schema()["properties"]["answers"]["maxItems"]
+
+
+def merge_answers(parts: list[list]) -> tuple[list, str | None]:
+    """The answers found in each batch as one list within the answer limit, and a note when some are left
+    out. An answer repeated in several batches is kept once with its quotes together; a list still over
+    the limit keeps answers taken in turn from every batch, so that what the last batches hold (code lists
+    in the appendices) is not what is dropped (spec v1.25)."""
+    merged, known, origins = [], {}, {}
+    for index, part in enumerate(parts):
+        for fact in part:
+            key = same_entry(fact)
+            if key in known:
+                if fact != known[key]:
+                    absorb(known[key], fact)
+                continue
+            known[key] = fact
+            origins[id(fact)] = index
+            merged.append(fact)
+    if len(merged) <= ANSWER_LIMIT:
+        return merged, None
+    batches = len({origins[id(fact)] for fact in merged})
+    note = (
+        f"{len(merged)} verified answers found; only {ANSWER_LIMIT} are kept (schema limit), "
+        f"{len(merged) - ANSWER_LIMIT} omitted"
+        + (f", taken in turn from the {batches} batches." if batches > 1 else " from the end.")
+    )
+    return spread(merged, ANSWER_LIMIT, origins), note

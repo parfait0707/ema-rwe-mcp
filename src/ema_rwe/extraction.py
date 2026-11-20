@@ -14,6 +14,7 @@ from .llm import (
     EXTRACTION_PROMPT,
     configured,
     extract_with_provider,
+    merge_answers,
     merge_extractions,
     translate_headings,
 )
@@ -365,19 +366,17 @@ class ExtractionMixin:
             ProtocolAnswer.model_validate(body)
             for _, body in sorted(self.repo.batches(*key, answer_kind(question)).items())
         ]
-        answers = [fact for part in parts for fact in part.answers]
+        answers, left_out = merge_answers([part.answers for part in parts])
         assessments = [fact for part in parts for fact in part.source_assessments]
         if not answers and not assessments:
             return False
         missing = [note for part in parts for note in part.missing_information]
-        if len(answers) > 30:
-            missing.insert(
-                0, f"{len(answers)} verified answers found; only the first 30 are kept (schema limit)."
-            )
+        if left_out:
+            missing.insert(0, left_out)
         if len(assessments) > 120:
             missing.insert(0, f"{len(assessments)} source assessments found; only the first 120 were kept.")
         merged = ProtocolAnswer(
-            answers=answers[:30],
+            answers=answers,
             source_assessments=assessments[:120],
             missing_information=with_notes(missing, []),
         )

@@ -2,7 +2,7 @@
 
 エンドユーザー（このMCPを使って研究を調べる人）向けの使い方は[README.md](README.md)を参照してください。本ファイルはこのMCPサーバー自体を開発・改修する人向けの内部仕様です。
 
-公開版は0.5.7（内部履歴では0.1〜1.19の仕様段階を経ている）。`docs/spec/v0.1.md`〜`v1.24.md`が仕様の正本、[docs/mcp-workflow.md](docs/mcp-workflow.md)が呼出元向け手順の正本、開発ルールは[AGENTS.md](AGENTS.md)です。
+公開版は0.5.7（内部履歴では0.1〜1.19の仕様段階を経ている）。`docs/spec/v0.1.md`〜`v1.25.md`が仕様の正本、[docs/mcp-workflow.md](docs/mcp-workflow.md)が呼出元向け手順の正本、開発ルールは[AGENTS.md](AGENTS.md)です。
 
 ## 開発用セットアップ（checkout）
 
@@ -299,7 +299,7 @@ CLIは`uv run ema-rwe <サブコマンド> --help`で確認できます（例：
 
 | ファイル | 内容 |
 |---|---|
-| [docs/spec/v0.1.md](docs/spec/v0.1.md)〜[v1.24.md](docs/spec/v1.24.md) | 段階的な追加要件の正本。対象変更の関連仕様を読む |
+| [docs/spec/v0.1.md](docs/spec/v0.1.md)〜[v1.25.md](docs/spec/v1.25.md) | 段階的な追加要件の正本。対象変更の関連仕様を読む |
 | [docs/mcp-workflow.md](docs/mcp-workflow.md) | 呼出元エージェント向けの完全な手順（英語） |
 | [docs/search-logic.md](docs/search-logic.md) | 検索語の展開・医薬品照合・順位付け |
 | [docs/benchmarks/20261009-codex-app.md](docs/benchmarks/20261009-codex-app.md) | Codex Appの4例とMCP実行時間の定義 |

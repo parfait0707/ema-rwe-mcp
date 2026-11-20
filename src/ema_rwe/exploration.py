@@ -6,7 +6,14 @@ from pydantic import ValidationError
 
 from .catalogue_update import versions
 from .domain import Extraction, ProtocolAnswer, RWEError, now, with_notes
-from .llm import SOURCE_ASSESSMENT_PROMPT, complete_json, configured, drop_invalid_evidence, split_batches
+from .llm import (
+    SOURCE_ASSESSMENT_PROMPT,
+    complete_json,
+    configured,
+    drop_invalid_evidence,
+    merge_answers,
+    split_batches,
+)
 from .pdf import (
     compact_spaces,
     extract_pages,
@@ -207,14 +214,15 @@ class Explorer:
                     ],
                 )
 
-        answers, assessments, missing, invalid = [], [], [], 0
-        for raw in await asyncio.gather(*(run(i, b) for i, b in enumerate(batches))):
+        answers, assessments, missing, invalid, batch_of = [], [], [], 0, {}
+        for index, raw in enumerate(await asyncio.gather(*(run(i, b) for i, b in enumerate(batches)))):
             try:
                 parsed = ProtocolAnswer.model_validate(drop_invalid_evidence(raw))
             except ValidationError:
                 invalid += 1
                 continue
             answers += parsed.answers
+            batch_of.update({fact.value: index for fact in parsed.answers if fact.value not in batch_of})
             assessments += parsed.source_assessments
             missing += parsed.missing_information
         kept, dropped = [], 0
@@ -230,14 +238,16 @@ class Explorer:
             )
         if invalid:
             missing.append(f"{invalid} provider batch response(s) did not match the answer schema.")
-        if len(kept) > 30:
-            missing.insert(
-                0, f"{len(kept)} verified answers found; only the first 30 are kept (schema limit)."
-            )
+        parts: dict[int, list] = {}
+        for fact in kept:  # the verified answers, back in the batches they came from
+            parts.setdefault(batch_of.get(fact.value, 0), []).append(fact)
+        kept, left_out = merge_answers([parts[index] for index in sorted(parts)])
+        if left_out:
+            missing.insert(0, left_out)
         if len(assessments) > 120:
             missing.insert(0, f"{len(assessments)} source assessments found; only the first 120 were kept.")
         answer = ProtocolAnswer(
-            answers=kept[:30],
+            answers=kept,
             source_assessments=pruned.source_assessments,
             missing_information=with_notes(missing, []),
         )
@@ -252,10 +262,8 @@ class Explorer:
         answer = answer.model_copy(
             update={"source_assessments": with_source_name_quotes(answer.source_assessments, pages)}
         )
-        validate_evidence(Extraction(key_notes=answer.answers[:20]), pages)
-        # Also validate answers beyond the Extraction key_notes limit.
-        if len(answer.answers) > 20:
-            validate_evidence(Extraction(key_notes=answer.answers[20:]), pages)
+        for start in range(0, len(answer.answers), 20):  # Extraction.key_notes holds 20 facts per check
+            validate_evidence(Extraction(key_notes=answer.answers[start : start + 20]), pages)
         validate_evidence(Extraction(source_assessments=answer.source_assessments), pages)
         result = {
             "status": "answered",

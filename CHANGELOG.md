@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- An answer to a question holds up to 60 facts (was 30), and the answers found batch by batch while a
+  protocol is read are merged like the analysis: the same answer once, and over the limit taken in turn
+  from every batch (spec v1.25). With `analyze_protocol(question=...)` readers found 34 to 57 answers in
+  the four reference protocols; the first 30 were kept, and the code lists of the appendices, read last,
+  were dropped.
 - Grading an extraction against the reference (spec v1.24) checks values, not only mentions: an item can
   list the values its fact must state (an age, a period, a code), counted as `correct` and required by
   `minimum.answer_correct`; an exclusion criterion extracted as an inclusion criterion is `misplaced` and
