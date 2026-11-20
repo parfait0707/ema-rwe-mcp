@@ -157,6 +157,9 @@ filters. Never pick a subset yourself.
   call it again for the same study until it returns the analysis; do not extract client-side.
   Finished batches are kept (`progress.reused` counts those not asked again), so calling it again after
   an `LLM_EXTRACTION_FAILED` or a server restart asks the provider only for the batches still missing.
+- `research_protocol` may return `status=answering` (the configured provider is still answering): call it
+  again with the same `protocol_id` and `question` until it returns the answer; do not explore client-side
+  meanwhile. Calls with the same question join the running exploration, also with `force=true`.
 - `analyze_protocol` may return `status=needs_heading_translation` for a protocol that is not in
   English (section roles are read from English heading words; only without a configured server LLM,
   which otherwise translates them itself). Resolve it before `research_protocol` on that protocol.

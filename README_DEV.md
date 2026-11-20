@@ -2,7 +2,7 @@
 
 エンドユーザー（このMCPを使って研究を調べる人）向けの使い方は[README.md](README.md)を参照してください。本ファイルはこのMCPサーバー自体を開発・改修する人向けの内部仕様です。
 
-公開版は0.5.7（内部履歴では0.1〜1.14の仕様段階を経ている）。`docs/spec/v0.1.md`〜`v1.14.md`が仕様の正本、[docs/mcp-workflow.md](docs/mcp-workflow.md)が呼出元向け手順の正本、開発ルールは[AGENTS.md](AGENTS.md)です。
+公開版は0.5.7（内部履歴では0.1〜1.15の仕様段階を経ている）。`docs/spec/v0.1.md`〜`v1.15.md`が仕様の正本、[docs/mcp-workflow.md](docs/mcp-workflow.md)が呼出元向け手順の正本、開発ルールは[AGENTS.md](AGENTS.md)です。
 
 ## 開発用セットアップ（checkout）
 
@@ -229,7 +229,7 @@ uv run ema-rwe cleanup-cache
 | `LLM_MAX_TOKENS` | `0`（LiteLLMのモデル表を参照） | `max_completion_tokens`の上限 |
 | `LLM_BATCH_CHARS` | `300000` | サーバー側抽出・全文一括回答の1バッチあたり文字数 |
 | `LLM_CONCURRENCY` | `4` | サーバー側抽出と、内部探索の全文一括回答の並列数 |
-| `LLM_WAIT_SECONDS` | `120` | `analyze_protocol`が`status=extracting`を返すまでの待機秒数 |
+| `LLM_WAIT_SECONDS` | `120` | `analyze_protocol`が`status=extracting`を、`research_protocol`が`status=answering`を返すまでの待機秒数。クライアントのツールのタイムアウトより短くします |
 
 ## 内部LiteLLM経路の設定例
 
@@ -277,7 +277,7 @@ CLIは`uv run ema-rwe <サブコマンド> --help`で確認できます（例：
 
 | ファイル | 内容 |
 |---|---|
-| [docs/spec/v0.1.md](docs/spec/v0.1.md)〜[v1.14.md](docs/spec/v1.14.md) | 段階的な追加要件の正本。対象変更の関連仕様を読む |
+| [docs/spec/v0.1.md](docs/spec/v0.1.md)〜[v1.15.md](docs/spec/v1.15.md) | 段階的な追加要件の正本。対象変更の関連仕様を読む |
 | [docs/mcp-workflow.md](docs/mcp-workflow.md) | 呼出元エージェント向けの完全な手順（英語） |
 | [docs/search-logic.md](docs/search-logic.md) | 検索語の展開・医薬品照合・順位付け |
 | [docs/benchmarks/20261009-codex-app.md](docs/benchmarks/20261009-codex-app.md) | Codex Appの4例とMCP実行時間の定義 |

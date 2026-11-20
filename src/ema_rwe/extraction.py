@@ -232,8 +232,11 @@ class ExtractionMixin:
             "instruction": "Call analyze_protocol again for this study.",
         }
 
-    async def research_protocol(self, protocol_id: str, question: str, force: bool = False):
-        return await self.explorer.research(protocol_id, question, force)
+    async def research_protocol(
+        self, protocol_id: str, question: str, force: bool = False, poll: bool = True
+    ):
+        """poll=False waits for a provider's answer however long it takes (see Explorer.research)."""
+        return await self.explorer.research(protocol_id, question, force, poll)
 
     async def cache_protocol_answer(
         self, protocol_id: str, question: str, answer: ProtocolAnswer, reading: str | None = None

@@ -100,7 +100,7 @@ uv sync --extra dev --extra llm
 
 `LLM_BACKEND=litellm` と `LLM_MODEL=<provider>/<model-id>` を設定する。内部の `research_protocol` は、まず質問に関連する章をまとめて読み、一括で回答を求める（全文ルート。`LLM_CONCURRENCY`並列）。それで回答も判定も得られなかったときだけ、JSONで search / outline / read / finish を選び、観測結果を見て次の行動を決める段階的な探索に移る。外部ページ・シェル・任意パスにはアクセスせず、指定IDのローカルPDFだけを探索する。通常の共通抽出も同じLiteLLM接続を使うが、共通抽出自体は関連章のバッチ処理。
 
-`LLM_MAX_STEPS` は既定8、上限20。各API呼出しのタイムアウトは、`LLM_BACKEND=litellm`で600秒、`compatible`で180秒。出力上限は`LLM_MAX_TOKENS`（0ならLiteLLMのモデル表、引けなければ16,000トークン）。APIリトライは0回。上限に到達した場合は `exploration_limit_reached` と探索履歴を返し、未完了の回答は保存しない。回答の引用・ページ・セクションを検証してから保存し、同じPDF ID・質問・モデル／backend／base URL・探索の版（`EXPLORER_VERSION`）・臨床展開の版（利用者辞書とEMA医薬品辞書の版を含む）、および保存された見出しの英訳では再利用する。
+内部の探索はサーバーのタスクとして動き、`research_protocol` は `LLM_WAIT_SECONDS`（既定120秒）を超えると `status=answering` を返す。同じ `protocol_id` と質問でもう一度呼ぶと、動いている探索に合流して結果を受け取る（spec v1.15。CLIの `ask` は終わるまで待つ）。`LLM_MAX_STEPS` は既定8、上限20。各API呼出しのタイムアウトは、`LLM_BACKEND=litellm`で600秒、`compatible`で180秒。出力上限は`LLM_MAX_TOKENS`（0ならLiteLLMのモデル表、引けなければ16,000トークン）。APIリトライは0回。上限に到達した場合は `exploration_limit_reached` と探索履歴を返し、未完了の回答は保存しない。回答の引用・ページ・セクションを検証してから保存し、同じPDF ID・質問・モデル／backend／base URL・探索の版（`EXPLORER_VERSION`）・臨床展開の版（利用者辞書とEMA医薬品辞書の版を含む）、および保存された見出しの英訳では再利用する。
 
 MCP設定の `env` に入れる共通設定例（モデルIDは利用可能なものに置き換える）:
 

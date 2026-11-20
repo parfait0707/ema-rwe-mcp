@@ -319,7 +319,10 @@ async def run(args):
                     args.max_chars,
                 )
             case "ask":
-                return await service.research_protocol(args.protocol_id, args.question, args.force)
+                # One process per call: wait for the provider instead of returning status=answering.
+                return await service.research_protocol(
+                    args.protocol_id, args.question, args.force, poll=False
+                )
             case "study":
                 return (await service.get_study(args.study_id, args.refresh)).model_dump()
             case "protocol":
