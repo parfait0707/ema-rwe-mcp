@@ -183,7 +183,8 @@ class Extraction(Model):
 
 
 class ProtocolAnswer(Model):
-    answers: list[Fact] = Field(default_factory=list, max_length=30)
+    # 60: the answers found batch by batch while a long protocol is read add up (spec v1.25)
+    answers: list[Fact] = Field(default_factory=list, max_length=60)
     source_assessments: list[SourceAssessment] = Field(default_factory=list, max_length=120)
     missing_information: list[str] = Field(default_factory=list, max_length=30)
 

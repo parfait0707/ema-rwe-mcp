@@ -467,6 +467,24 @@ async def test_an_empty_final_call_after_the_merge_keeps_the_saved_analysis(serv
     assert again["status"] == "analyzed"
 
 
+async def test_an_answer_of_more_than_forty_facts_is_checked_and_saved(service):
+    """The answer limit is 60 (spec v1.25); every fact is verified, twenty at a time."""
+    from ema_rwe.domain import Fact, ProtocolAnswer
+
+    protocol = (await service.get_protocol("123"))["protocol"]["protocol_id"]
+    evidence = sample_analysis().study_design.evidence
+    answer = ProtocolAnswer(answers=[Fact(value=f"statement {i}", evidence=evidence) for i in range(45)])
+    saved = await service.cache_protocol_answer(protocol, "What is the design?", answer)
+    assert saved["status"] == "answered" and len(saved["answer"]["answers"]) == 45
+    wrong = evidence[0].model_copy(update={"quote": "A sentence the protocol does not contain at all."})
+    answer.answers[44] = Fact(value="statement 44", evidence=[wrong])
+    with pytest.raises(RWEError) as error:
+        await service.cache_protocol_answer(protocol, "What is the design, again?", answer)
+    assert error.value.code == "EVIDENCE_INVALID"
+    with pytest.raises(ValidationError):
+        ProtocolAnswer(answers=[Fact(value=f"statement {i}", evidence=evidence) for i in range(61)])
+
+
 def test_catalogue_status_reports_total_studies_separately_from_export_counts(service):
     from test_source_types import seed
 

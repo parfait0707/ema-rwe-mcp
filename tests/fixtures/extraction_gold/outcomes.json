@@ -301,9 +301,7 @@
      "pattern": "Survival rate at 1-year",
      "accept": "survival rate|1.year",
      "values": [
-      "1.year",
-      "2.year",
-      "3.year"
+      "1\\D{0,12}2\\D{0,12}3"
      ]
     },
     {

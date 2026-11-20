@@ -525,3 +525,30 @@ def test_entries_repeated_across_batches_merge_and_an_overfull_list_keeps_every_
         data_sources=[DataSource(value="Danish Cancer Registry", usage="used", evidence=quote("u"))]
     )
     assert merge_extractions([second, used]).data_sources[0].usage == "planned"
+
+
+def test_answers_found_batch_by_batch_keep_the_last_batches():
+    """spec v1.25: four readers of the reference run found 34 to 57 answers over their batches; the first
+    30 were kept, and the code lists of the appendices, read last, were what was dropped."""
+    from ema_rwe.domain import Evidence, Fact, ProtocolAnswer
+    from ema_rwe.llm import ANSWER_LIMIT, merge_answers
+
+    def answer(text, page=1):
+        return Fact(value=text, evidence=[Evidence(page=page, quote=f"The protocol says {text} here.")])
+
+    assert ANSWER_LIMIT == 60 == ProtocolAnswer.model_json_schema()["properties"]["answers"]["maxItems"]
+    methods = [answer(f"definition {i}") for i in range(40)]
+    appendix = [answer(f"code {i}", 90) for i in range(8)] + [answer("Definition 0.", 91)]
+    merged, note = merge_answers([methods, appendix])
+    # 48 answers after the repeated one is folded into its first statement: all kept
+    assert note is None and len(merged) == 48 and [e.page for e in merged[0].evidence] == [1, 91]
+    assert {fact.value for fact in merged} >= {f"code {i}" for i in range(8)}
+    # Over the limit, both batches give in turn: the appendix is not what is left out
+    long, note = merge_answers([[answer(f"definition {i}") for i in range(70)], appendix[:8]])
+    assert len(long) == 60 and sum(fact.value.startswith("code") for fact in long) == 8
+    assert note == (
+        "78 verified answers found; only 60 are kept (schema limit), 18 omitted, "
+        "taken in turn from the 2 batches."
+    )
+    one, note = merge_answers([[answer(f"definition {i}") for i in range(61)]])
+    assert len(one) == 60 and note.endswith("1 omitted from the end.")
