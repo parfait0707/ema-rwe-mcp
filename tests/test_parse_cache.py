@@ -8,7 +8,7 @@ import pytest
 from test_core import sample_analysis
 
 from ema_rwe import pdf
-from ema_rwe.domain import DataSource, Evidence, Extraction, RWEError
+from ema_rwe.domain import DataSource, Evidence, Extraction, Fact, RWEError
 from ema_rwe.pdf import (
     compact_spaces,
     extract_pages,
@@ -107,6 +107,25 @@ def test_reader_text_loses_layout_spaces_and_its_quotes_still_verify():
         value="Example Cancer Registry", usage="planned", evidence=[Evidence(page=1, quote=quote)]
     )
     validate_evidence(Extraction(data_sources=[source]), pages)
+
+
+@pytest.mark.parametrize(
+    "quote",
+    [
+        "International Classification of Diseases for Oncology, 3rd version (ICD-O-3) (31)",  # word joined
+        "International Classification of Diseases for Oncology, 3rd version (ICD-O- 3) (31)",  # as printed
+    ],
+)
+def test_a_word_broken_after_a_hyphen_at_a_line_end_verifies_joined_or_as_printed(quote):
+    """Issue #106: the PDF breaks 'ICD-O-3' after its hyphen; readers write the word whole."""
+    pages = extract_pages(
+        one_page(
+            "9.4 Outcomes\nTumours are coded using the International Classification of Diseases for Oncology, "
+            "3rd version (ICD-O-\n3) (31)."
+        )
+    )
+    fact = Fact(value="ICD-O-3", evidence=[Evidence(page=1, quote=quote)])
+    validate_evidence(Extraction(key_notes=[fact]), pages)
 
 
 @pytest.mark.parametrize(
