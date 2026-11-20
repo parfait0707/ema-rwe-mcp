@@ -112,7 +112,7 @@ PDF検索にはさらに`protocol_id`を指定します。CLIも`--code "ICD-10:
 
 ### 医薬品欄が空の研究の補完（v1.2、v1.3）
 
-カタログの医薬品欄が空の研究には、利用者が実行する`ema-rwe backfill-protocols`で医薬品を補っています。補った値はカタログとは別の`protocol_observations`表にあり、索引の医薬品の列（名前と記録したATCコード）で検索され、候補の`observed_exposures`に出所付きで返ります。同梱DBは、医薬品欄が空の712件のうち215件を補った結果を含みます。
+カタログの医薬品欄が空の研究には、利用者が実行する`ema-rwe backfill-protocols`で医薬品を補っています。補った値はカタログとは別の`protocol_observations`表にあり、索引の医薬品の列（名前と記録したATCコード）で検索され、候補の`observed_exposures`に出所付きで返ります。同梱DBは、医薬品欄が空の716件のうち219件を補った結果を含みます。
 
 - **`catalogue_text`**：題名・説明・目的に書かれた既知の医薬品名（カタログの第5レベルの名称、EMA辞書のINNと1語の製品名）。研究の略称（`SONATA study`）、測定される物質（`fractional exhaled nitric oxide`）、受容体や阻害薬のクラス名の一部（`angiotensin II receptor blockers`）は除きます。比較対照や除外基準の薬であることがあります。
 - **`protocol_pass_table`**：プロトコルのPASS情報表の「Active substance」「Medicinal product」欄にある既知の医薬品名、カタログのクラス名、欄に書かれたATCコード（ページ付き）。辞書に無い薬は、欄のATCコードで記録します。欄の自由記述は保存しません。プロトコル本文のATCコードは、除外基準・アウトカム・共変量にも使われるため記録しません。

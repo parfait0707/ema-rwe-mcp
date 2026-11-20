@@ -4,7 +4,8 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .env
-# data/: only the committed catalogue DB and the empty import folders are tracked.
+# data/: only the catalogue DB, the medicines dictionary, the dictionary format example, the related-term
+# decisions and the empty import folders are tracked.
 data/*
 !data/ema.sqlite3
 !data/ema-medicines.json
