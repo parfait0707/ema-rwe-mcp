@@ -154,9 +154,12 @@ def test_the_reference_files_are_well_formed_and_hold_no_protocol_text():
     golds = {gold["name"]: gold for gold in evaluation.load_all()}
     assert set(golds) == {"eligibility", "outcomes"} and golds["eligibility"]["question"] == QUESTION
     counts = {name: sum(len(p["items"]) for p in gold["protocols"]) for name, gold in golds.items()}
-    assert counts == {"eligibility": 51, "outcomes": 31}
+    assert counts == {"eligibility": 60, "outcomes": 40}
     for gold in golds.values():
         assert 0 < gold["minimum"]["analysis_found"] <= gold["minimum"]["answer_found"] <= 1
+        assert 0 < gold["minimum"]["answer_correct"] <= gold["minimum"]["answer_found"]
+        assert gold["maximum"] == {"misplaced": 0}
+        assert set(gold.get("kind_fields", {})) <= set(gold["kinds"])
         assert gold["analysis_fields"] and len(gold["protocols"]) == 4
         for protocol in gold["protocols"]:
             assert len(protocol["sha256"]) == 64 and protocol["document_url"].startswith(
@@ -165,7 +168,7 @@ def test_the_reference_files_are_well_formed_and_hold_no_protocol_text():
             ids = [item["id"] for item in protocol["items"]]
             assert len(ids) == len(set(ids))
             for item in protocol["items"]:
-                assert set(item) - {"accept", "beyond_first_search"} == {
+                assert set(item) - {"accept", "beyond_first_search", "values"} == {
                     "id",
                     "kind",
                     "label",
@@ -261,3 +264,50 @@ def test_the_neighbours_of_a_short_section_named_for_the_question_follow_it():
     top = [hit("b", "9.3 Outcomes", 9), hit("c", "9.4 Data sources", 3)]
     raise_neighbours(top, ["outcome"])
     assert top[1]["score"] == 3
+
+
+def test_grading_checks_required_values_the_kind_and_lists_what_matches_nothing():
+    """spec v1.24: 'aged 16 or older' touches the age criterion but is not correct; an exclusion criterion
+    listed as an inclusion criterion is misplaced; a fact that matches no item is listed, not failed."""
+    protocol = reference()
+    protocol["items"][0]["accept"] = "years or older|adults"
+    protocol["items"][0]["values"] = ["18"]
+    protocol["items"][1]["values"] = ["12", "index"]
+    kinds = {"inclusion": "cohort.inclusion_criteria", "exclusion": "cohort.exclusion_criteria"}
+    answer = {
+        "answers": [
+            fact("Patients aged 16 years or older", "Patients aged 18 years or older at the index date."),
+            fact("12 months of data", "At least 12 months of data"),
+            fact("the 12 months of data end at the index date", "At least 12 months of data"),
+            fact("The study runs in three countries", "The paragraph continues with further explanation"),
+        ]
+    }
+    analysis = {
+        "cohort": {
+            "inclusion_criteria": [
+                fact("adults", "Patients aged 21 years or older"),
+                fact("no kidney cancer", "A history of kidney cancer on or before the index date."),
+            ],
+            "exclusion_criteria": [fact("Maintenance dialysis", "Maintenance dialysis on or before")],
+        }
+    }
+    graded = evaluation.grade_protocol(protocol, answer, analysis, kind_fields=kinds)
+    # The reader wrote 16 beside a quote that says 18: found, not correct. '12' and 'index' are stated by
+    # one of the two facts of the second item.
+    assert graded["answer_found"] == 2 and graded["answer_correct"] == 1 and graded["wrong_value"] == ["I1"]
+    assert graded["extra_in_answer"] == ["The study runs in three countries"]
+    # In the analysis the age is given as 21, and the kidney-cancer exclusion stands among the inclusions
+    # 'adults' states no number, so its quote speaks for it: 21, not 18
+    assert graded["analysis_found"] == 3 and graded["analysis_correct"] == 2
+    right = {"answers": [fact("adults", "Patients aged 18 years or older at the index date.")]}
+    assert evaluation.grade_protocol(protocol, right, None)["answer_correct"] == 1
+    assert graded["misplaced"] == ["E1"] and graded["extra_in_analysis"] == []
+    wrong = {"answers": [fact("Patients aged 16 years or older", "Patients aged sixteen years or older")]}
+    assert evaluation.grade_protocol(protocol, wrong, None)["wrong_value"] == ["I1"]
+
+
+def test_a_required_value_that_the_page_does_not_hold_fails_the_check():
+    bad = reference()
+    bad["items"][0]["values"] = ["18", "21"]
+    problems = evaluation.check_protocol(bad, protocol_pdf(), QUESTION)["items"][0]["problems"]
+    assert problems == ["value '21' is not on page 1"]

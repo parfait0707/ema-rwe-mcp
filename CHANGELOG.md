@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Grading an extraction against the reference (spec v1.24) checks values, not only mentions: an item can
+  list the values its fact must state (an age, a period, a code), counted as `correct` and required by
+  `minimum.answer_correct`; an exclusion criterion extracted as an inclusion criterion is `misplaced` and
+  fails; facts that match no reference item are listed (`--verbose`). The reference gains 18 harder items
+  (appendix code lists, thresholds in variable definitions, rows of the sensitivity-analysis table): 100
+  items in all. Scripts and reference only; the server is unchanged.
 - Merging the batches of an extraction (spec v1.23): list entries that say the same thing in several
   batches (a data source named in each chapter) become one entry with their quotes together, and a list
   still over its schema limit keeps entries taken in turn from every batch instead of the first batches'

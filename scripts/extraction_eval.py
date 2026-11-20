@@ -120,6 +120,12 @@ def check_protocol(protocol: dict, data: bytes, question: str, budget: int = 400
         if quote is None:
             results.append({"id": item["id"], "problems": [f"not found on page {item['page']}"]})
             continue
+        page_text = next(p.text for p in pages if p.page == item["page"])
+        problems += [
+            f"value {value!r} is not on page {item['page']}"
+            for value in item.get("values", [])
+            if not matches(value, page_text)
+        ]
         inside = normalize_quote(quote)
         holding = [c for c in chunks if c["page"] == item["page"] and inside in normalize_quote(c["text"])]
         if not holding:
@@ -263,43 +269,92 @@ def field(analysis: dict, path: str) -> list[dict]:
 
 
 def grade_protocol(
-    protocol: dict, answer: dict | None, analysis: dict | None, fields: tuple[str, ...] = COHORT_FIELDS
+    protocol: dict,
+    answer: dict | None,
+    analysis: dict | None,
+    fields: tuple[str, ...] = COHORT_FIELDS,
+    kind_fields: dict[str, str] | None = None,
 ) -> dict:
-    """How many reference items a saved answer and the analysis blocks of the topic contain. found: the
-    item's key words are in a fact's value or quotes; supported: in that fact's own verbatim quotes."""
+    """How a saved answer and the analysis blocks of the topic compare with the reference items.
+    found      the item's key words are in a fact's value or quotes
+    supported  ... in that fact's own verbatim quotes
+    correct    found, and every value the item requires (a number, a code) is stated by a fact that matches
+               it: in what the reader wrote, or in its quote when the reader wrote no number at all
+    misplaced  the analysis holds the item only under another kind's field (an exclusion criterion listed
+               as an inclusion criterion), for references that give kind_fields
+    extra      facts that match no reference item: not errors by themselves, listed to be looked at"""
     answers = [facts_text(f) for f in (answer or {}).get("answers", [])]
-    extracted = [facts_text(f) for path in fields for f in field(analysis or {}, path)]
-    rows = []
-    for item in protocol["items"]:
+    by_field = {path: [facts_text(f) for f in field(analysis or {}, path)] for path in fields}
+    extracted = [fact for facts in by_field.values() for fact in facts]
+
+    def holds(facts: list, item: dict) -> tuple[bool, bool]:
         # A reader may word the item otherwise, or quote another of its lines: `accept` lists its key words.
         wanted = item.get("accept", item["pattern"])
-        hits = [(value, quotes) for value, quotes in answers if matches(wanted, value + " " + quotes)]
+        hits = [(value, quotes) for value, quotes in facts if matches(wanted, value + " " + quotes)]
+
+        def stated(required: str) -> bool:
+            # What the reader wrote must carry the value. A quote stands in only for a value that states no
+            # number at all ('adults', quoting '18 years'): '16 years' beside a quote of '18 years' is wrong.
+            return any(
+                matches(required, value) or (not re.search(r"\d", value) and matches(required, quotes))
+                for value, quotes in hits
+            )
+
+        return bool(hits), bool(hits) and all(stated(v) for v in item.get("values", []))
+
+    rows = []
+    for item in protocol["items"]:
+        wanted = item.get("accept", item["pattern"])
+        found, correct = holds(answers, item)
+        in_analysis, analysis_correct = holds(extracted, item)
+        own = (kind_fields or {}).get(item["kind"])
         rows.append(
             {
                 "id": item["id"],
-                "answer_found": bool(hits),
-                "answer_supported": any(matches(wanted, quotes) for _, quotes in hits),
-                "analysis_found": any(matches(wanted, v + " " + q) for v, q in extracted),
+                "answer_found": found,
+                "answer_supported": any(
+                    matches(wanted, q) for v, q in answers if matches(wanted, v + " " + q)
+                ),
+                "answer_correct": correct,
+                "analysis_found": in_analysis,
+                "analysis_correct": analysis_correct,
+                "misplaced": bool(own) and in_analysis and not holds(by_field.get(own, []), item)[0],
             }
         )
-    total = len(rows)
+
+    def extra(facts: list) -> list[str]:
+        accepted = [item.get("accept", item["pattern"]) for item in protocol["items"]]
+        return [
+            value[:80]
+            for value, quotes in facts
+            if not any(matches(a, value + " " + quotes) for a in accepted)
+        ]
+
+    counted = ("answer_found", "answer_supported", "answer_correct", "analysis_found", "analysis_correct")
     return {
         "study_id": protocol["study_id"],
-        "items": total,
+        "items": len(rows),
         "answered": answer is not None,
         "analysed": analysis is not None,
-        **{k: sum(r[k] for r in rows) for k in ("answer_found", "answer_supported", "analysis_found")},
+        **{k: sum(r[k] for r in rows) for k in counted},
         "missing": [r["id"] for r in rows if not r["answer_found"]],
+        "wrong_value": [r["id"] for r in rows if r["answer_found"] and not r["answer_correct"]],
         "missing_in_analysis": [r["id"] for r in rows if not r["analysis_found"]],
+        "misplaced": [r["id"] for r in rows if r["misplaced"]],
+        "extra_in_answer": extra(answers),
+        "extra_in_analysis": extra(extracted),
     }
 
 
-def grade(settings: Settings, gold: dict) -> int:
+def grade(settings: Settings, gold: dict, verbose: bool = False) -> int:
     """Grade what the database holds for the reference protocols and question."""
     service = Service(settings)
-    minimum, status, graded = gold["minimum"], 0, 0
+    minimum, maximum, status, graded = gold["minimum"], gold.get("maximum", {}), 0, 0
+    fields = tuple(gold.get("analysis_fields", COHORT_FIELDS))
     print(f"{gold.get('name', 'reference')}: {gold['question']}")
-    print("  study     answer found/supported   analysis found   of")
+    print(
+        "  study   answer found/supported/correct   analysis found/correct   of   misplaced   extra answer/analysis"
+    )
     for protocol in gold["protocols"]:
         pid = protocol_id(protocol)
         saved = service.repo.analysis(protocol["study_id"])
@@ -311,34 +366,45 @@ def grade(settings: Settings, gold: dict) -> int:
                 (service.explorer.key(pid, gold["question"], ""),),
             ).fetchone()
         answer = json.loads(row[0])["answer"] if row else None
-        fields = tuple(gold.get("analysis_fields", COHORT_FIELDS))
-        result = grade_protocol(protocol, answer, saved["analysis"] if saved else None, fields)
+        result = grade_protocol(
+            protocol, answer, saved["analysis"] if saved else None, fields, gold.get("kind_fields")
+        )
         if not result["answered"] and not result["analysed"]:
-            print(f"  {protocol['study_id']:>8}  nothing saved for this protocol")
+            print(f"  {protocol['study_id']:>6}  nothing saved for this protocol")
             status = 1
             continue
         graded += 1
-        low = []
-        if result["answered"] and result["answer_found"] < minimum["answer_found"] * result["items"]:
-            low.append("answer")
-        if result["analysed"] and result["analysis_found"] < minimum["analysis_found"] * result["items"]:
-            low.append(f"analysis (not in it: {result['missing_in_analysis']})")
+        low, total = [], result["items"]
+        if result["answered"]:
+            if result["answer_found"] < minimum["answer_found"] * total:
+                low.append(f"answer lacks {result['missing']}")
+            if result["answer_correct"] < minimum.get("answer_correct", 0) * total:
+                low.append(f"answer without the required value {result['wrong_value']}")
+        if result["analysed"] and result["analysis_found"] < minimum["analysis_found"] * total:
+            low.append(f"analysis lacks {result['missing_in_analysis']}")
+        if len(result["misplaced"]) > maximum.get("misplaced", total):
+            low.append(f"under the wrong kind {result['misplaced']}")
         if not result["answered"] or not result["analysed"]:
             low.append("no answer saved" if not result["answered"] else "no analysis saved")
         status |= 1 if low else 0
         print(
-            f"  {protocol['study_id']:>8}  {result['answer_found']:>12}/{result['answer_supported']:<11}"
-            f"{result['analysis_found']:>15}   {result['items']}"
-            + (
-                f"   BELOW THE MINIMUM: {', '.join(low)}; not in the answer: {result['missing']}"
-                if low
-                else ""
-            )
+            f"  {protocol['study_id']:>6}  {result['answer_found']:>12}/{result['answer_supported']}/"
+            f"{result['answer_correct']:<14}{result['analysis_found']:>10}/{result['analysis_correct']:<12}"
+            f"{total:>3}{len(result['misplaced']):>9}{len(result['extra_in_answer']):>14}/"
+            f"{len(result['extra_in_analysis'])}" + (f"   BELOW: {'; '.join(low)}" if low else "")
         )
+        if verbose:
+            for key in ("missing", "wrong_value", "missing_in_analysis", "misplaced"):
+                if result[key]:
+                    print(f"          {key}: {result[key]}")
+            for key in ("extra_in_answer", "extra_in_analysis"):
+                for value in result[key]:
+                    print(f"          {key}: {value}")
     print(
         f"extraction grade: {graded}/{len(gold['protocols'])} protocols graded; minimum "
-        f"{minimum['answer_found']:.0%} of the items in the answer, {minimum['analysis_found']:.0%} in "
-        f"the analysis ({', '.join(gold.get('analysis_fields', COHORT_FIELDS))})"
+        f"{minimum['answer_found']:.0%} of the items in the answer, {minimum.get('answer_correct', 0):.0%} with "
+        f"their values, {minimum['analysis_found']:.0%} in the analysis ({', '.join(fields)}); "
+        f"at most {maximum.get('misplaced', 'any')} under the wrong kind"
     )
     return status
 
@@ -378,6 +444,9 @@ def main() -> int:
     parser.add_argument(
         "--online", action="store_true", help="catalogue: ask EMA for each study's latest protocol"
     )
+    parser.add_argument(
+        "--verbose", action="store_true", help="grade: list the items and facts behind the counts"
+    )
     parser.add_argument("--gold", type=Path, help="one reference file (default: every file of the folder)")
     args = parser.parse_args()
     settings, golds = Settings(), [load(args.gold)] if args.gold else load_all()
@@ -398,7 +467,7 @@ def main() -> int:
                     return asyncio.run(fetch(online, gold))
                 return asyncio.run(catalogue(online, gold, True))
         case "grade":
-            return max(grade(settings, one) for one in golds)
+            return max(grade(settings, one, args.verbose) for one in golds)
         case "run":
             return asyncio.run(run(settings, golds))
     return 2
