@@ -916,6 +916,37 @@ def reading_order(chunks: list[dict]) -> list[dict]:
     return sorted(body + appendices, key=lambda c: (c["page"], c["section_id"]))
 
 
+CONTINUATION_PAGES = 3
+
+
+def with_continuations(hits: list[dict], chunks: list[dict]) -> list[dict]:
+    """hits, each followed by the pages on which its section goes on (spec v1.20). A section that runs over
+    several pages is one passage to read, but its later pages often hold none of the query's words (the
+    second half of a list of criteria), so on their own they rank too low to be returned. At most
+    CONTINUATION_PAGES pages before and after a hit, of the same titled section, on consecutive pages; they
+    carry the hit's score, `continues` naming it, and do not count towards the limit."""
+    position = {c["section_id"]: i for i, c in enumerate(chunks)}
+    seen = {h["section_id"] for h in hits}
+    result = []
+    for hit in hits:
+        at, before, after = position.get(hit["section_id"]), [], []
+        for step, found in ((-1, before), (1, after)):
+            j = at
+            while at is not None and hit["section"] and len(found) < CONTINUATION_PAGES:
+                j += step
+                if not 0 <= j < len(chunks):
+                    break
+                chunk, previous = chunks[j], chunks[j - step]
+                if chunk["section"] != hit["section"] or abs(chunk["page"] - previous["page"]) > 1:
+                    break
+                if chunk["section_id"] in seen:
+                    continue  # a hit of its own, returned at its own rank
+                seen.add(chunk["section_id"])
+                found.append(dict(chunk, score=hit["score"], matched_terms=[], continues=hit["section_id"]))
+        result += [*reversed(before), hit, *after]
+    return result
+
+
 def search_sections(
     chunks: list[dict], query: str, limit: int = 10, synonyms: list[str] | None = None, codes=None
 ) -> dict:
@@ -936,7 +967,7 @@ def search_sections(
     hits.sort(key=lambda c: (-c["score"], c["page"], c["section_id"]))
     return {
         "query_expansion": expansion,
-        "results": hits[:limit],
+        "results": with_continuations(hits[:limit], chunks),
         "total_hits": len(hits),
         "note": "Searches all local PDF text, including sections excluded from initial extraction; verify role and neighbouring sections.",
     }

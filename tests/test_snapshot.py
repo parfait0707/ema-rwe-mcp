@@ -144,3 +144,24 @@ def test_the_script_keeps_the_verified_database_for_an_application_release(expor
         [sys.executable, script, "--unpack-to", bundled], capture_output=True, text=True, check=False
     )
     assert alone.returncode == 2  # --unpack-to without --verify
+
+
+def test_a_built_snapshot_is_held_back_when_the_extraction_reference_fails(exports, tmp_path):
+    """The monthly build runs the extraction reference on the new catalogue (spec v1.20). The fixture
+    catalogue lacks the reference studies, so the build says not to publish; the files stay as hashed."""
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    script = Path(__file__).resolve().parents[1] / "scripts" / "build_catalogue_snapshot.py"
+    build = [sys.executable, script, "20261101", "--import-dir", exports, "--observations-from", "none"]
+    held = subprocess.run([*build, "--out", tmp_path / "held"], capture_output=True, text=True, check=False)
+    assert held.returncode == 1 and "do not publish the snapshot" in held.stderr
+    assert "not in the catalogue as a non-interventional study" in held.stderr
+    manifest = json.loads(held.stdout)  # stdout is the manifest alone
+    database = tmp_path / "held" / manifest["database"]["name"]
+    assert sha256_file(database) == manifest["database"]["sha256"]
+    skipped = subprocess.run(
+        [*build, "--out", tmp_path / "skipped", "--skip-gold"], capture_output=True, text=True, check=False
+    )
+    assert skipped.returncode == 0 and "extraction reference" not in skipped.stderr
