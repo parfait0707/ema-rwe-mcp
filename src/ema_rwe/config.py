@@ -12,6 +12,8 @@ SEEDED_FILES = ("ema.sqlite3", "ema-medicines.json")
 # The caller procedure, served as an MCP resource: docs/ in a checkout, bundled in the wheel otherwise.
 WORKFLOW_DOC = "mcp-workflow.md"
 WORKFLOW_URI = "ema-rwe://docs/mcp-workflow"
+# Where the monthly catalogue snapshots are published (releases tagged data-YYYYMMDD of this project).
+CATALOGUE_RELEASES_URL = "https://api.github.com/repos/parfait0707/ema-rwe-mcp/releases?per_page=100"
 _refreshed: set[Path] = set()
 
 
@@ -63,6 +65,13 @@ class Settings:
     timeout: float = field(default_factory=lambda: float(os.getenv("EMA_HTTP_TIMEOUT_SECONDS", "30")))
     ttl: int = field(default_factory=lambda: int(os.getenv("EMA_CACHE_TTL_SECONDS", "2592000")))
     catalogue_ttl: int = field(default_factory=lambda: int(os.getenv("EMA_CATALOGUE_TTL_SECONDS", "2592000")))
+    # Catalogue snapshots from GitHub releases: apply (verify and take a newer one at server start), check
+    # (only report it in catalogue_status) or off. Only the database seeded in the user data folder is
+    # updated without being asked; `ema-rwe update-catalogue` updates any.
+    catalogue_update: str = field(default_factory=lambda: os.getenv("EMA_CATALOGUE_UPDATE", "apply"))
+    catalogue_releases_url: str = field(
+        default_factory=lambda: os.getenv("EMA_CATALOGUE_RELEASES_URL", CATALOGUE_RELEASES_URL)
+    )
     max_screening_studies: int = field(
         default_factory=lambda: int(os.getenv("EMA_MAX_SCREENING_STUDIES", "5"))
     )
@@ -109,6 +118,8 @@ class Settings:
     )
 
     def __post_init__(self):
+        if self.catalogue_update not in ("apply", "check", "off"):
+            raise ValueError("EMA_CATALOGUE_UPDATE must be apply, check or off.")
         for name in ("max_screening_studies", "max_comparison_studies", "max_listed_candidates"):
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 1000:

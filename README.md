@@ -111,10 +111,13 @@ uvがあれば、cloneせずにMCPクライアントへ登録できます。カ�
 | `LLM_BACKEND` | `compatible` | `compatible`（`LLM_BASE_URL`のOpenAI互換エンドポイント）または`litellm`。`LLM_MODEL`と、`litellm`または`LLM_BASE_URL`の設定が必要 |
 | `LLM_MODEL` / `LLM_BASE_URL` / `LLM_API_KEY` | (空) | 接続先LLMの指定 |
 | `LLM_REASONING_EFFORT` / `LLM_MAX_TOKENS` | (空) / `0` | reasoningモデルの強度・出力上限 |
+| `EMA_CATALOGUE_UPDATE` | `apply` | カタログのスナップショットの取り込み。`apply`（自動で取り込む）、`check`（知らせるだけ）、`off` |
 | `EMA_PROTOCOL_DIR` | DBと同じ親フォルダ内の`protocols` | 取得したPDFの保存先 |
 | `EMA_TERMINOLOGY_PATH` | (空。データフォルダ内`dictionaries/*.json`があれば読む) | 独自の言い換え・マスターの辞書（任意、書式は`data/terminology.example.json`） |
 
-## カタログの更新（任意）
+## カタログの更新
+
+月ごとのカタログは、このプロジェクトの GitHub Releases（`data-YYYYMMDD`）にスナップショットとして公開されます。既定の保存先では、サーバーが起動時に新しいスナップショットを確かめ（1日に1回まで）、検証してから自動で取り込みます。設定の書き換えや再起動は要りません。保存済みの解析・回答・PDFは残ります。通信先は GitHub だけで、検索の途中では通信しません。`EMA_CATALOGUE_UPDATE=check`で通知だけ、`off`で確認なしにできます。`EMA_DB_PATH`で指定したDBは自動では更新しないので、`uvx --from git+https://github.com/parfait0707/ema-rwe-mcp ema-rwe update-catalogue`（checkout では`uv run ema-rwe update-catalogue`）を実行してください。状態は`catalogue_status`の`catalogue_snapshot`と`update`で確認できます。
 
 同梱DBは**2026-11-02の公式CSV export**から作成した非介入研究3,343件です（claims 824件、ehr 926件、registry 575件、タグなし＝others 1,515件。種別は重複します）。新しい版がより新しいDBを同梱している場合、既定の保存先では起動時にカタログを更新し、保存済み解析・回答を保持します。`EMA_DB_PATH`で指定したDBは自動更新の対象外です。
 

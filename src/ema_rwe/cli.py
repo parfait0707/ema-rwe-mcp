@@ -6,6 +6,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
+from .catalogue_update import FAILED, update_catalogue
 from .config import Settings
 from .domain import AnalogousTerm, CodeCandidate, Extraction, ProtocolAnswer, RWEError, SourcePreference
 from .ranking import ScreeningBlock
@@ -64,6 +65,13 @@ def parser():
     )
     merge.add_argument("source", help="Path of the database whose observations are added")
     commands.add_parser("catalogue-status")
+    update = commands.add_parser(
+        "update-catalogue",
+        help="Take the newest catalogue snapshot published on GitHub (analyses, answers and PDFs are kept)",
+    )
+    update.add_argument("--check", action="store_true", help="Only report whether a newer snapshot exists")
+    update.add_argument("--file", type=Path, help="A downloaded ema-catalogue-<date>.sqlite3.gz (no request)")
+    update.add_argument("--manifest", type=Path, help="The manifest.json published with --file")
     search = commands.add_parser("search")
     search.add_argument("query")
     search.add_argument("--limit", type=int, default=5)
@@ -229,6 +237,13 @@ async def run(args):
                 return await service.refresh_drug_dictionary(args.force)
             case "catalogue-status":
                 return service.catalogue_status()
+            case "update-catalogue":
+                result = await asyncio.to_thread(
+                    update_catalogue, service.settings, not args.check, args.file, args.manifest
+                )
+                if result["result"] in FAILED:
+                    raise RWEError("CATALOGUE_UPDATE_FAILED", f"{result['result']}: {result.get('reason')}")
+                return result
             case "import-download":
                 mapping = json.loads(args.column_map.read_text(encoding="utf-8")) if args.column_map else None
                 return service.import_catalogue_csv(args.filename, mapping)

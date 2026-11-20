@@ -2,7 +2,7 @@
 
 エンドユーザー（このMCPを使って研究を調べる人）向けの使い方は[README.md](README.md)を参照してください。本ファイルはこのMCPサーバー自体を開発・改修する人向けの内部仕様です。
 
-公開版は0.5.7（内部履歴では0.1〜1.17の仕様段階を経ている）。`docs/spec/v0.1.md`〜`v1.17.md`が仕様の正本、[docs/mcp-workflow.md](docs/mcp-workflow.md)が呼出元向け手順の正本、開発ルールは[AGENTS.md](AGENTS.md)です。
+公開版は0.5.7（内部履歴では0.1〜1.18の仕様段階を経ている）。`docs/spec/v0.1.md`〜`v1.18.md`が仕様の正本、[docs/mcp-workflow.md](docs/mcp-workflow.md)が呼出元向け手順の正本、開発ルールは[AGENTS.md](AGENTS.md)です。
 
 ## 開発用セットアップ（checkout）
 
@@ -39,7 +39,7 @@ uv run ema-rwe --help
 | `selection.py` / `ranking.py` / `source_types.py` | 絞り込み、候補順位、PDF由来データタイプの評価 |
 | `comparison.py` | 全screening研究のPDF/JSON/Markdown出力。失敗・未完了を保持 |
 | `ema.py` / `http.py` | Study documentsの解析・最新版選択、robots・間隔・リトライ制御 |
-| `config.py` / `snapshot.py` | 環境設定・同梱データ更新、月次スナップショットの作成・検証 |
+| `config.py` / `snapshot.py` / `catalogue_update.py` | 環境設定・同梱データ更新、月次スナップショットの作成・検証、公開されたスナップショットの取り込み |
 
 検索・医薬品照合の詳細は[展開と順位付け](docs/search-logic.md)、保存・抽出の変更時は関連仕様と以下の節を確認してください。
 
@@ -208,6 +208,8 @@ uv run ema-rwe cleanup-cache
 | `EMA_HTTP_TIMEOUT_SECONDS` | `30` | HTTPタイムアウト |
 | `EMA_CACHE_TTL_SECONDS` | `2592000`（30日） | HTTPレスポンス（HTML・PDF）キャッシュの期限と、`get_study`が詳細ページを再確認する間隔 |
 | `EMA_CATALOGUE_TTL_SECONDS` | `2592000`（30日） | ブラウザ再取得を推奨するまでの期限 |
+| `EMA_CATALOGUE_UPDATE` | `apply` | GitHub Releases のカタログのスナップショットの取り込み。`apply`は起動時（1日1回まで）に確かめて検証後に取り込み、`check`は`catalogue_status`で知らせるだけ、`off`は確かめません。自動で更新するのは利用者のデータフォルダのDBだけで、`EMA_DB_PATH`のDBとcheckoutのDBは`ema-rwe update-catalogue`で更新します（spec v1.18） |
+| `EMA_CATALOGUE_RELEASES_URL` | このリポジトリのリリース一覧 | スナップショットを探すGitHub APIのURL（別のリポジトリから配る場合） |
 | `EMA_MAX_SCREENING_STUDIES` | `5`（1〜1000） | 一次判定でPDF取得・全件解析へ進める最大研究数 |
 | `EMA_MAX_COMPARISON_STUDIES` | `5`（1〜1000） | 比較表へ掲載する最大研究数 |
 | `EMA_MAX_LISTED_CANDIDATES` | `50`（1〜1000） | `needs_narrowing`時に`candidates`一覧を返す最大件数 |
@@ -286,7 +288,7 @@ CLIのサブコマンドは、MCPのツールと1対1で対応し、同じ引数
 | `study` | `get_study` | `ask` | `research_protocol` |
 | `protocol` | `get_protocol` | `cache-answer` | `cache_protocol_answer` |
 
-名前の違いは決まった形だけです。繰り返す引数はCLIでは単数（`--synonym`と`synonyms`）、ファイルで渡す本体は`input`、`filters`は`--country`・`--source-type`・`--study-design`、`source_preference`は`--prefer-source-type`・`--source-role`・`--source-mode`です。`import-csv`、`import-all`、`backfill-protocols`、`merge-observations`、`cleanup-cache`はCLIだけの保守用です。対応の表と照合は`tests/test_cli_mcp_parity.py`にあり、引数・既定値・選択肢・範囲のどれかが片方だけ変わるとテストが落ちます。
+名前の違いは決まった形だけです。繰り返す引数はCLIでは単数（`--synonym`と`synonyms`）、ファイルで渡す本体は`input`、`filters`は`--country`・`--source-type`・`--study-design`、`source_preference`は`--prefer-source-type`・`--source-role`・`--source-mode`です。`import-csv`、`import-all`、`backfill-protocols`、`merge-observations`、`cleanup-cache`、`update-catalogue`はCLIだけの保守用です。対応の表と照合は`tests/test_cli_mcp_parity.py`にあり、引数・既定値・選択肢・範囲のどれかが片方だけ変わるとテストが落ちます。
 
 CLIは`uv run ema-rwe <サブコマンド> --help`で確認できます（例：`pdf-search`, `ask`, `cache-headings`, `cache-answer`）。入力範囲はCoreが検査し、MCPとCLIに共通で適用します。
 
@@ -294,7 +296,7 @@ CLIは`uv run ema-rwe <サブコマンド> --help`で確認できます（例：
 
 | ファイル | 内容 |
 |---|---|
-| [docs/spec/v0.1.md](docs/spec/v0.1.md)〜[v1.17.md](docs/spec/v1.17.md) | 段階的な追加要件の正本。対象変更の関連仕様を読む |
+| [docs/spec/v0.1.md](docs/spec/v0.1.md)〜[v1.18.md](docs/spec/v1.18.md) | 段階的な追加要件の正本。対象変更の関連仕様を読む |
 | [docs/mcp-workflow.md](docs/mcp-workflow.md) | 呼出元エージェント向けの完全な手順（英語） |
 | [docs/search-logic.md](docs/search-logic.md) | 検索語の展開・医薬品照合・順位付け |
 | [docs/benchmarks/20261009-codex-app.md](docs/benchmarks/20261009-codex-app.md) | Codex Appの4例とMCP実行時間の定義 |

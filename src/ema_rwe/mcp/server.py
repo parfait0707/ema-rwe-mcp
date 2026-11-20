@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import time
@@ -9,6 +10,7 @@ from mcp.server.fastmcp import Context, FastMCP
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
+from ..catalogue_update import startup_update
 from ..config import WORKFLOW_URI, workflow_doc_path
 from ..domain import AnalogousTerm, CodeCandidate, Extraction, ProtocolAnswer, RWEError, SourcePreference
 from ..pdf import parse_stats
@@ -35,9 +37,12 @@ def create_server(service: Service | None = None):
     async def lifespan(server):
         nonlocal service
         service = service or Service()
+        # Look for a newer catalogue snapshot beside the server's work, never inside a tool call (spec v1.18).
+        updating = asyncio.create_task(asyncio.to_thread(startup_update, service.settings))
         try:
             yield {}
         finally:
+            updating.cancel()  # the thread itself ends on its own; nothing waits for it here
             await service.close()
 
     server = FastMCP(

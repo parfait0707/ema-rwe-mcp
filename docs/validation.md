@@ -852,3 +852,31 @@ PDF 取得先ディレクトリ名から X/Y が推測可能だった（P）、�
   - 照合するのは引数の形（名前、必須、既定値、選択肢、範囲）である。同じ引数が同じ動作になることは、個々の機能のテストに任せている。
   - 対応の表はテストの中に手で書いている。決まりに無い読み替えを足すときは、表と spec v1.17 の 2 を改める必要がある。
   - `plan_study_search` の `question` には、スキーマにもコアにも文字数の上限が無い（今回は変えていない）。
+
+## 2026-11-20 カタログのスナップショットの取り込み（spec v1.18）
+
+- 計画（`docs/research/202610081527_code_data_versioning_plan.md`）の段階 2 と 3。更新の既定は、利用者の判断で `apply`（起動時に確かめて自動で取り込む）とした。
+- 自動テスト（GitHub は `httpx.MockTransport` で模擬。スナップショットはテスト用のエクスポートから `build_snapshot` で実際に作ったもの）12 件：
+  - 新しいスナップショットでカタログが置き換わり、利用者の回答が残る。下書きと、ファイルのそろわないリリースは候補にしない。manifest は GitHub と同じく転送（302）を経て取得する。もう一度実行すると `up_to_date` で、要求はリリースの一覧の 1 回だけ。
+  - `--check` に当たる呼び出しは `available` を返し、本体を取得せず、DB を変えない。
+  - 本体を書き換えると `invalid_snapshot`（チェックサム）で、DB は変わらず、取得したファイルは残らない。
+  - `min_app_version` か `schema_version` が合わないと `app_update_required` で、本体を取得しない。
+  - 接続できない、要求の上限（403 と `x-ratelimit-remaining: 0`）、HTTP 500 は、例外にならず `unreachable` か `rate_limited` として記録される。
+  - 転送先が GitHub の外だと拒否する。
+  - スナップショットの作成より後に利用者が取り込んだ CSV があると `kept_local_import`。
+  - 手で取得したファイル（`archive` と `manifest`）は、要求なしで取り込める。
+  - サーバーの起動時の確認は、利用者が場所を指定した DB では何もしない。対象の DB では 1 回実行し、同じ日の 2 回目は要求しない。`check` は知らせるだけ、`off` は対象外。確認の中の予期しない例外はサーバーを止めない。
+- 実際の GitHub での確認（この環境から `api.github.com` と `github.com` に接続できた）：
+  - 作業用の DB に、公開済みの `data-20261001` を手動の経路（`--file`、`--manifest`）で取り込んだ：3,314 研究、`catalogue_snapshot=20261001`。
+  - `ema-rwe update-catalogue --check`：`available`、`latest_snapshot=20261102`。
+  - `ema-rwe update-catalogue`：`updated`。3,343 研究、`catalogue_snapshot=20261102`、種別 3 つ、`status=current`。コマンドの起動から終了まで 6.1 秒（13 MB の取得、検証、差し替えを含む）。
+  - もう一度実行：`up_to_date`。
+  - wheel を入れた環境で、空の利用者データフォルダ（`XDG_DATA_HOME`）と既定の設定で `ema-rwe-mcp` を stdio で起動した：同梱 DB（20261102）が用意され、2 回目の `catalogue_status` の時点で `update` が `mode=apply`、`automatic=true`、`result=up_to_date`、`latest_snapshot=20261102` になった。`search_studies` は候補を返した。同じ日にもう一度起動すると、`checked_at` は変わらず、確認は行われなかった。
+- `uv run python scripts/check.py`：全 7 段階が通る（476 passed、1 skipped）。CLI と MCP の照合は、`update-catalogue` を CLI だけのコマンドとして表に加えるまで落ちた（意図どおり）。
+- 限界：
+  - サーバーの起動時に実際に取り込む経路（`automatic=true` で古いカタログから新しいスナップショットへ）は、模擬でしか確かめていない。実際の GitHub で確かめたのは、起動時の確認が `up_to_date` になる場合と、CLI での取り込みである（同梱 DB が最新のスナップショットと同じ日付のため）。
+  - チェックサムは同じリリースの manifest から取るので、確かめられるのは転送と保存の途中で壊れていないことである。公開者の真正性は、コードと同じ GitHub のリポジトリへの信頼による（署名は付けていない）。
+  - GitHub の API は、認証なしでは IP ごとに 1 時間 60 回まで。1 日 1 回の確認なら足りるが、同じ IP の利用者が多い組織では上限に達しうる（その日は `rate_limited` になり、翌日に確かめる）。
+  - 起動時の確認は別のスレッドで動くので、起動の直後の検索は古いカタログで行われることがある。差し替えは 1 回の書き込みトランザクションで、検索はどちらかのカタログを見る。
+  - Windows と macOS、プロキシの設定がある環境では実行していない。
+  - 計画の段階 4（結果へのスナップショットの日付の記録、月ごとの DB のコミットの廃止）と段階 5（アプリの新しい版の通知）は行っていない。
