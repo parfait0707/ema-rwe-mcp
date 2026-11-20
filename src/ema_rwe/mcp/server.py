@@ -281,7 +281,11 @@ def create_server(service: Service | None = None):
     async def analyze_protocol(
         study_id: str,
         force_refresh: Annotated[
-            bool, Field(description="Re-fetch the protocol and discard the cached analysis")
+            bool,
+            Field(
+                description="Re-fetch the protocol and discard the cached analysis; at offset=0 also the study's "
+                "unfinished batches and their answers (never use it to resume)"
+            ),
         ] = False,
         offset: Annotated[int, Field(ge=0)] = 0,
         max_chars: Annotated[int, Field(ge=6000, le=150000)] = 30000,
@@ -438,7 +442,17 @@ def create_server(service: Service | None = None):
         )
 
     @server.tool()
-    async def research_protocol(protocol_id: str, question: Question, force: bool = False) -> dict:
+    async def research_protocol(
+        protocol_id: str,
+        question: Question,
+        force: Annotated[
+            bool,
+            Field(
+                description="Replace the saved answer; a running exploration of the question is joined and an "
+                "uncollected result is returned first"
+            ),
+        ] = False,
+    ) -> dict:
         """Answer a question from one archived PDF: saved answer, provider run (status=answering means call again
         later), or caller-driven hits."""
         return await call("research_protocol", protocol_id=protocol_id, question=question, force=force)
@@ -494,13 +508,14 @@ ANNOTATIONS = {
     "get_study": ("Get a study", False, False, True, True),
     "get_protocol": ("Get the latest protocol", False, False, True, True),
     "compare_protocols": ("Screen and prepare a comparison", False, False, False, True),
-    "analyze_protocol": ("Extract a protocol", False, False, False, True),  # a replaced analysis is archived
     "get_protocol_comparison": ("Collect a comparison", False, False, True, False),
     "cache_protocol_analysis": ("Save an extraction", False, False, True, True),  # may fetch the study page
     # These replace what was stored, and no earlier copy is kept.
     # A changed translation also drops the study's unfinished extraction batches.
     "cache_heading_translations": ("Save heading translations", False, True, True, False),
     "research_protocol": ("Answer a question from a protocol", False, True, False, True),  # force
+    # force_refresh at offset 0 drops the unfinished batches and their answers (a replaced analysis is archived).
+    "analyze_protocol": ("Extract a protocol", False, True, False, True),
     "cache_protocol_answer": ("Save an answer", False, True, True, False),
     "import_catalogue_csv": ("Import a catalogue export", False, True, True, False),
     "refresh_drug_dictionary": ("Refresh the medicines dictionary", False, True, True, True),

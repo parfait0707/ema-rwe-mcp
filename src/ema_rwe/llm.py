@@ -290,7 +290,11 @@ def merge_extractions(outputs: list[Extraction]) -> Extraction:
     try:
         return Extraction.model_validate(merged.model_dump())
     except ValidationError as exc:
-        raise RWEError("SCHEMA_VALIDATION_FAILED", "Merged extraction exceeds schema limits.") from exc
+        raise RWEError(
+            "SCHEMA_VALIDATION_FAILED",
+            "Merged extraction exceeds schema limits. If this repeats after every batch was read, call "
+            "analyze_protocol with force_refresh=true to read the protocol again from offset 0.",
+        ) from exc
 
 
 USAGE_RANK = {"unclear": 0, "candidate": 1, "used": 2, "planned": 3}

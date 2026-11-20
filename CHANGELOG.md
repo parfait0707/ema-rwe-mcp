@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.5.7 (2026-11-20)
 
 - Fixes from a review of the changes of PRs #81 to #98 (spec v1.26):
   - Caller-assisted extraction: a batch counts as far as it was served when it was cached, so serving an
@@ -22,7 +22,12 @@
     holds the event loop.
   - Questions that name a short section raise only its sibling sections (not its parent, its own
     subsections or background sections), and a section's length counts all its pages.
-  - `cache_heading_translations` is marked destructive. `compare_protocols` sends a last progress
+  - `cache_heading_translations` and `analyze_protocol` (its `force_refresh=true` at offset 0) are marked
+    destructive. `cache_heading_translations` reports `reading_changed` and, when the translations
+    changed, tells the caller to read the batches again from offset 0. The CLI `analyze` waits for a
+    server-side extraction to end, as `ask` does (it returned `status=extracting`, and the extraction stopped
+    with the process). An error that repeats after every batch was read tells the caller to use
+    `force_refresh=true`. `compare_protocols` sends a last progress
     notification when every protocol is retrieved, and a failed notification no longer stops the tool. A
     tool call that raises is logged on stderr too.
   - Catalogue updates: closing the server no longer waits for an update in progress; work folders an
@@ -84,9 +89,11 @@
   from last month's shows what changed. Saved results keep the versions they were made with.
 - `catalogue_status` reports `app_version` and, when the daily look at GitHub saw a newer release,
   `app_update_available` with how to update. The server never replaces itself, and no extra request is made.
-- The bundled catalogue is the published snapshot itself: at an application release,
+- The bundled catalogue follows the published snapshots: at an application release,
   `scripts/build_catalogue_snapshot.py --verify <dir> --unpack-to data/ema.sqlite3` replaces it with the
-  verified snapshot. The database is no longer committed month by month (`docs/release.md`).
+  latest verified snapshot, unless it already holds the exports of that snapshot's date (0.5.7 ships the
+  database imported from the 2026-11-02 exports, the date of `data-20261102`). The database is no longer
+  committed month by month (`docs/release.md`).
 
 - Internal: the conditions of a search travel as one `SearchRequest` (in `storage.py`) instead of up to
   twelve positional arguments through `Repository.search` and the screening helpers; variations are made by
@@ -111,7 +118,8 @@
 
 - Every MCP tool has a title and the four MCP hints (read-only, destructive, idempotent, open world), so a
   client can tell which calls change or replace something and which reach EMA or the configured LLM
-  (spec v1.16). Seven tools are read-only; four may replace stored data without keeping a copy.
+  (spec v1.16). Seven tools are read-only; six may replace stored data without keeping a copy (two of them,
+  `cache_heading_translations` and `analyze_protocol`, marked so in spec v1.26).
 - `compare_protocols` reports progress per study while it retrieves protocols, and a server-side
   `analyze_protocol` per finished batch, to calls that ask for progress. Tools and arguments are unchanged.
 
@@ -126,7 +134,7 @@
   beside it. A saved batch is reused only for the same section texts, PDF, model, prompt and reading;
   `progress.reused` reports how many were.
 
-- Development: `uv run python scripts/check.py` runs every check a change must pass (the version written the
+- Development: `uv run scripts/check.py` runs every check a change must pass (the version written the
   same everywhere, `uv.lock`, ruff, pytest, the build and the wheel's contents); `.githooks/pre-push` runs it
   before each push once `git config core.hooksPath .githooks` is set. No hosted CI is used. Development tools
   moved from the `dev` extra to the `dev` dependency group, so `uv run pytest` works without `--extra dev`.
@@ -159,8 +167,6 @@
 - Internal: `service.py` is split by moving its code unchanged. `Service` keeps every method and signature;
   the bodies live in `catalogue.py`, `screening.py`, `protocols.py` and `extraction.py` (mixins of
   `Service`), the unmatched-query log in `unmatched.py`. No tool, schema or behaviour changes.
-
-## 0.5.7 (2026-11-19)
 
 - Batches of a caller's unfinished extraction are kept in the database (`extraction_batches`, a user-side
   table outside the schema version) instead of server memory: a server restart, another process (each CLI

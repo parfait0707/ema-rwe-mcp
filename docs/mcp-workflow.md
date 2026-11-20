@@ -11,25 +11,31 @@ the MCP resource `ema-rwe://docs/mcp-workflow` (bundled in the wheel), so a clie
 Every tool carries a title and the MCP hints. Read-only (no confirmation needed for what they change):
 `catalogue_status`, `search_studies`, `plan_study_search`, `list_local_protocols`, `get_protocol_outline`,
 `search_protocol_text`, `read_protocol_text`. Destructive (replace something with no copy kept):
-`research_protocol` with `force=true`, `cache_protocol_answer`, `import_catalogue_csv`,
+`research_protocol` with `force=true`, `analyze_protocol` with `force_refresh=true` (at `offset=0` it drops
+the study's unfinished batches and their answers), `cache_protocol_answer`, `import_catalogue_csv`,
 `refresh_drug_dictionary`, and `cache_heading_translations` (it replaces the translations with no copy kept,
 and a changed translation drops the study's unfinished extraction batches). Open world (may reach EMA or the
 configured LLM): `get_study`, `get_protocol`, `compare_protocols`, `analyze_protocol`,
 `cache_protocol_analysis`, `research_protocol`, `refresh_drug_dictionary`, and `plan_study_search` with
-`use_llm=true`. A call that asks for progress gets notifications from `compare_protocols` (one per study
-while protocols are retrieved, then a last one when all are) and from a server-side `analyze_protocol`
+`use_llm=true`. A call that asks for progress gets notifications from `compare_protocols` (one per candidate
+while `check_protocols` checks Study documents, one per study while protocols are retrieved, then a last one
+when all are) and from a server-side `analyze_protocol`
 (batches done). A notification that cannot be sent does not stop the tool.
 
 ## 1. Plan
 
 - `catalogue_status` once per session. `catalogue_snapshot` is the export date of the catalogue, and `update`
   what the server's own look for a newer published snapshot found (`result`: `updated`, `up_to_date`,
-  `available`, `kept_local_import`, `app_update_required`, or a failure with its `reason`). With
+  `available`, `kept_local_import`, `app_update_required`, `no_snapshot`, or a failure with its `reason`:
+  `unreachable`, `rate_limited`, `invalid_snapshot`, `not_applied`). With
   `update.automatic=true` and `mode=apply` the server takes newer snapshots by itself, so no action follows
-  except telling the user about `app_update_required`. With `automatic=false` (a database named by
-  `EMA_DB_PATH`, or a checkout's), or with `result=available`, tell the user that
-  `ema-rwe update-catalogue` takes the newer snapshot; the server does not look at start then, so
-  `app_update_available` appears only after that command (or `--check`). When `app_update_available` is
+  except telling the user about `app_update_required`. With `automatic=false` because of the
+  database (one named by `EMA_DB_PATH`, or a checkout's), or with `result=available`, tell the user that
+  `ema-rwe update-catalogue` takes the newer snapshot; run it in a shell with the same `EMA_DB_PATH` as the
+  MCP client's env (the CLI updates the database of its own environment). With `automatic=false` the server
+  does not look at start, so `app_update_available` appears only after that command (or `--check`). With
+  `EMA_CATALOGUE_UPDATE=off` (`mode=off`, also `automatic=false`) the user turned updates off: do not
+  suggest updating. When `app_update_available` is
   present, tell the user once as its `instruction` says (a newer application release exists; the server never
   replaces itself). With `EMA_CATALOGUE_UPDATE=off` it never appears. Analyses (`source`), answers
   and comparisons (`versions`) record the `app_version`, `catalogue_snapshot` and `parser_version` that
@@ -189,6 +195,9 @@ filters. Never pick a subset yourself.
   call it again for the same study until it returns the analysis; do not extract client-side.
   Finished batches are kept (`progress.reused` counts those not asked again), so calling it again after
   an `LLM_EXTRACTION_FAILED` or a server restart asks the provider only for the batches still missing.
+  When every batch was read and the same error comes back on each call (`SCHEMA_VALIDATION_FAILED` "Merged
+  extraction exceeds schema limits", or an `EVIDENCE_INVALID` of the merged analysis), the kept batches
+  repeat it: call `analyze_protocol` with `force_refresh=true` to read the protocol again.
 - `research_protocol` may return `status=answering` (the configured provider is still answering): call it
   again with the same `protocol_id` and `question` until it returns the answer; do not explore client-side
   meanwhile. Calls with the same question join the running exploration, with or without `force=true`, and
@@ -199,7 +208,9 @@ filters. Never pick a subset yourself.
   which otherwise translates them itself). Resolve it before `research_protocol` on that protocol.
   Translate every entry of `headings` into English, keeping the numbering and translating only, then call
   `cache_heading_translations(protocol_id, translations={heading: English})` and `analyze_protocol`
-  again. If you cannot translate, pass `translations={}`: every unrecognised section is then read.
+  again. When its `reading_changed` is `true` (the translations changed), read the extraction
+  batches again from `offset=0`. If you cannot translate, pass `translations={}`: every unrecognised
+  section is then read.
 - With `needs_client_extraction`, cache each batch via `cache_protocol_analysis(batch_offset=offset)`
   (also pass `reading=source.reading`, even when it is empty; only a non-English protocol requires it,
   and `READING_CONTEXT_CHANGED` means it was omitted there or the translations changed: call
@@ -208,15 +219,17 @@ filters. Never pick a subset yourself.
   skip offsets listed in `cached_batch_offsets`. Always continue at the `next_offset` the previous
   response returned and cache the last batch with its `batch_offset` too; then finish with
   `coverage_complete=true` (its `analysis` may be `{}` while cached batches remain to be merged).
-  `INCOMPLETE_EXTRACTION` has two meanings. With an offset, it names an offset that was never read and
-  cached: read and cache it, follow `next_offset` to the end and repeat the call (a batch counts as far as
+  `INCOMPLETE_EXTRACTION` refuses a call in these cases, and its message says which. Without
+  `coverage_complete=true` and without `batch_offset`, nothing is saved: cache each batch with its
+  `batch_offset`. With an offset, it names an offset that was never read and cached: read and cache it, follow `next_offset` to the end and repeat the call (a batch counts as far as
   it was served when you cached it, even if that offset was served again with another `max_chars`).
   Without cached batches, it refuses an empty `analysis` (or one with only `missing_information`) that
   would replace a saved analysis, for instance a repeated final call after the merge; the saved analysis
   is kept. To correct a saved analysis in one call, pass all of its items. A `batch_offset` that no
   `analyze_protocol` response returned is refused. `analyze_protocol(force_refresh=true)` at `offset=0`
   discards the study's cached batches with their answers (a server-side extraction's too): use it to start over,
-  never to resume after context compaction.
+  never to resume after context compaction. While a server-side extraction of the same PDF and reading is
+  still running, `force_refresh=true` joins it instead of starting another.
 - Section text is returned with runs of three or more spaces shortened to two (table columns keep a gap);
   copy quotes from it as they are, the comparison with the PDF ignores whitespace.
 - A data source `value` is the name as the protocol writes it, with no words of your own (no added
@@ -262,7 +275,10 @@ appendices.
 ## Response shapes and context budget
 
 - `search_studies` returns compact rows by default (`detail=compact`): id, title, status, countries,
-  source types, designs, conditions, score, analysis flags, protocol id. `detail=full` adds
+  source types, designs, conditions, score, analysis and protocol flags (`analysis_available`,
+  `protocol_data_sources_status`, `protocol_available`, `protocol_listed`, `protocol_found`,
+  `protocol_text_layer`), match basis and matched terms with their sources, rank features, observed
+  exposures and `out_of_scope`. `detail=full` adds
   descriptions, provenance and the full query expansion.
 - `compare_protocols` above the limit returns facets, candidates (when listed) and per-query
   `query_expansions` summaries only; no PDFs are fetched.

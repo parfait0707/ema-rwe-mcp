@@ -117,7 +117,7 @@ uvがあれば、cloneせずにMCPクライアントへ登録できます。カ�
 
 ## カタログの更新
 
-月ごとのカタログは、このプロジェクトの GitHub Releases（`data-YYYYMMDD`）にスナップショットとして公開されます。既定の保存先では、サーバーが起動時に新しいスナップショットを確かめ（1日に1回まで）、検証してから自動で取り込みます。設定の書き換えや再起動は要りません。保存済みの解析・回答・PDFは残ります。通信先は GitHub だけで、検索の途中では通信しません。`EMA_CATALOGUE_UPDATE=check`で通知だけ、`off`で確認なしにできます。`EMA_DB_PATH`で指定したDBとcheckoutのDBは自動では更新しないので、`uvx --from git+https://github.com/parfait0707/ema-rwe-mcp ema-rwe update-catalogue`（checkout では`uv run ema-rwe update-catalogue`）を実行してください。状態は`catalogue_status`の`catalogue_snapshot`と`update`で確認できます。
+月ごとのカタログは、このプロジェクトの GitHub Releases（`data-YYYYMMDD`）にスナップショットとして公開されます。既定の保存先では、サーバーが起動時に新しいスナップショットを確かめ（1日に1回まで）、検証してから自動で取り込みます。設定の書き換えや再起動は要りません。保存済みの解析・回答・PDFは残ります。通信先は GitHub だけで、検索の途中では通信しません。`EMA_CATALOGUE_UPDATE=check`で通知だけ、`off`で確認なしにできます。`EMA_DB_PATH`で指定したDBとcheckoutのDBは自動では更新しないので、`uvx --from git+https://github.com/parfait0707/ema-rwe-mcp ema-rwe update-catalogue`（checkout では`uv run ema-rwe update-catalogue`）を、MCPクライアントのenvと同じ`EMA_DB_PATH`を設定したシェルで実行してください（CLIは自分の環境のDBを更新します）。状態は`catalogue_status`の`catalogue_snapshot`と`update`で確認できます。
 
 アプリ自体の新しい版は自動では入りません。新しい版が公開されると`catalogue_status`の`app_update_available`が知らせます。MCPの設定で版を固定している場合（`@vX.Y.Z`）は、そのタグを書き換えて再起動してください。上の推奨設定のように版を固定していない場合は、uvが前に取得した版を使い続けるので、`uvx --refresh --from git+https://github.com/parfait0707/ema-rwe-mcp ema-rwe-mcp`を1回実行してから再起動してください。この通知は起動時の確認で得た情報を使うので、`EMA_DB_PATH`を指定した場合、checkoutで動かす場合、`EMA_CATALOGUE_UPDATE=off`の場合は出ません。そのときは`ema-rwe update-catalogue --check`で確かめてください（`off`では、このコマンドの後も通知は出ません）。解析・回答・比較には、作成時のアプリの版・カタログの日付・parserの版が記録されます。
 

@@ -1160,3 +1160,13 @@ PDF 取得先ディレクトリ名から X/Y が推測可能だった（P）、�
 | #98 | `source_assessments` は先頭から 120 件のまま | spec v1.25 の 4 どおり |
 | 全体 | ホスト型の CI が無く、`gold` は pre-push でだけ走る | 設計どおりで、文書に書かれている |
 | 全体 | 配布サンプルと README が未作成のタグ `v0.5.7` を固定している | docs/release.md の手順（版を揃える PR、main で検査、タグ）の途中の状態なので、タグを作るまでこのまま |
+
+## 2026-11-20 v0.5.7 のリリース前監査の指摘の修正（spec v1.26 の 18〜20）
+
+- 挙動の変更 3 件は、先に再現テストを足し、修正前に 4 件とも落ちることを確かめてから直した。
+  - `analyze_protocol` を破壊的に（`tests/test_annotations_progress.py` の破壊的なツールの集合）。
+  - `poll=False` の `analyze_protocol` が待機を超えるサーバー側抽出の終わりまで待つこと、CLI の `analyze` が `poll=False` で呼ぶこと（`tests/test_provider_extraction.py` の 2 件。プロバイダは模擬）。
+  - `cache_heading_translations` の `reading_changed`：英訳が変わると（初めての保存を含む）true で `instruction` が `offset 0` からの読み直しを伝え、同じ英訳では false（`tests/test_heading_translation.py`）。
+- 案内文と help（`force_refresh`、`research_protocol` の `force`、`cache-analysis --question`、`analyze --refresh`、全バッチの後に繰り返すエラー、`SINGLE_PASS` の指示、比較の `instruction`）と文書（CHANGELOG の 0.5.7 への統合、`mcp-workflow.md`、README、README_DEV、`source-types.md`、`.gitignore`）を実装に合わせた。同梱 DB の補完の件数は `data/ema.sqlite3` を読み取り専用で数え直した：医薬品欄が空の研究 716 件のうち補完のあるもの 219 件（うち `protocol_pass_table` 83 件、`catalogue_text` 191 件）。
+- `uv run pytest -q tests/test_annotations_progress.py tests/test_heading_translation.py tests/test_provider_extraction.py tests/test_cli_mcp_parity.py tests/test_core.py tests/test_comparison.py tests/test_exploration.py tests/test_mcp.py`：176 passed、1 skipped。`ruff check`・`ruff format --check` green。全件と `scripts/check.py` は未実行（メインスレッドが実行する）。
+- 限界：`poll=False` の待機は模擬のプロバイダでだけ確かめた。`.env.example` の `EMA_CATALOGUE_UPDATE` の注記は権限設定で編集できず、手作業で足す。

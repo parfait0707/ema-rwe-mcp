@@ -175,7 +175,16 @@ def parser():
     for name in ("study", "protocol", "analyze"):
         cmd = commands.add_parser(name)
         cmd.add_argument("study_id")
-        cmd.add_argument("--refresh", action="store_true")
+        cmd.add_argument(
+            "--refresh",
+            action="store_true",
+            help=(
+                "Re-fetch the protocol and discard the cached analysis; at --offset 0 also the unfinished "
+                "batches and their answers (never to resume)"
+            )
+            if name == "analyze"
+            else None,
+        )
         if name == "protocol":
             cmd.add_argument("--version", default="latest")
             cmd.add_argument("--no-download", action="store_true")
@@ -194,7 +203,11 @@ def parser():
         "--reading", help="source.reading from analyze, even '' (required for a non-English protocol)"
     )
     submit.add_argument("--answer", type=Path, help="ProtocolAnswer JSON of this batch (analyze --question)")
-    submit.add_argument("--question", help="The question --answer answers")
+    submit.add_argument(
+        "--question",
+        help="The question --answer answers: the same string, character for character, with every batch and "
+        "with --coverage-complete",
+    )
     answer = commands.add_parser(
         "cache-answer", help="Save a question-specific answer (answer to ask status=needs_client_exploration)"
     )
@@ -369,6 +382,8 @@ async def run(args):
                     max_chars=args.max_chars,
                     detail=args.detail,
                     question=args.question,
+                    # One process per call: wait for the provider instead of returning status=extracting.
+                    poll=False,
                 )
             case "cache-analysis":
                 analysis = Extraction.model_validate_json(args.input.read_text(encoding="utf-8"))

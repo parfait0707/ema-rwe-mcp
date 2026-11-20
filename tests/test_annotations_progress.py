@@ -40,6 +40,7 @@ async def test_every_tool_is_annotated_and_the_context_is_not_an_argument(servic
     assert {n for n in READ_ONLY if tools[n].annotations.openWorldHint} == {"plan_study_search"}
     assert {name for name, tool in tools.items() if tool.annotations.destructiveHint} == {
         "research_protocol",
+        "analyze_protocol",  # force_refresh=true at offset 0 drops the unfinished batches and their answers
         "cache_protocol_answer",
         "cache_heading_translations",  # replaces the stored translations and drops unfinished batches
         "import_catalogue_csv",
