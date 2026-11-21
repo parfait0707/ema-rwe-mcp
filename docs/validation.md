@@ -1207,7 +1207,7 @@ PDF 取得先ディレクトリ名から X/Y が推測可能だった（P）、�
 
 - 実装：`evidence.py`（解析から事実 1 件 = 1 行を導く、引用の位置とハッシュ、復元）、MCP `find_facts` と CLI `facts`、`prebuilt_facts` 表（DB のスキーマ版は 6 のまま、初回の書き込みで作る）、`export-facts`、`facts-site`、`prefetch-protocols`、`scripts/build_catalogue_snapshot.py --facts-from`。
 - テスト：`tests/test_evidence_store.py`（事前取得の 429 の方針と再開、全項目種別が行になる、スキーマに欄が足されたら落ちる、planned と used、位置からの復元と窓探索、手元の解析の優先、PDF の無い研究、置き換え、HTML のエスケープと外部資源なし）、`tests/test_mcp.py`（実 stdio で `find_facts`）、対応表テスト。わざと壊した 4 通り（エスケープなし、復元なし、配布優先、窓探索なし）で該当テストが落ちることを確かめた。`uv run scripts/check.py --no-build`：567 passed、1 skipped、gold の参照項目はすべて通過。
-- 事前取得：作業用 DB（利用者データフォルダ）で `prefetch-protocols --source-type claims` を `EMA_REQUEST_INTERVAL_SECONDS=15`、研究間 30 秒で起動した。対象は claims でプロトコルがある 560 研究。最初の 10 分で 6 研究を取得し、429 は出ていない。完走の記録は別に追記する。
+- 事前取得：作業用 DB（利用者データフォルダ）で `prefetch-protocols --source-type claims` を `EMA_REQUEST_INTERVAL_SECONDS=15`、研究間 30 秒で起動した。対象は claims でプロトコルがある 560 研究。最初の 10 分で 6 研究を取得し、429 は出ていない。完走の記録は別に追記する。この実行は、対象の研究を `data_source_types` のタグの文字列で選ぶ版で動いている。リリース前の監査で、検索の絞り込みと同じ `source_categories` の分類にそろえた。別名の付いた研究が加わるので、次の実行では対象が増えることがある。
 - 試行の抽出：正解データの 4 研究（すべて claims）と、取得済みの claims 6 研究を、既存の呼出元経路（Claude Code の Sonnet のサブエージェント、1 研究 1 体、`analyze --max-chars 120000`）で抽出した。1 研究あたり 1 分 2 秒〜9 分 38 秒（中央値は約 2 分。11〜148 ページ）、約 9 万〜28 万トークン。引用の拒否は研究あたり 0〜4 件で、すべてその場で直して保存された。
   - 1 件目（49276）は抽出を一部省いて 1 分 44 秒で終えた。以降の指示に「章を飛ばさない」を足した。
   - 105807 で、既定の `--max-chars`（3 万字、18 節で区切られる）と 12 万字の呼び出しを混ぜると、完了の検査が 18 節目以降を未読と判定した。固定した版で 12 万字だけで呼ぶ手順を再現すると正常に完了した。呼び方の混在によるもので、v0.6.0 では変えない。
@@ -1219,3 +1219,4 @@ PDF 取得先ディレクトリ名から X/Y が推測可能だった（P）、�
 - 静的ページ：`facts-site` で試行の途中の 9 研究・742 件の HTML（339 KB）を書いた。`<script`、`<link`、`src=`、`url(` は 0 件。
 - 未確認：完走後の claims 全件の取得時間と 429 の頻度、配る事実をスナップショットの公開経路（`update-catalogue`）で取り込む実地の確認、企業のノート PC での時間、MCP クライアントの固定の遅れ。
 - リリース前の採点（`docs/release.md` の 2）：正解データの 4 研究に、各正解ファイルの質問で呼出元経路の質問別回答を保存し（Sonnet のサブエージェント、1 研究 1 体、1 研究 2 問で約 2〜2.5 分）、`extraction_eval.py grade` が終了コード 0 で通った（4/4 プロトコル、下限を満たし、取り違え 0。出力は `docs/agent_report/202611210135_claude_release-grade.md`、Git 管理外）。
+- リリース前の整合性の監査：文書・設定の見本・CLI と MCP の説明文・spec v1.31 を実装と突き合わせ、誤り 1 件（ツール数 18 → 19）と欠落・細部 20 件余りを直した（`docs/release.md` のスナップショット手順に `--facts-from` が無かった点を含む）。実装の変更は、事前取得の対象の選び方を `source_categories` にそろえた 1 か所。別のエージェントが修正の差分を確かめ、誤りは無かった。`scripts/check.py`（ビルド込み）は修正の後も通った。
