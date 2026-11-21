@@ -12,6 +12,7 @@ from ema_rwe.mcp.server import ANNOTATIONS, create_server
 READ_ONLY = {
     "catalogue_status",
     "search_studies",
+    "find_facts",
     "plan_study_search",
     "list_local_protocols",
     "get_protocol_outline",
@@ -23,7 +24,7 @@ READ_ONLY = {
 async def test_every_tool_is_annotated_and_the_context_is_not_an_argument(service):
     async with create_connected_server_and_client_session(create_server(service)._mcp_server) as client:
         tools = {tool.name: tool for tool in (await client.list_tools()).tools}
-    assert set(tools) == set(ANNOTATIONS) and len(tools) == 18
+    assert set(tools) == set(ANNOTATIONS) and len(tools) == 19
     for name, tool in tools.items():
         hints = tool.annotations
         assert tool.title == hints.title == ANNOTATIONS[name][0]

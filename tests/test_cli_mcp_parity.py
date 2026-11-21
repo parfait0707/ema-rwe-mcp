@@ -33,15 +33,19 @@ PAIRS = {
     "cache-analysis": "cache_protocol_analysis",
     "cache-answer": "cache_protocol_answer",
     "cache-headings": "cache_heading_translations",
+    "facts": "find_facts",
 }
 # Maintenance commands a user runs in a terminal; they have no tool (docs: README_DEV.md).
 CLI_ONLY_COMMANDS = {
     "import-csv",
     "import-all",
     "backfill-protocols",
+    "prefetch-protocols",
     "merge-observations",
     "cleanup-cache",
     "update-catalogue",  # the server does this by itself at start (spec v1.18)
+    "export-facts",  # a maintainer builds the distributed facts (spec v1.31)
+    "facts-site",  # a local, read-only page of the facts (spec v1.31)
 }
 # CLI destination -> MCP parameter, where the names differ (repeatable flags are singular, files are 'input').
 RENAMED = {
@@ -185,6 +189,8 @@ OUT_OF_RANGE = [
     ("search_studies", "limit", "minimum", lambda s, p: s.search_studies("opioid", limit=0)),
     ("search_studies", "limit", "maximum", lambda s, p: s.search_studies("opioid", limit=21)),
     ("search_studies", "query", "maxLength", lambda s, p: s.search_studies("x" * 2001)),
+    ("find_facts", "limit", "minimum", lambda s, p: s.find_facts(limit=0)),
+    ("find_facts", "limit", "maximum", lambda s, p: s.find_facts(limit=1001)),
     ("compare_protocols", "question", "maxLength", lambda s, p: s.compare_protocols("x" * 2001, ["opioid"])),
     (
         "compare_protocols",

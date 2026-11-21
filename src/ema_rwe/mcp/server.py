@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import threading
@@ -13,9 +14,10 @@ from pydantic import Field
 from ..catalogue_update import startup_update
 from ..config import WORKFLOW_URI, workflow_doc_path
 from ..domain import AnalogousTerm, CodeCandidate, Extraction, ProtocolAnswer, RWEError, SourcePreference
+from ..evidence import MAX_FACTS, ItemKind
 from ..pdf import parse_stats
 from ..ranking import ScreeningBlock
-from ..selection import SearchFilters
+from ..selection import SearchFilters, SourceType
 from ..service import Service
 
 log = logging.getLogger(__name__)
@@ -158,6 +160,33 @@ def create_server(service: Service | None = None):
                 detail=detail,
                 match_scope=match_scope,
                 analogous=analogous_terms,
+            )
+        except RWEError as exc:
+            return exc.as_dict()
+
+    @server.tool()
+    async def find_facts(
+        study_ids: list[str] | None = None,
+        item_kinds: list[ItemKind] | None = None,
+        source_types: Annotated[
+            list[SourceType] | None, Field(description="Catalogue source types; ignored with study_ids")
+        ] = None,
+        text: Annotated[
+            str | None,
+            Field(description="Case-insensitive part of a value or quote (distributed facts: value only)"),
+        ] = None,
+        limit: Annotated[int, Field(ge=1, le=MAX_FACTS)] = 200,
+    ) -> dict:
+        """Saved facts, one row each with page, section, quote and status, from local analyses or distributed
+        facts (no network). Studies with neither are listed in no_facts: extract those as usual."""
+        try:
+            return await asyncio.to_thread(
+                service.find_facts,
+                study_ids=study_ids,
+                item_kinds=item_kinds,
+                source_types=source_types,
+                text=text,
+                limit=limit,
             )
         except RWEError as exc:
             return exc.as_dict()
@@ -502,6 +531,7 @@ def create_server(service: Service | None = None):
 ANNOTATIONS = {
     "catalogue_status": ("Catalogue status", True, False, True, False),
     "search_studies": ("Search the local catalogue", True, False, True, False),
+    "find_facts": ("Find saved facts", True, False, True, False),
     "plan_study_search": ("Plan search terms", True, False, True, True),  # use_llm asks the configured LLM
     "list_local_protocols": ("List archived protocols", True, False, True, False),
     "get_protocol_outline": ("Protocol outline", True, False, True, False),

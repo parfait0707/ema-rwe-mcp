@@ -9,8 +9,8 @@ the MCP resource `ema-rwe://docs/mcp-workflow` (bundled in the wheel), so a clie
 ## Tool hints
 
 Every tool carries a title and the MCP hints. Read-only (no confirmation needed for what they change):
-`catalogue_status`, `search_studies`, `plan_study_search`, `list_local_protocols`, `get_protocol_outline`,
-`search_protocol_text`, `read_protocol_text`. Destructive (replace something with no copy kept):
+`catalogue_status`, `search_studies`, `find_facts`, `plan_study_search`, `list_local_protocols`,
+`get_protocol_outline`, `search_protocol_text`, `read_protocol_text`. Destructive (replace something with no copy kept):
 `research_protocol` with `force=true`, `analyze_protocol` with `force_refresh=true` (at `offset=0` it drops
 the study's unfinished batches and their answers), `cache_protocol_answer`, `import_catalogue_csv`,
 `refresh_drug_dictionary`, and `cache_heading_translations` (it replaces the translations with no copy kept,
@@ -172,6 +172,16 @@ filters. Never pick a subset yourself.
 
 ## 4. Process within the screening limit
 
+- Before any PDF is read, call `find_facts` with the screened `study_ids` (and the `item_kinds` the
+  question needs, e.g. `outcome` and `disease_definition`). It reads saved facts only and makes no request.
+  Answer a study listed in `origins` as `local` or `prebuilt` from its rows: cite each row's `page`,
+  `section` and `quote`, keep `data_source` rows' `usage` (planned is never used), and report `missing`
+  rows as missing information. A `verified_at_build` row has no quote here (`quote_note`): say that its
+  quote appears once the PDF is retrieved. Give that answer first, before any extraction. The pending
+  tools below still run afterwards for the comparison export (spec v1.31: the 3-minute answer does not
+  wait for the export); a study in `no_facts`, or a question its rows do not cover, is answered only after
+  them.
+  `text` matches a value, or a quote of a local analysis.
 - The response's top-level `pending_tools` lists `{tool, arguments}` calls. A study with neither an
   analysis nor an answer gets one call, `analyze_protocol` with the `question` (one pass, below); with
   a configured server LLM, or when only the answer is missing, `research_protocol` is listed too. Run

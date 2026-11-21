@@ -1,5 +1,5 @@
 """The service facade: one object holding the settings, storage and clients; its methods live in the
-catalogue, screening, protocols and extraction modules."""
+catalogue, screening, protocols, extraction and evidence modules."""
 
 import asyncio
 
@@ -10,6 +10,7 @@ from .catalogue import (  # noqa: F401  (imported from here by the CLI)
 )
 from .comparison import Comparisons
 from .config import Settings
+from .evidence import EvidenceMixin
 from .exploration import Explorer
 from .extraction import ExtractionMixin
 from .http import EMAClient
@@ -18,7 +19,7 @@ from .screening import ScreeningMixin
 from .storage import Repository
 
 
-class Service(CatalogueMixin, ScreeningMixin, ProtocolsMixin, ExtractionMixin):
+class Service(CatalogueMixin, ScreeningMixin, ProtocolsMixin, ExtractionMixin, EvidenceMixin):
     def __init__(self, settings: Settings | None = None, client=None, repo=None):
         self.settings = settings or Settings()
         self.repo = repo or Repository(self.settings.db_path)

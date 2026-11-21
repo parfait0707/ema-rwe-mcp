@@ -53,6 +53,11 @@ def main() -> int:
         help="Database whose protocol observations (medicine backfill) the snapshot keeps; 'none' to skip",
     )
     parser.add_argument(
+        "--facts-from",
+        type=Path,
+        help="Database whose distributed facts (ema-rwe export-facts) the snapshot carries; default none",
+    )
+    parser.add_argument(
         "--skip-gold", action="store_true", help="Do not run the extraction reference on the new catalogue"
     )
     args = parser.parse_args()
@@ -69,6 +74,7 @@ def main() -> int:
             args.snapshot_id,
             args.out or ROOT / "dist" / "snapshots" / args.snapshot_id,
             observations,
+            args.facts_from,
         )
     except RWEError as exc:
         print(json.dumps(exc.as_dict(), ensure_ascii=False), file=sys.stderr)
