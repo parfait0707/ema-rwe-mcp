@@ -171,7 +171,10 @@ def create_server(service: Service | None = None):
         source_types: Annotated[
             list[SourceType] | None, Field(description="Catalogue source types; ignored with study_ids")
         ] = None,
-        text: Annotated[str | None, Field(description="Case-insensitive part of a value or quote")] = None,
+        text: Annotated[
+            str | None,
+            Field(description="Case-insensitive part of a value or quote (distributed facts: value only)"),
+        ] = None,
         limit: Annotated[int, Field(ge=1, le=MAX_FACTS)] = 200,
     ) -> dict:
         """Saved facts, one row each with page, section, quote and status, from local analyses or distributed

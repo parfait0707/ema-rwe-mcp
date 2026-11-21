@@ -76,9 +76,17 @@ def parser():
     for cmd in (facts, site):
         cmd.add_argument("--study-id", action="append", dest="study_ids")
         cmd.add_argument("--item-kind", action="append", dest="item_kinds", choices=ITEM_KINDS)
-        cmd.add_argument("--source-type", action="append", dest="source_types", choices=get_args(SourceType))
-        cmd.add_argument("--text", help="Case-insensitive part of a value or quote")
-    facts.add_argument("--limit", type=int, default=200)
+        cmd.add_argument(
+            "--source-type",
+            action="append",
+            dest="source_types",
+            choices=get_args(SourceType),
+            help="Catalogue source type; ignored with --study-id",
+        )
+        cmd.add_argument(
+            "--text", help="Case-insensitive part of a value or quote (distributed facts: value only)"
+        )
+    facts.add_argument("--limit", type=int, default=200, help="At most this many facts (1 to 1000)")
     site.add_argument("--limit", type=int, help="At most this many facts (default: all)")
     site.add_argument("--output", type=Path, required=True, help="HTML file to write")
     export = commands.add_parser(

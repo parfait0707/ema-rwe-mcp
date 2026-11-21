@@ -24,7 +24,7 @@ from .medicines import (
 from .pdf import (
     extract_pages,
 )
-from .selection import TYPED_SOURCES
+from .selection import TYPED_SOURCES, source_categories
 from .storage import import_csv
 from .terminology import dictionary_paths
 from .unmatched import unmatched_summary
@@ -195,7 +195,7 @@ class CatalogueMixin:
 
         Resumable: studies with a kept protocol, or already found to have none, are skipped. On a rate limit
         the gap between studies widens to 60 seconds and the study is tried again; a second rate limit in a
-        row pauses `pause` seconds first. Three pauses in a row stop the run.
+        row pauses `pause` seconds first. After three pauses, the next rate limit stops the run.
         """
         if source_type not in TYPED_SOURCES or interval < 0 or (limit is not None and limit < 1):
             raise RWEError("INVALID_INPUT", f"source_type one of {TYPED_SOURCES}; interval >= 0; limit >= 1.")
@@ -206,7 +206,7 @@ class CatalogueMixin:
             for s in map(Study.model_validate_json, bodies)
             if is_non_interventional(s.study_type)
             and s.protocol_listed
-            and source_type in s.data_source_types
+            and source_type in source_categories(s.data_source_types)
         ]
         queue = [
             s

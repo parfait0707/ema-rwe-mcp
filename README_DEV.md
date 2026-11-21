@@ -28,7 +28,7 @@ uv run ema-rwe --help
 
 | モジュール | 役割 |
 |---|---|
-| `service.py` / `cli.py` / `mcp/server.py` | 共通処理の入口（`Service`）、CLI、stdio MCPの18ツール |
+| `service.py` / `cli.py` / `mcp/server.py` | 共通処理の入口（`Service`）、CLI、stdio MCPの19ツール |
 | `catalogue.py` / `screening.py` / `protocols.py` / `extraction.py` | `Service`のメソッドの本体。順に、カタログの状態・取込・補完、検索・候補の集計・検索語の計画、研究ページとプロトコルの取得・PDFの読取、抽出・見出し英訳・質問別回答の保存 |
 | `unmatched.py` | 未一致語の記録（利用者辞書があるときだけ書く） |
 | `storage.py` / `archive.py` | SQLite永続化、CSV取込、解析・読み方の履歴、不変ID付きPDFの保持 |
@@ -38,6 +38,7 @@ uv run ema-rwe --help
 | `drugs.py` / `medicines.py` | EMA医薬品辞書、成分・製品・クラスの展開、医薬品欄の補完 |
 | `selection.py` / `ranking.py` / `source_types.py` | 絞り込み、候補順位、PDF由来データタイプの評価 |
 | `comparison.py` | 全screening研究のPDF/JSON/Markdown出力。失敗・未完了を保持 |
+| `evidence.py` | 証拠ストア。保存済み解析の事実の行、配布する事実（`prebuilt_facts`）、引用の復元、静的ページ（spec v1.31） |
 | `ema.py` / `http.py` | Study documentsの解析・最新版選択、robots・間隔・リトライ制御 |
 | `config.py` / `snapshot.py` / `catalogue_update.py` | 環境設定・同梱データ更新、月次スナップショットの作成・検証、公開されたスナップショットの取り込み |
 
@@ -117,7 +118,7 @@ wheelにはカタログDB、EMA医薬品辞書、呼出元手順書を同梱し�
 1. 新しい版のパッケージが同梱するDB。1プロセスにつき1回確認します。
 2. GitHub Releasesに公開した月ごとのスナップショット（`catalogue_update.py`、spec v1.18、v1.26）。サーバーは起動時にデーモンスレッドで確かめ（1日1回まで）、検証してから取り込みます。終了はこのスレッドを待ちません。作業フォルダはDBと同じフォルダの`ema-rwe-update-*`で、止まった更新が残したもの（6時間より古いもの）は次の更新の開始時に消えます。
 
-- 同梱DBの取込日時が新しければカタログの表だけをトランザクションで更新します。同じスキーマ版でなければ更新せず、利用者のCSVが新しい場合も保持します。
+- 同梱DBの取込日時が新しければカタログの表だけをトランザクションで更新します。配布する事実（`prebuilt_facts`）は、それを持つスナップショットのときだけ置き換えます。同じスキーマ版でなければ更新せず、利用者のCSVが新しい場合も保持します。
 - PDF由来の事実は`protocol_observations`に分離して保持します。手元にない項目を補い、医薬品の補完値は出所ごとに`EXPOSURE_RULES`の版が新しい場合だけ置き換えます。
 - 解析・回答・見出しの読み方は保持します。`get_study`で更新したカタログ行は同梱値へ戻り得ますが、PDF観測は保持します。
 - `EMA_DB_PATH`で指定したDBとcheckoutのDBは、どちらの経路でも自動更新・統合の対象外です（`ema-rwe update-catalogue`で更新します。MCPクライアントのenvと同じ`EMA_DB_PATH`を設定したシェルで実行します。CLIは自分の環境のDBを更新するためです）。医薬品辞書は`refresh_drug_dictionary`で更新します。更新失敗時は元のカタログで起動します。
@@ -256,7 +257,7 @@ Azure OpenAIの従来deployments APIやOpenAI直結の設定例、LiteLLMの接�
 
 ## MCPツール一覧
 
-stdioで18ツールを公開します。引数・範囲・既定値の正本は[`mcp/server.py`](src/ema_rwe/mcp/server.py)のツールスキーマです。完全な呼出手順とフィールドの意味は[docs/mcp-workflow.md](docs/mcp-workflow.md)を参照してください。
+stdioで19ツールを公開します。引数・範囲・既定値の正本は[`mcp/server.py`](src/ema_rwe/mcp/server.py)のツールスキーマです。完全な呼出手順とフィールドの意味は[docs/mcp-workflow.md](docs/mcp-workflow.md)を参照してください。
 
 | 用途 | ツール |
 |---|---|
@@ -267,6 +268,7 @@ stdioで18ツールを公開します。引数・範囲・既定値の正本は[
 | 共通抽出・見出し英訳 | `analyze_protocol`, `cache_protocol_analysis`, `cache_heading_translations` |
 | PDF探索 | `get_protocol_outline`, `search_protocol_text`, `read_protocol_text` |
 | 質問別回答 | `research_protocol`, `cache_protocol_answer` |
+| 保存済みの事実 | `find_facts` |
 
 特に次の違いを維持してください。
 
@@ -296,8 +298,9 @@ CLIのサブコマンドは、MCPのツールと1対1で対応し、同じ引数
 | `comparison` | `get_protocol_comparison` | `cache-headings` | `cache_heading_translations` |
 | `study` | `get_study` | `ask` | `research_protocol` |
 | `protocol` | `get_protocol` | `cache-answer` | `cache_protocol_answer` |
+| `facts` | `find_facts` | | |
 
-名前の違いは決まった形だけです。繰り返す引数はCLIでは単数（`--synonym`と`synonyms`）、ファイルで渡す本体は`input`、`filters`は`--country`・`--source-type`・`--study-design`、`source_preference`は`--prefer-source-type`・`--source-role`・`--source-mode`です。`import-csv`、`import-all`、`backfill-protocols`、`merge-observations`、`cleanup-cache`、`update-catalogue`はCLIだけの保守用です。対応の表と照合は`tests/test_cli_mcp_parity.py`にあり、引数・既定値・選択肢・範囲のどれかが片方だけ変わるとテストが落ちます。
+名前の違いは決まった形だけです。繰り返す引数はCLIでは単数（`--synonym`と`synonyms`）、ファイルで渡す本体は`input`、`filters`は`--country`・`--source-type`・`--study-design`、`source_preference`は`--prefer-source-type`・`--source-role`・`--source-mode`です。`import-csv`、`import-all`、`backfill-protocols`、`merge-observations`、`cleanup-cache`、`update-catalogue`、`prefetch-protocols`、`export-facts`、`facts-site`はCLIだけの保守用です。対応の表と照合は`tests/test_cli_mcp_parity.py`にあり、引数・既定値・選択肢・範囲のどれかが片方だけ変わるとテストが落ちます。
 
 CLIは`uv run ema-rwe <サブコマンド> --help`で確認できます（例：`pdf-search`, `ask`, `cache-headings`, `cache-answer`）。入力範囲はCoreが検査し、MCPとCLIに共通で適用します。
 
