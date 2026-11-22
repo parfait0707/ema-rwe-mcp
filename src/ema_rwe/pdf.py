@@ -467,7 +467,10 @@ def _parse_pages(data: bytes, use_outline: bool, translations: dict[str, str] | 
         raise
     except Exception as exc:
         raise RWEError("PDF_PARSE_FAILED", "Native PDF extraction failed.") from exc
-    if sum(len(p.text.strip()) for p in pages) < 150:
+    # A scan with one typed page (an approval record) or a body redacted word by word is no more readable.
+    if sum(len(p.text.strip()) for p in pages) < 150 or (
+        len(pages) > 2 and sum(len(p.text.strip()) >= 50 for p in pages) < 2
+    ):
         raise RWEError("PDF_OCR_REQUIRED", "No usable text layer; scanned PDF requires OCR (outside MVP).")
     if sum(len(p.text) for p in pages) > 5_000_000:
         raise RWEError("PDF_PARSE_FAILED", "Extracted text exceeds 5 million character limit.")
@@ -882,6 +885,29 @@ def clean_translations(headings: list[str], translations: dict) -> dict[str, str
     }
 
 
+CODE_TOKEN = re.compile(r"\b(?:[A-Z]\d{2}[A-Z]{2}\d{2}|[A-Z]\d{2}(?:\.\d{1,4})?|\d{3}\.\d{1,2})\b")
+CODE_PAGE_MIN = 8
+
+
+def lists_codes(text: str) -> bool:
+    """Text listing codes (ATC, ICD-10, dotted ICD-9): at least CODE_PAGE_MIN distinct ones (spec v1.32)."""
+    return len(set(CODE_TOKEN.findall(text))) >= CODE_PAGE_MIN
+
+
+def code_pages(pages: list[Page]) -> list[int]:
+    return [p.page for p in pages if lists_codes(p.text)]
+
+
+def cited_pages(value) -> set[int]:
+    """Physical pages the evidence quotes of an extraction (as a model_dump) point to."""
+    if isinstance(value, dict):
+        own = {value["page"]} if "quote" in value and isinstance(value.get("page"), int) else set()
+        return own.union(*(cited_pages(v) for v in value.values()))
+    if isinstance(value, list):
+        return set().union(*(cited_pages(v) for v in value))
+    return set()
+
+
 APPENDIX_REF = re.compile(r"\b(?:annex|appendix)\s+([IVX]+|[A-Za-z]?\d{1,3}[A-Za-z]?|[A-Z])\b", re.IGNORECASE)
 CODE_LIST_TITLE = re.compile(
     r"code|list|atc|icd|snomed|read code|definition|algorithm|variable", re.IGNORECASE
@@ -918,7 +944,7 @@ def reading_order(chunks: list[dict]) -> list[dict]:
             return False  # ENCePP checklists mimic method headings but are not this study's methods
         # Code lists and variable definitions are read even without an explicit cross-reference; the title may
         # be any level of the outline ('Appendix I: Definitions of study outcomes / ... / Staging').
-        if CODE_LIST_TITLE.search(chunk.get("chapter_path") or chapter):
+        if CODE_LIST_TITLE.search(chunk.get("chapter_path") or chapter) or lists_codes(chunk["text"]):
             return True
         return any(m.group(1).casefold() in referenced for m in APPENDIX_REF.finditer(label) if m.group(1))
 
@@ -1359,7 +1385,8 @@ def audit_extraction(
 
     - redacted passages (CCI markers) near outcome/endpoint text;
     - catalogue-listed data sources absent from the extracted data_sources;
-    - proper names / quantities in fact values that no evidence quote contains.
+    - proper names / quantities in fact values that no evidence quote contains;
+    - pages listing codes that no evidence quote cites (spec v1.32).
     """
     notes: list[str] = []
     text_by_page = {p.page: p.text for p in pages}
@@ -1387,6 +1414,12 @@ def audit_extraction(
             unquoted.append(f"{name}: {sorted(terms)[:6]}")
     if unquoted:
         notes.append("Value terms without a verbatim quote (verify against the PDF): " + "; ".join(unquoted))
+    cited = cited_pages(extraction.model_dump())
+    uncited = [p for p in code_pages(pages) if p not in cited]
+    if uncited:
+        notes.append(
+            f"Pages listing codes that no fact cites: {uncited}; their code lists are not extracted."
+        )
     return notes
 
 

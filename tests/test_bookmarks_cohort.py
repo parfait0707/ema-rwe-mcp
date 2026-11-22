@@ -63,6 +63,23 @@ def test_reading_order_keeps_body_and_referenced_or_code_list_appendices_only():
     assert reading_order(plain) == [c for c in plain if c["relevant"]]  # legacy behaviour without bookmarks
 
 
+def test_unreferenced_appendix_listing_codes_is_read():
+    """spec v1.32: an appendix neither cited nor titled as a code list is read when it lists codes."""
+    texts = [
+        (
+            "The cohort is defined by a first dispensing (index date) of a statin among adults in the claims "
+            "database, followed until the earliest of death, disenrolment or the end of data."
+        ),
+        "Exposure: B01AC06 C10AA01 C10AA05 C07AB02 C09AA02 C03CA01 N02BE01 M01AE01 A10BA02",
+    ]
+    with pymupdf.open() as doc:
+        for text in texts:
+            doc.new_page().insert_text((50, 50), text, fontsize=9)
+        doc.set_toc([[1, "9 Research methods", 1], [1, "Annex 7 Tables", 2]])
+        data = doc.tobytes()
+    assert 2 in {c["page"] for c in reading_order(sections(extract_pages(data)))}
+
+
 def test_search_ranks_bookmark_chapter_matches_first():
     chunks = sections(extract_pages(pdf_with_bookmarks()))
     hits = search_sections(chunks, "outcomes")["results"]

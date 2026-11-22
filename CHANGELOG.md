@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Code-list coverage (spec v1.32): the first client batch lists `code_pages` (pages listing eight or more
+  distinct ATC/ICD codes) and asks for one `disease_definitions` fact per condition with every code; a saved
+  analysis notes in `missing_information` the code pages no fact cites. Bookmarked appendices that list codes
+  are read even when the body never cites them.
+- A PDF of three or more pages with fewer than two pages of text (a scan with a typed approval page, a body
+  redacted word by word) is `PDF_OCR_REQUIRED` instead of yielding an empty analysis.
+
 ## 0.6.0 (2026-11-21)
 
 - Evidence store (spec v1.31): `find_facts` (MCP) and `facts` (CLI) read every saved analysis as one row per
