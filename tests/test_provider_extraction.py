@@ -255,6 +255,7 @@ def test_prune_fills_missing_section_label_from_the_quote_location(pdf_bytes):
 async def test_client_batches_carry_schema_only_once_and_allow_large_pages(service):
     first = await service.analyze_protocol("123", max_chars=150000)
     assert "analysis_schema" in first and "instruction" in first
+    assert first["code_pages"] == []  # the sample protocol names one code, it lists none (spec v1.32)
     later = await service.analyze_protocol("123", offset=1, max_chars=6000)
     assert later["status"] == "needs_client_extraction"
     assert "analysis_schema" not in later and "instruction" not in later

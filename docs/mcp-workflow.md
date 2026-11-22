@@ -230,6 +230,10 @@ filters. Never pick a subset yourself.
   skip offsets listed in `cached_batch_offsets`. Always continue at the `next_offset` the previous
   response returned and cache the last batch with its `batch_offset` too; then finish with
   `coverage_complete=true` (its `analysis` may be `{}` while cached batches remain to be merged).
+  The first batch lists `code_pages`, the pages that list codes: turn each code list into
+  `disease_definitions`, one fact per condition with every code and its coding system in the value, and
+  read such pages outside the batches with `read_protocol_text`. Code pages no fact cites are noted in
+  `missing_information` at the save (spec v1.32).
   `INCOMPLETE_EXTRACTION` refuses a call in these cases, and its message says which. Without
   `coverage_complete=true` and without `batch_offset`, nothing is saved: cache each batch with its
   `batch_offset`. With an offset, it names an offset that was never read and cached (also for an empty
