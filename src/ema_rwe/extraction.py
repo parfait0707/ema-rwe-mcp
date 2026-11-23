@@ -23,12 +23,12 @@ from .pdf import (
     PARSER_VERSION,
     audit_extraction,
     clean_translations,
-    code_pages,
     compact_spaces,
     english,
     extract_pages,
     finalize_extraction,
     heading_texts,
+    protocol_locations,
     reading_hash,
     reading_order,
     sections,
@@ -139,12 +139,17 @@ class ExtractionMixin:
                 "batch_offset too; then call it once more with coverage_complete=true (analysis may be {}) to "
                 "merge and save. A quote has at least 8 characters (quote the whole line around a bare code or "
                 "word) and a fact at most 8 quotes (split the fact for more). A batch that was not read and cached is reported, not skipped. "
-                "code_pages lists the pages that list codes: turn each code list into disease_definitions, one "
-                "fact per condition with every code and its coding system in the value, and read such pages "
-                "outside the batches with read_protocol_text; uncited ones are reported. Later batches "
-                "omit this instruction and analysis_schema."
+                "code_tables lists where the PDF lists codes or terms (heading, pages, coding-system marks); "
+                "they are kept as location rows (find_facts item_kinds code_table) and read when asked, so do "
+                "not copy those tables: in disease_definitions write each condition and its definition logic "
+                "(e.g. two inpatient primary diagnoses), quoting the table heading or the defining sentence. "
+                "Codes written in eligibility criteria or in definition sentences of the text still go in the "
+                "value. Later batches omit this instruction and analysis_schema."
                 + (SINGLE_PASS_INSTRUCTION.format(question=question) if question else ""),
-                code_pages=code_pages(pages),
+                code_tables=[
+                    {k: t[k] for k in ("value", "kind", "page", "end_page", "systems", "systems_inferred")}
+                    for t in protocol_locations(pages)["code_tables"]
+                ],
                 analysis_schema=Extraction.model_json_schema(),
                 **({"answer_schema": ProtocolAnswer.model_json_schema()} if question else {}),
                 selection_coverage="Keyword/heading selected sections; unselected text may contain additional facts.",
