@@ -1240,3 +1240,28 @@ PDF 取得先ディレクトリ名から X/Y が推測可能だった（P）、�
   - 前後の比較（同じ PDF）：事実の中央値 30 → 43 件（合計 12,422 → 18,053）、`disease_definitions` の中央値 2 → 8 件。コード表のページ 446 枚のうち、どの事実も引用していないページは 162 → 18 枚。事実が減った研究は 22 研究で、減り幅は 1〜4 件。
   - 保存しなかった 1 研究（38535）：文字の層はあるが、フォントの符号化がずれて文字が 29 ずつずれ、数字も落ちている。引用が逐語にならないので抽出しなかった。前の解析（同じ壊れた文字を引用していた）は無効にしたままで、`find_facts` では `no_facts` に出る。`text_layer` の判定はこの形を `full` と見なす（未対応）。
   - 前の解析の控えは作業フォルダの `baseline3/` に置いた（Git 管理外）。
+
+## 2026-11-23 コード表の位置の行と章の地図（spec v1.33）
+
+- 実装：`pdf.protocol_locations`（位置の行 `code_tables` と章の地図 `section_map`、体系の判定の表 `CODE_SYSTEMS`）、保存（`protocol_observations` の `locations`）、`find_facts` / CLI `facts` の項目種別 `code_table` と `section_map`、最初のバッチの `code_tables`、未引用のコード表の注記から位置の行が覆うページを外すこと。テストを 21 件足した（`tests/test_code_table_locations.py`。変更前のコードでは読み込みの段で落ちる）。`uv run pytest` は 592 件が通った。
+- 実データ：ポインタの試験の 10 問（`docs/agent_report/202611231700_opus_pointer-trial.md` 1 節の正解の表のページ）について、手元の PDF に `protocol_locations` をかけ、正解のページが `code_table` の行に入るかを確かめた。保存済みの解析は使っていない。行の中身は、ページを覆う行のうち最も短いもの。
+
+| 問 | 研究 | 行の数（表／章） | 解析の秒 | 正解のページを覆う行 |
+|---|---|---|---|---|
+| Q01 | 49276 | 2／110 | 1.4 | p26・27：9.3.1 Outcome（p26〜27、codes、ICD-10/MedDRA）、p58：ANNEX 1. MedDRA codes（p57〜59、terms、MedDRA） |
+| Q02 | 49285 | 1／57 | 1.1 | p32：なし（変数の定義の文中の N18.5 が 1 つだけ。設計上、位置の行にしない） |
+| Q03 | 49324 | 1／85 | 1.5 | p96：Appendix E Definitions of exposure variables...（p93〜101、codes） |
+| Q04 | 105807 | 6／47 | 1.7 | p60：3.2 ILD（p60〜61、codes、体系は推定 ICD-10） |
+| Q05 | 50599 | 7／80 | 3.6 | p119：Annex 3G - Codelists（p119〜286、codes）。p119 の上端は Annex 3F の行（p114〜119、terms）にも入る |
+| Q06 | 105127 | 7／53 | 7.3 | p51：Appendix F: Variable Code List（p51〜406、codes、ICD-10/ATC/CPT/HCPCS/NDC） |
+| Q07 | 38617 | 15／183 | 3.7 | p79・80：13.2 Appendix B. Algorithms Used to Identify Adverse Events...（p79〜80、codes、ICD-10/ICD-9） |
+| Q08 | 108136 | 17／188 | 2.1 | p66〜69：17.3. Appendix III – Safety Outcomes of Interest（p58〜75、codes） |
+| Q09 | 1000000476 | 19／197 | 2.2 | p126〜128：17.4.1.13.1. ICD-10-CM Codes（Type 2 Diabetes、p126〜129） |
+| Q10 | 1000000932 | 21／194 | 2.1 | p70〜74：16.4.1.3.1. ICD-10-CM Codes（Chronic Lung Disease、p70〜75） |
+
+- 10 問のうち 9 問で、正解の表のページがすべて行に入った。入らなかった Q02 は、表ではなく文中に 1 つ書かれたコードで、設計（案 C の事実の行で扱う）どおり。試験で経路 P が落とした形のうち、数字の無い用語の表（Q01 の MedDRA）、10 ページの上限（Q10 の本体 p71〜74）、表の連続（Q08〜Q10）は行に入るようになった。Q10 は表の題の行がしおりの 1 ページ前（p70 の下端）に印字されており、そのページから行を始める規則で p70 の 9 コードも入った。
+- 行の引用：10 PDF の全行（表 96、章 1,194）の引用が、最初のページの本文に逐語で（`normalize_quote` で）含まれた。
+- 粗さ：Q05 の Annex 3G は 168 ページ、Q06 の Appendix F は 356 ページ、Q08 の Appendix III は 18 ページの 1 行になる。表ごとの題がしおりや見出しにならない PDF では、行は付録の単位になり、呼出元が `search_protocol_text` で絞る（`docs/mcp-workflow.md`）。
+- 体系の目印：見出しと本文で名乗られた体系を付ける。Q03 の付録は ICD-10/ICD-9/ATC/MedDRA/Read が名乗られ、全部付いた。Q04 の 3.2 ILD は名乗りが無く、形から ICD-10 と推定した（`systems_inferred`）。
+- 保存と再利用（利用者の DB の複製、PDF は手元のもの）：CLI `facts --study-id 1000000932 --item-kind code_table` は、初回に作って保存し 2.6 秒、2 回目は保存済みを使い 0.5 秒（どちらも CLI の起動を含む）。
+- 未確認：P5 の再試験（位置の行を使う経路 P で同じ 10 問に答えさせる）、claims 560 研究全体での行の数と粗さの分布、英語以外のプロトコルでの章の地図の役割、v1.33 の指示で抽出した解析の中身。

@@ -2,7 +2,7 @@
 
 エンドユーザー（このMCPを使って研究を調べる人）向けの使い方は[README.md](README.md)を参照してください。本ファイルはこのMCPサーバー自体を開発・改修する人向けの内部仕様です。
 
-公開版は0.6.0（内部履歴では0.1〜1.31の仕様段階を経ている）。`docs/spec/v0.1.md`〜`v1.32.md`が仕様の正本、[docs/mcp-workflow.md](docs/mcp-workflow.md)が呼出元向け手順の正本、開発ルールは[AGENTS.md](AGENTS.md)です。
+公開版は0.6.0（内部履歴では0.1〜1.31の仕様段階を経ている）。`docs/spec/v0.1.md`〜`v1.33.md`が仕様の正本、[docs/mcp-workflow.md](docs/mcp-workflow.md)が呼出元向け手順の正本、開発ルールは[AGENTS.md](AGENTS.md)です。
 
 ## 開発用セットアップ（checkout）
 
@@ -38,7 +38,7 @@ uv run ema-rwe --help
 | `drugs.py` / `medicines.py` | EMA医薬品辞書、成分・製品・クラスの展開、医薬品欄の補完 |
 | `selection.py` / `ranking.py` / `source_types.py` | 絞り込み、候補順位、PDF由来データタイプの評価 |
 | `comparison.py` | 全screening研究のPDF/JSON/Markdown出力。失敗・未完了を保持 |
-| `evidence.py` | 証拠ストア。保存済み解析の事実の行、配布する事実（`prebuilt_facts`）、引用の復元、静的ページ（spec v1.31） |
+| `evidence.py` | 証拠ストア。保存済み解析の事実の行、配布する事実（`prebuilt_facts`）、引用の復元、静的ページ（spec v1.31）、コード表の位置の行と章の地図（spec v1.33） |
 | `ema.py` / `http.py` | Study documentsの解析・最新版選択、robots・間隔・リトライ制御 |
 | `config.py` / `snapshot.py` / `catalogue_update.py` | 環境設定・同梱データ更新、月次スナップショットの作成・検証、公開されたスナップショットの取り込み |
 
@@ -308,7 +308,7 @@ CLIは`uv run ema-rwe <サブコマンド> --help`で確認できます（例：
 
 | ファイル | 内容 |
 |---|---|
-| [docs/spec/v0.1.md](docs/spec/v0.1.md)〜[v1.31.md](docs/spec/v1.31.md) | 段階的な追加要件の正本。対象変更の関連仕様を読む |
+| [docs/spec/v0.1.md](docs/spec/v0.1.md)〜[v1.33.md](docs/spec/v1.33.md) | 段階的な追加要件の正本。対象変更の関連仕様を読む |
 | [docs/mcp-workflow.md](docs/mcp-workflow.md) | 呼出元エージェント向けの完全な手順（英語） |
 | [docs/search-logic.md](docs/search-logic.md) | 検索語の展開・医薬品照合・順位付け |
 | [docs/benchmarks/20261009-codex-app.md](docs/benchmarks/20261009-codex-app.md) | Codex Appの4例とMCP実行時間の定義 |
