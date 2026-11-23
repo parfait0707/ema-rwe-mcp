@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Code table locations (spec v1.33): `find_facts` / `facts` take item kinds `code_table` (where a kept PDF
+  lists codes or terms: heading, first and last page with no page limit, coding-system marks, a verbatim
+  heading quote) and `section_map` (method, definition and appendix chapters with their pages). They are
+  built from the parse alone (no LLM) when a protocol is retrieved, or on the first `find_facts` naming the
+  study, stored with its protocol observation and returned only when asked for. The first client batch
+  lists `code_tables` instead of `code_pages` and asks not to copy those tables but to write each
+  condition's definition logic; pages a code table row covers are no longer noted as uncited.
 - Code-list coverage (spec v1.32): the first client batch lists `code_pages` (pages listing eight or more
   distinct ATC/ICD codes) and asks for one `disease_definitions` fact per condition with every code; a saved
   analysis notes in `missing_information` the code pages no fact cites. Bookmarked appendices that list codes

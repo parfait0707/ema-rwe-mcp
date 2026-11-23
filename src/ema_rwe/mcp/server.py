@@ -178,7 +178,8 @@ def create_server(service: Service | None = None):
         limit: Annotated[int, Field(ge=1, le=MAX_FACTS)] = 200,
     ) -> dict:
         """Saved facts, one row each with page, section, quote and status, from local analyses or distributed
-        facts (no network). Studies with neither are listed in no_facts: extract those as usual."""
+        facts (no network). Studies with neither are listed in no_facts: extract those as usual. item_kinds
+        code_table / section_map add location rows of a kept PDF (pages to read; spec v1.33)."""
         try:
             return await asyncio.to_thread(
                 service.find_facts,

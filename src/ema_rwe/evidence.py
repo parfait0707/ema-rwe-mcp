@@ -4,13 +4,14 @@ without their quotes (prebuilt_facts) and those quotes restored from a local PDF
 import hashlib
 import html
 import re
+from importlib.metadata import version
 from itertools import groupby
 from pathlib import Path
 from typing import Literal
 
 from .domain import RWEError, Study, atomic_write, now
 from .ema import BASE, is_non_interventional
-from .pdf import normalize_quote, page_texts
+from .pdf import PARSER_VERSION, normalize_quote, page_texts, protocol_locations, reading_hash
 from .selection import source_categories
 from .storage import Repository
 
@@ -33,7 +34,13 @@ FACT_FIELDS = (
     ("statistical_analysis", "statistical_analysis"),
     ("key_notes", "key_note"),
 )
-ITEM_KINDS = (*(kind for _, kind in FACT_FIELDS), "missing")
+FACT_KINDS = (*(kind for _, kind in FACT_FIELDS), "missing")
+# Location rows (spec v1.33): where a kept PDF lists codes and keeps its chapters, built from the parse alone.
+# Returned only when asked for by item_kinds.
+LOCATION_KINDS = ("code_table", "section_map")
+ITEM_KINDS = (*FACT_KINDS, *LOCATION_KINDS)
+# Version of protocol_locations' rules: a stored result of another version is built again.
+LOCATIONS_VERSION = 1
 ItemKind = Literal[ITEM_KINDS]
 MAX_FACTS = 1000
 QUOTE_NOTE = "The quote is shown once this PDF is kept locally (get_protocol)."
@@ -98,6 +105,35 @@ def facts_from_analysis(result: dict) -> list[dict]:
         _fact(source, "missing", text, None, [], "no_quote")
         for text in analysis.get("missing_information", [])
     ]
+
+
+def location_rows(study_id: str, locations: dict) -> list[dict]:
+    """find_facts rows of a protocol's stored locations: code_table and section_map, each quoting the line
+    that names its section on its first page."""
+    protocol_id = locations["protocol_id"]
+    rows = []
+    for kind, key in (("code_table", "code_tables"), ("section_map", "section_map")):
+        for loc in locations[key]:
+            detail = ("kind", "systems", "systems_inferred") if kind == "code_table" else ("role",)
+            rows.append(
+                {
+                    "study_id": study_id,
+                    "protocol_id": protocol_id,
+                    "pdf_sha256": protocol_id.rsplit("_", 1)[1],
+                    "item_kind": kind,
+                    "value": loc["value"],
+                    "page": loc["page"],
+                    "end_page": loc["end_page"],
+                    "section_id": loc["section_id"],
+                    **{k: loc[k] for k in detail},
+                    "evidence": [{"page": loc["page"], "section": loc["section"], "quote": loc["quote"]}],
+                    "status": "verified_local" if loc["quote"] else "no_quote",
+                    "extractor": "structure",
+                    "parser_version": locations["parser_version"],
+                    "app_version": locations["app_version"],
+                }
+            )
+    return rows
 
 
 def _digest(text: str) -> str:
@@ -242,6 +278,38 @@ class EvidenceMixin:
                 elif positions:
                     fact["quote_note"] = QUOTE_NOTE
 
+    def kept_locations(self, study_id: str, protocol_id: str) -> dict | None:
+        """The code tables and chapter map of a kept protocol (spec v1.33): the stored ones when built from the
+        same protocol, heading reading and rules, else built from the local PDF and stored with the study's
+        protocol observation. None when the PDF is not kept here or has no readable text."""
+        reading = reading_hash(self.explorer.translations(protocol_id))
+        key = {"protocol_id": protocol_id, "reading": reading, "version": LOCATIONS_VERSION}
+        stored = self.repo.observation(study_id).get("locations")
+        if stored and all(stored.get(k) == v for k, v in key.items()):
+            return stored
+        try:
+            pages, _, _ = self.explorer.context(protocol_id)
+        except RWEError:
+            return None  # not kept here, unreadable, or without a text layer
+        locations = key | {"parser_version": PARSER_VERSION, "app_version": version("ema-rwe-mcp")}
+        locations |= protocol_locations(pages)
+        self.repo.observe(study_id, locations=locations)
+        return locations
+
+    def _location_rows(self, study_id: str, analysis: dict | None, build: bool) -> list[dict] | None:
+        """Location rows of the study's analysed protocol, else of its latest observed one. Built only when
+        build is set (a study asked for by ID); otherwise only stored ones are used. None when there are none."""
+        protocol_id = (analysis or {}).get("source", {}).get("protocol_id")
+        protocol_id = protocol_id or self.repo.observation(study_id).get("protocol_id")
+        if not protocol_id:
+            return None
+        if build:
+            locations = self.kept_locations(study_id, protocol_id)
+        else:
+            stored = self.repo.observation(study_id).get("locations")
+            locations = stored if stored and stored.get("protocol_id") == protocol_id else None
+        return location_rows(study_id, locations) if locations else None
+
     def find_facts(
         self,
         study_ids: list[str] | None = None,
@@ -253,7 +321,11 @@ class EvidenceMixin:
         """Fact rows of the studies asked for: study_ids, else the studies of source_types, else every study
         with facts. A study's facts come from its local analysis, else from the distributed facts; a study
         with neither is listed in no_facts. text matches a value or a quote shown before restoration (the
-        quotes of distributed facts are restored for the returned rows only)."""
+        quotes of distributed facts are restored for the returned rows only).
+
+        Location rows (code_table, section_map) come only when item_kinds asks for them, from the study's
+        kept PDF: built on first use for the study_ids asked for, stored ones only for wider scopes. Studies
+        without them are listed in no_locations."""
         if limit is not None and not 1 <= limit <= MAX_FACTS:
             raise RWEError("INVALID_INPUT", f"limit must be 1..{MAX_FACTS}.")
         if any(not re.fullmatch(r"\d{1,20}", s) for s in study_ids or []):
@@ -270,8 +342,9 @@ class EvidenceMixin:
         for fact in _prebuilt_facts(self.repo.prebuilt_facts([s for s in scope if s in prebuilt - local])):
             distributed.setdefault(fact["study_id"], []).append(fact)
         needle = text.casefold() if text else None
-        kinds = set(item_kinds or ITEM_KINDS)
-        origins, found = {}, []
+        kinds = set(item_kinds or FACT_KINDS)
+        wanted_locations = kinds & set(LOCATION_KINDS)
+        origins, found, no_locations = {}, [], []
         for study_id in scope:
             if study_id in analyses:
                 origins[study_id], facts = "local", facts_from_analysis(analyses[study_id])
@@ -288,6 +361,20 @@ class EvidenceMixin:
                     or any(needle in e["quote"].casefold() for e in f["evidence"])
                 )
             ]
+            if wanted_locations:
+                rows = self._location_rows(study_id, analyses.get(study_id), build=bool(study_ids))
+                if rows is None:
+                    no_locations.append(study_id)
+                found += [
+                    r
+                    for r in rows or []
+                    if r["item_kind"] in kinds
+                    and (
+                        needle is None
+                        or needle in r["value"].casefold()
+                        or needle in r["evidence"][0]["quote"].casefold()
+                    )
+                ]
         returned = found if limit is None else found[:limit]
         self._restore(returned)
         return {
@@ -296,6 +383,7 @@ class EvidenceMixin:
             "truncated": len(returned) < len(found),
             "origins": origins,
             "no_facts": [s for s, origin in origins.items() if origin == "none"],
+            **({"no_locations": no_locations} if wanted_locations else {}),
             "network_requests": 0,
         }
 

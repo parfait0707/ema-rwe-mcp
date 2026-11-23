@@ -9,6 +9,7 @@ import threading
 import time
 from collections import Counter, OrderedDict
 from dataclasses import dataclass, field
+from itertools import groupby
 
 import pymupdf
 
@@ -898,6 +899,152 @@ def code_pages(pages: list[Page]) -> list[int]:
     return [p.page for p in pages if lists_codes(p.text)]
 
 
+# Coding systems a code table may use (spec v1.33): (name, words that name it, the shape of its codes, whether
+# that shape is its own). A shape shared with another system (ICD-10 and OPCS-4 letters, three-digit numbers)
+# only suggests a system, and only when no system is named; a system without a usable shape needs its name.
+# A new system is one more row.
+CODE_SYSTEMS = (
+    ("ICD-10", r"\bICD[- ]?10\b", r"\b[A-Z]\d{2}(?:\.\d{1,4})?\b", False),
+    ("ICD-9", r"\bICD[- ]?9\b", r"\b\d{3}\.\d{1,2}\b", False),
+    ("ICD-11", r"\bICD[- ]?11\b", None, False),
+    ("ATC", r"\bATC\b|anatomical therapeutic chemical", r"\b[A-Z]\d{2}[A-Z]{2}\d{2}\b", True),
+    ("MedDRA", r"\bMedDRA\b|\bpreferred terms?\b|\bSMQs?\b", r"\b10\d{6}\b", False),
+    ("CPT/HCPCS", r"\bCPT\b|\bHCPCS\b", r"\b[A-V]\d{4}\b", False),
+    ("NDC", r"\bNDC\b|national drug codes?", r"\b\d{4,5}-\d{3,4}-\d{1,2}\b", True),
+    ("OPCS-4", r"\bOPCS\b", None, False),
+    ("Read", r"\bRead (?:codes?|terms?|v[23]|version)\b|\bCTV3\b", None, False),
+    ("SNOMED CT", r"\bSNOMED\b", None, False),
+)
+_SYSTEMS = [
+    (name, re.compile(words, re.IGNORECASE), re.compile(shape) if shape else None, own)
+    for name, words, shape, own in CODE_SYSTEMS
+]
+
+
+def code_systems(heading: str, text: str) -> tuple[list[str], list[str]]:
+    """(named, inferred) coding systems of a code table: named by its heading or text, or shown by a shape
+    of their own; inferred from a shared shape when nothing names a system. Marks to verify, not facts."""
+    named = [
+        n
+        for n, words, shape, own in _SYSTEMS
+        if words.search(f"{heading}\n{text}") or own and shape.search(text)
+    ]
+    if named:
+        return named, []
+    return [], [n for n, _, shape, own in _SYSTEMS if shape and not own and shape.search(text)]
+
+
+# The roles a section map row may carry; references, contents, administration, background and checklists are
+# not where a study's own definitions are.
+MAP_ROLES = ("population", "definitions", "methods", "data_sources", "analysis", "objectives")
+MAP_ROLES += ("appendix", "amendments", "conduct", "abstract")
+TERM_LIST_TITLE = re.compile(r"MedDRA|preferred terms?|\bterms\b|code ?lists?|\bSMQs?\b", re.IGNORECASE)
+CODE_TITLE = re.compile(
+    r"\bcodes?\b|code ?lists?|codelists?|" + "|".join(w for _, w, _, _ in CODE_SYSTEMS), re.IGNORECASE
+)
+NO_TABLE_ROLES = {"references", "contents", "checklist"}
+
+
+def location_heading(chunk: dict) -> str | None:
+    """The bookmark path of a section, with its text heading added when the outline does not name it."""
+    path, section = chunk.get("chapter_path"), chunk.get("section")
+    if path and section and canonical(section) not in {canonical(t) for t in path.split(" / ")}:
+        return f"{path} / {section}"
+    return path or section
+
+
+def heading_line(chunk: dict) -> str:
+    """A line of the section's text that names it (else its first line of 8+ characters): a verbatim quote of
+    the page the section starts on."""
+    lines = [" ".join(line.split()) for line in chunk["text"].splitlines() if line.strip()]
+    titles = [chunk.get("section"), *reversed((chunk.get("chapter_path") or "").split(" / "))]
+    for title in filter(None, titles):
+        if line := next((l for l in lines if canonical(l) == canonical(title)), None):
+            return line[:QUOTE_LIMIT]
+    return next((l for l in lines if len(l) >= 8), lines[0] if lines else "")[:QUOTE_LIMIT]
+
+
+def protocol_locations(pages: list[Page]) -> dict:
+    """Where a protocol keeps its code tables and its chapters (spec v1.33), from the parse alone (no LLM).
+
+    code_tables: under one heading, each run of consecutive sections that show a code and together list codes
+    (lists_codes), or a whole appendix titled as a term or code list (MedDRA terms have no numeric codes): one
+    row per run of pages, with no page limit.
+    section_map: consecutive sections under one heading of a method, definition or appendix role."""
+    chunks = [c for c in sections(pages) if not c.get("toc") and not c.get("checklist")]
+    tables: list[dict] = []
+    chapters: list[dict] = []
+    for heading, group in groupby(chunks, key=location_heading):
+        group = list(group)
+        role = group[0]["role"]
+        if heading and role in MAP_ROLES:
+            chapters.append(_location_row(heading, group) | {"role": role})
+        if not heading or role in NO_TABLE_ROLES:
+            continue
+        title = heading.split(" / ")[
+            -1
+        ]  # the deepest: 'Annex 2. Code lists / 16.4.1.3 Lung disease' is a chapter
+        if role == "appendix" and TERM_LIST_TITLE.search(title):
+            coded = len(set(CODE_TOKEN.findall(_joined(group)))) >= 3
+            runs = [("codes" if coded else "terms", group)]
+        elif CODE_TITLE.search(title) and CODE_TOKEN.search(_joined(group)):
+            runs = [("codes", group)]  # titled as codes ('17.4.1.2.1 ICD-10-CM Codes'): a table even if short
+        else:
+            runs = [
+                ("codes", run)
+                for has_codes, run in (
+                    (k, list(r)) for k, r in groupby(group, key=lambda c: bool(CODE_TOKEN.search(c["text"])))
+                )
+                if has_codes and lists_codes(_joined(run))
+            ]
+        for kind, run in runs:
+            previous = tables[-1] if tables else None
+            if kind == "codes" and previous and _title_line_before(previous, run[0], chunks):
+                # The table's title line printed a page before the bookmark that names it ('16.4.1.3.1 ICD-10-CM
+                # Codes' at the foot of p70, its bookmark at p71): the first page joins the bookmark's row.
+                previous.update(value=heading, end_page=run[-1]["page"], _last=run[-1]["section_id"])
+                previous["_text"] += _joined(run)
+            else:
+                tables.append(_location_row(heading, run) | {"kind": kind})
+    for row in tables + chapters:
+        text = row.pop("_text")
+        del row["_last"], row["_path"]
+        if "kind" in row:
+            row["systems"], row["systems_inferred"] = code_systems(row["value"], text)
+    return {"code_tables": tables, "section_map": chapters}
+
+
+def _joined(chunks: list[dict]) -> str:
+    return "\n" + "\n".join(c["text"] for c in chunks)
+
+
+def _location_row(heading: str, chunks: list[dict]) -> dict:
+    first = chunks[0]
+    return {
+        "value": heading,
+        "page": first["page"],
+        "end_page": chunks[-1]["page"],
+        "section_id": first["section_id"],
+        "section": first["section"],
+        "quote": heading_line(first),
+        "_text": _joined(chunks),
+        "_last": chunks[-1]["section_id"],
+        "_path": first.get("chapter_path"),
+    }
+
+
+def _title_line_before(previous: dict, chunk: dict, chunks: list[dict]) -> bool:
+    """previous is a one-section code table right before chunk, under an ancestor bookmark of chunk's."""
+    index = next(i for i, c in enumerate(chunks) if c["section_id"] == chunk["section_id"])
+    path = chunk.get("chapter_path") or ""
+    return (
+        index > 0
+        and chunks[index - 1]["section_id"] == previous["_last"] == previous["section_id"]
+        and bool(previous["_path"])
+        and path.startswith(previous["_path"] + " / ")
+    )
+
+
 def cited_pages(value) -> set[int]:
     """Physical pages the evidence quotes of an extraction (as a model_dump) point to."""
     if isinstance(value, dict):
@@ -1386,7 +1533,7 @@ def audit_extraction(
     - redacted passages (CCI markers) near outcome/endpoint text;
     - catalogue-listed data sources absent from the extracted data_sources;
     - proper names / quantities in fact values that no evidence quote contains;
-    - pages listing codes that no evidence quote cites (spec v1.32).
+    - pages listing codes that no evidence quote cites and no code table row covers (spec v1.32, v1.33).
     """
     notes: list[str] = []
     text_by_page = {p.page: p.text for p in pages}
@@ -1415,10 +1562,14 @@ def audit_extraction(
     if unquoted:
         notes.append("Value terms without a verbatim quote (verify against the PDF): " + "; ".join(unquoted))
     cited = cited_pages(extraction.model_dump())
-    uncited = [p for p in code_pages(pages) if p not in cited]
+    located = {
+        p for t in protocol_locations(pages)["code_tables"] for p in range(t["page"], t["end_page"] + 1)
+    }
+    uncited = [p for p in code_pages(pages) if p not in cited and p not in located]
     if uncited:
         notes.append(
-            f"Pages listing codes that no fact cites: {uncited}; their code lists are not extracted."
+            f"Pages listing codes that no fact cites and no code table row covers: {uncited}; their code "
+            "lists are not extracted."
         )
     return notes
 

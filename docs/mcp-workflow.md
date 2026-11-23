@@ -182,6 +182,16 @@ filters. Never pick a subset yourself.
   wait for the export); a study in `no_facts`, or a question its rows do not cover, is answered only after
   them.
   `text` matches a value, or a quote of a local analysis.
+- When the question asks for codes (spec v1.33): if fact rows already hold the codes, answer from them,
+  and read pages only where one quote per code is needed. Otherwise call
+  `find_facts(study_ids=[...], item_kinds=["code_table"])` for the location rows of the kept PDFs (built on
+  first use; studies without a kept PDF are in `no_locations`). Pick the rows whose heading matches the
+  concept; when a row spans many pages, narrow it with `search_protocol_text` on the concept's words. Read
+  `read_protocol_text` from `page` to `end_page`, answer with one verbatim quote per code, keeping the
+  code as printed and the coding system the page names (`systems` and `systems_inferred` are marks only),
+  and save the answer with `cache_protocol_answer`. `item_kinds=["section_map"]` lists the method,
+  definition and appendix chapters with their pages, as places to read; their roles come from heading
+  words and may be wrong.
 - The response's top-level `pending_tools` lists `{tool, arguments}` calls. A study with neither an
   analysis nor an answer gets one call, `analyze_protocol` with the `question` (one pass, below); with
   a configured server LLM, or when only the answer is missing, `research_protocol` is listed too. Run
@@ -230,10 +240,12 @@ filters. Never pick a subset yourself.
   skip offsets listed in `cached_batch_offsets`. Always continue at the `next_offset` the previous
   response returned and cache the last batch with its `batch_offset` too; then finish with
   `coverage_complete=true` (its `analysis` may be `{}` while cached batches remain to be merged).
-  The first batch lists `code_pages`, the pages that list codes: turn each code list into
-  `disease_definitions`, one fact per condition with every code and its coding system in the value, and
-  read such pages outside the batches with `read_protocol_text`. Code pages no fact cites are noted in
-  `missing_information` at the save (spec v1.32).
+  The first batch lists `code_tables`, where the PDF lists codes or terms (heading, pages, coding-system
+  marks). They are kept as location rows and read when asked, so do not copy those tables: write each
+  condition and its definition logic in `disease_definitions`, quoting the table heading or the defining
+  sentence; codes written in eligibility criteria or definition sentences still go in the value. Code
+  pages that no fact cites and no code table row covers are noted in `missing_information` at the save
+  (spec v1.32, v1.33).
   `INCOMPLETE_EXTRACTION` refuses a call in these cases, and its message says which. Without
   `coverage_complete=true` and without `batch_offset`, nothing is saved: cache each batch with its
   `batch_offset`. With an offset, it names an offset that was never read and cached (also for an empty

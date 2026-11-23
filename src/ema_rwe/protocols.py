@@ -146,6 +146,9 @@ class ProtocolsMixin:
             ):
                 # Remembered so that later searches rank an image-only protocol after readable ones.
                 self.repo.observe(study_id, text_layer=layer, protocol_id=archived["protocol_id"])
+            if version == "latest" and layer in {"full", "partial"}:
+                # Code tables and chapter map of the kept PDF (spec v1.33); a stored one is reused.
+                await asyncio.to_thread(self.kept_locations, study_id, archived["protocol_id"])
         return result
 
     async def _context(self, study_id: str, force_refresh: bool = False):

@@ -2,7 +2,7 @@
 
 ## Purpose and scope
 
-Build an evidence-backed MCP for finding and analysing EMA RWD protocols. Read `docs/spec/v0.1.md` through `docs/spec/v1.32.md` and `docs/clinical-search.md` when changing the relevant behaviour. Communicate with this repository's user in Japanese.
+Build an evidence-backed MCP for finding and analysing EMA RWD protocols. Read `docs/spec/v0.1.md` through `docs/spec/v1.33.md` and `docs/clinical-search.md` when changing the relevant behaviour. Communicate with this repository's user in Japanese.
 
 - Include only explicitly labelled Non-interventional studies. Keep the DARWIN EU flag independent of study type.
 - Always return catalogue Data source types and protocol-derived data source names/status. Do not call planned sources actually used.
@@ -19,7 +19,7 @@ Build an evidence-backed MCP for finding and analysing EMA RWD protocols. Read `
 - Expand medicine product names to INN/common names and general names to product names, using the official cached EMA medicines dictionary. Call `refresh_drug_dictionary` when its `needs_refresh` flag is true. Translate other Japanese drug names to English synonyms through the caller/configured LLM or a sourced local dictionary.
 - Preserve full ingredient sets for combination medicines. Do not equate a drug class with a member, or a combination with a single ingredient. Preserve the source's INN/common-name label.
 - Inspect methods, outcome/exposure definitions, code-list appendices and neighbouring chapters. A code hit is not evidence that it defines the outcome; it may be a comorbidity or exclusion.
-- Before reading any PDF for screened studies, call `find_facts`: saved analyses are read one row per fact, and facts distributed in `prebuilt_facts` carry values and quote positions but no quote text (the quote is restored from a local PDF of the same SHA-256, else shown as `verified_at_build` with no quote). Answer from those rows first; pending tools still run afterwards for the comparison export (spec v1.31).
+- Before reading any PDF for screened studies, call `find_facts`: saved analyses are read one row per fact, and facts distributed in `prebuilt_facts` carry values and quote positions but no quote text (the quote is restored from a local PDF of the same SHA-256, else shown as `verified_at_build` with no quote). Answer from those rows first; pending tools still run afterwards for the comparison export (spec v1.31). For codes, take the `code_table` location rows of the kept PDF (`item_kinds=["code_table"]`) and read only those pages, one quote per code; code tables are located, not transcribed, at extraction (spec v1.33).
 - Separate retrieval candidates from protocol-derived facts. Save facts with exact PDF quotes, physical pages and section labels. Report missing information explicitly.
 - Extract `cohort` (inclusion/exclusion criteria, index date, baseline period, follow-up, and `design_schema` with figure pages and text time windows) as its own schema block, under the same evidence rules as other facts; never read the figure image itself. When a PDF has bookmarks, prioritise the bookmark-derived reading order and chapter titles before falling back to full relevant-section reading.
 - Keep the no-extra-API-key caller-assisted route working as the default. When an internal LLM is configured (`LLM_MODEL` with `LLM_BACKEND=litellm` or an OpenAI-compatible `LLM_BASE_URL`), it also performs full server-side extraction for `analyze_protocol` (batched, not just bounded search/read/outline exploration); both routes must produce the same schema.
